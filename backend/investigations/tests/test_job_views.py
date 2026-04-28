@@ -150,6 +150,30 @@ class ConvertedResearchViewTests(TestCase):
         job = SearchJob.objects.first()
         self.assertEqual(job.job_type, JobType.COUNTY_PARCEL)
 
+    @mock.patch("investigations.views.async_task")
+    def test_research_parcels_persists_search_type(self, mock_async):
+        resp = self.client.post(
+            reverse("api_research_parcels", args=[self.case.id]),
+            data=json.dumps(
+                {"query": "1234-5678-9012", "county": "Darke", "search_type": "parcel"}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        job = SearchJob.objects.first()
+        self.assertEqual(job.query_params["search_type"], "parcel")
+
+    @mock.patch("investigations.views.async_task")
+    def test_research_parcels_defaults_search_type_to_owner(self, mock_async):
+        resp = self.client.post(
+            reverse("api_research_parcels", args=[self.case.id]),
+            data=json.dumps({"query": "Smith", "county": "Darke"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        job = SearchJob.objects.first()
+        self.assertEqual(job.query_params["search_type"], "owner")
+
     def test_research_irs_missing_query_returns_400(self):
         resp = self.client.post(
             reverse("api_research_irs", args=[self.case.id]),
@@ -158,3 +182,96 @@ class ConvertedResearchViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(SearchJob.objects.count(), 0)
+
+
+class AIAnalyzePatternsViewTests(TestCase):
+    """The /ai/analyze-patterns/ endpoint must enforce one in-flight job per case.
+
+    Each Claude call costs real tokens, so a double-click or two-tab POST must
+    not enqueue twice.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.case = Case.objects.create(name="T")
+
+    @mock.patch("investigations.views.async_task")
+    def test_first_request_returns_202_and_enqueues(self, mock_async):
+        resp = self.client.post(
+            reverse("api_ai_analyze_patterns", args=[self.case.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        self.assertEqual(SearchJob.objects.count(), 1)
+        job = SearchJob.objects.first()
+        self.assertEqual(job.job_type, JobType.AI_PATTERN_ANALYSIS)
+        mock_async.assert_called_once()
+
+    @mock.patch("investigations.views.async_task")
+    def test_second_request_returns_409_when_queued_job_in_flight(self, mock_async):
+        SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.AI_PATTERN_ANALYSIS,
+            status=JobStatus.QUEUED,
+            query_params={"case_id": str(self.case.id)},
+        )
+        resp = self.client.post(
+            reverse("api_ai_analyze_patterns", args=[self.case.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(SearchJob.objects.count(), 1)
+        mock_async.assert_not_called()
+
+    @mock.patch("investigations.views.async_task")
+    def test_second_request_returns_409_when_running_job_in_flight(self, mock_async):
+        SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.AI_PATTERN_ANALYSIS,
+            status=JobStatus.RUNNING,
+            query_params={"case_id": str(self.case.id)},
+        )
+        resp = self.client.post(
+            reverse("api_ai_analyze_patterns", args=[self.case.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 409)
+        mock_async.assert_not_called()
+
+    @mock.patch("investigations.views.async_task")
+    def test_completed_job_does_not_block_new_request(self, mock_async):
+        SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.AI_PATTERN_ANALYSIS,
+            status=JobStatus.SUCCESS,
+            query_params={"case_id": str(self.case.id)},
+            result={"findings_created": 2, "patterns_dropped": 0},
+        )
+        resp = self.client.post(
+            reverse("api_ai_analyze_patterns", args=[self.case.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        self.assertEqual(SearchJob.objects.count(), 2)
+        mock_async.assert_called_once()
+
+    @mock.patch("investigations.views.async_task")
+    def test_in_flight_job_on_other_case_does_not_block(self, mock_async):
+        other_case = Case.objects.create(name="Other")
+        SearchJob.objects.create(
+            case=other_case,
+            job_type=JobType.AI_PATTERN_ANALYSIS,
+            status=JobStatus.RUNNING,
+            query_params={"case_id": str(other_case.id)},
+        )
+        resp = self.client.post(
+            reverse("api_ai_analyze_patterns", args=[self.case.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        mock_async.assert_called_once()

@@ -763,11 +763,12 @@ export async function fetchCaseJobs(
     limit = 5,
     options?: ApiRequestOptions,
 ): Promise<SearchJobSummary[]> {
-    return request<SearchJobSummary[]>(
+    const payload = await request<{ results: SearchJobSummary[] }>(
         `/api/cases/${caseId}/jobs/?limit=${limit}`,
         { method: "GET" },
         { ...options, timeoutMs: options?.timeoutMs ?? 10000 },
     );
+    return payload.results ?? [];
 }
 
 export async function searchRecorder(

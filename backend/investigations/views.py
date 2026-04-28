@@ -3863,6 +3863,9 @@ def api_research_parcels(request, pk):
     county = body.get("county")
     if county:
         county = county.strip().upper()
+    search_type = (body.get("search_type") or "owner").strip().lower()
+    if search_type not in ("owner", "parcel"):
+        search_type = "owner"
     if not query:
         return JsonResponse(
             {"error": "Missing required field: query"},
@@ -3873,7 +3876,11 @@ def api_research_parcels(request, pk):
         job = SearchJob.objects.create(
             case=case,
             job_type=JobType.COUNTY_PARCEL,
-            query_params={"query": query, "county": county},
+            query_params={
+                "query": query,
+                "county": county,
+                "search_type": search_type,
+            },
         )
         async_task(
             "investigations.jobs.run_county_parcel_search", str(job.id)
