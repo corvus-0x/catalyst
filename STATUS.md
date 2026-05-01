@@ -115,6 +115,32 @@ landed across two commits.
   extraction non-EIN, entity resolution core). New Vitest suite for
   the MatchReviewTab component.
 
+**Recently completed (Session 39, May 1 2026):**
+
+Two operational fixes after a full frontend QA + usability walk on the
+Railway deployment:
+
+- ~~Async research endpoints + AI Analysis silently broken on Railway~~ →
+  The `qcluster` worker container was defined in `docker-compose.yml`
+  for local dev but had never been deployed to Railway. Every async
+  job (IRS name search, IRS XML fetch, Ohio AOS, County Parcel, AI
+  pattern analysis) sat in `QUEUED` forever. Fixed by adding a second
+  Railway service (`catalyst-worker`) that builds the same Docker
+  image with `CMD` overridden to `python manage.py qcluster` and
+  reads its own config file (`railway.worker.json`) with no HTTP
+  healthcheck. Verified end-to-end: IRS "do good" search returns 177
+  filings in ~7s, AI Analysis writes 4 patterns to the demo case in
+  ~22s, poller transitions QUEUED → RUNNING → SUCCESS as designed.
+- ~~Worker deploy failing at the healthcheck stage~~ → The worker was
+  initially pointed at the same `railway.json` as the web service,
+  which has `healthcheckPath=/api/health/` — the worker has no HTTP
+  server, so Railway timed out the healthcheck and rolled the deploy
+  even though qcluster was running fine. Added a separate
+  `railway.worker.json` with the same Docker build and no
+  `healthcheckPath` field so the worker skips that stage entirely.
+- Captured a 21-item frontend QA punch list during the same audit pass
+  (see "Frontend QA punch list" section below).
+
 **Recently completed (Session 36):**
 - ~~Research tab still on the old synchronous shape~~ → Retrofit to consume the 202 + poll contract. New `useAsyncJob` hook handles enqueue, polling, status transitions, and reattach-on-mount. Four slow sources (IRS name, IRS XML, Ohio AOS, County Parcel) now show "Queued… / Searching…" progress instead of hanging.
 - ~~No AI layer on top of the 14 rules~~ → Shipped **AI pattern augmentation**: single-pass Claude analysis at case level that writes candidate Findings with `source=AI`. Runs as a Django-Q2 job; enforces doc-reference citations; caps `evidence_weight` at DIRECTIONAL (AI can never claim DOCUMENTED or TRACED). Pipeline tab gets source filter chips + AI badge + "Run AI Analysis" button.
@@ -134,6 +160,123 @@ landed across two commits.
 - ~~Document workspace~~ → Document viewer now has 6 tabs: Document, Entities, Notes, Findings, Financials, Info.
 - ~~Entity → Documents quick-view~~ → Entity detail page shows related documents, findings, and sticky notes.
 - ~~22 stale field references in views.py~~ → Fixed `detected_summary` → `description`, `detected_at` → `created_at`, `signal__case` → `finding__case` across dashboard, graph, search, export, and AI endpoints.
+
+---
+
+## Frontend QA punch list (May 2026)
+
+Captured during a full Playwright-driven walk of every view on the Railway
+deployment, plus a follow-up soak test once the worker came up. Worker is
+fixed. The 21 items below are the remaining frontend / UX / data-display
+issues to work through. Roughly 7 working days at 5–7 hrs/day.
+
+### 🔴 P0 — fix this week (demo-blockers)
+
+- [ ] **Demo case Documents have empty `extracted_text`.** `seed_demo`
+  creates Document rows with `ocr_status=COMPLETED` but never populated the
+  text or ran entity resolution. Click "View" on any doc in Bright Future
+  → "No extracted text available", "No entities linked." Recruiter killer.
+  *Fix: have `seed_demo.py` populate realistic excerpts and call
+  `resolve_all_entities`. ~½ day.*
+
+- [ ] **Triage queue endpoint returns 404.** Frontend calls
+  `GET /api/findings/?status=NEW` — backend doesn't expose that path. Sidebar
+  shows a Triage badge but the page is empty with no error to the user.
+  *Fix: confirm the correct cross-case findings endpoint and update either
+  the frontend URL or restore the backend route. ~1–2 hours.*
+
+- [ ] **Clicking row whitespace on Documents triggers Delete.** Discovered
+  by accident — clicking the Actions cell (rather than the View button
+  specifically) deletes the document. Destructive action with no
+  confirmation. *Fix: tighten click handlers, add a confirm modal on
+  delete. ~2 hours.*
+
+### 🟠 P1 — visible bugs / wrong data (~3 days)
+
+- [ ] **Entity relationship graph labels overlap.** All 8 nodes cluster
+  at center; labels read as garbled text. Force-directed layout isn't
+  separating nodes. *Fix: tune D3 force params + label width cap. ~½ day.*
+- [ ] **Dashboard severity counts don't match KPI total.** Says
+  "6 Open Findings" but Critical 1 + High 1 = 2. Two different queries
+  returning different definitions. *Fix: reconcile to one canonical query.
+  ~2 hours.*
+- [ ] **Cases list "SIGNALS" column.** Stale label (should be "FINDINGS")
+  and counts only `status=NEW`, not total findings. Bright Future shows
+  "0–4" depending on AI runs when it actually has 13 findings. *Fix:
+  rename + change query. ~2 hours.*
+- [ ] **Two duplicate "Generate Referral PDF" buttons.** Per-case
+  Referrals tab has both a legacy button and the post-Session-33
+  exporter. *Fix: delete the legacy button. ~30 min.*
+- [ ] **AI Analysis 409 produces no UI feedback.** Click "Run AI
+  Analysis" while a job is in flight → 409 → silent. *Fix: surface 409
+  as a toast. ~1 hour.*
+- [ ] **OCR-garbage entities persisted in "Do Good" case.** Entities
+  named "Limited Liability Company", "my hand", "an authorized", etc.
+  Validators we wired in only log; they don't block. *Fix: (a) one-off
+  cleanup management command, (b) upgrade `_validate_and_log` to skip-
+  create on ERROR-severity issues. ~1 day.*
+- [ ] **Entity detail page missing related-document and related-finding
+  panels.** STATUS.md claims they're there; they aren't. Investigator
+  has no way to navigate from Sarah Mitchell → her deeds. *Fix: add the
+  panels (data exists, frontend isn't rendering). ~½ day.*
+- [ ] **Note input placeholder says "Write a note about this **document**"
+  on entity pages.** Copy-pasted from the document workspace. *Fix:
+  context-aware placeholder. ~30 min.*
+- [ ] **Stale "signals" terminology throughout.** Search input
+  placeholder, Triage breadcrumb, Cases list column header, Cross-case
+  Referrals heading "Government Referrals", Export Case Data
+  description "documents metadata, signals, detections". *Fix:
+  find-and-replace pass on frontend strings + backend serializers. ~1–2
+  hours.*
+- [ ] **AI findings render with `MANUAL` source badge.** API correctly
+  returns `source: "AI"` (verified) but the SourceBadge component is
+  mapping it wrong. *Fix: check `frontend/src/components/cases/PipelineTab.tsx`
+  for missing case in switch/map. ~30 min.*
+
+### 🟡 P2 — usability polish (~1 week)
+
+- [ ] **Sidebar `◆` (logo) and `▓` (Dashboard icon) render as text
+  characters.** Other icons (📁 👤 ⚡ 📤 🔍 ⚙️) render fine. *Fix:
+  inline SVG or supported emoji. ~30 min.*
+- [ ] **Sidebar Triage count vs Triage page filter mismatch.** Sidebar
+  badge counts something broader than `status=NEW` while the page
+  defaults to that filter. Numbers disagree. *Fix: settle on one
+  definition. ~1 hour.*
+- [ ] **AI evidence_snapshot panel may not render.** AI cards don't show
+  rationale + suggested_action that the validator captures. Worth
+  checking the API output and frontend renderer. *Fix: read
+  `evidence_snapshot` field on AI findings; render expanded view. ~½ day
+  if data is there.*
+- [ ] **Search misses findings + documents.** Searching "Mitchell"
+  returns 3 entities but 0 findings + 0 documents, even though findings
+  text contains "Mitchell" and deeds reference Mitchell Development.
+  *Fix: extend SearchVector. ~½ day.*
+- [ ] **Search "AI Overview" typo: "3 Entitys" → "3 Entities".** Pluralization
+  bug. *Fix: 5 minutes.*
+- [ ] **Search results: Mitchell Development LLC shows 👤 person icon
+  instead of 🏢 organization icon.** *Fix: wire entity_type → icon
+  mapping. ~30 min.*
+- [ ] **Cross-case Referrals view is just a placeholder** pointing
+  users to the per-case tab. Heading still says "Government Referrals"
+  (the model was removed in Session 33). *Fix: build a queue of
+  confirmed-and-not-yet-exported cases, OR remove the sidebar entry. ~1
+  day or 5 min.*
+- [ ] **Financials tab shows bare em-dashes for missing data** with
+  no explanation. Looks broken when in fact the seed data is incomplete.
+  *Fix: tooltip on the em-dash, OR fill the seed data. ~2 hours.*
+
+### Suggested fix order (5–7 hr/day cadence)
+
+| Day | Items |
+|---|---|
+| 1 | Row-click delete bug (P0) — destructive, easiest win |
+| 2 | Demo seed text + entities (P0) — recruiter-facing |
+| 3 | Triage 404 + dashboard counts + Cases list signals column (P0/P1, related root cause) |
+| 4 | Entity graph layout + entity detail panels + AI badge mapping (P1) |
+| 5 | Duplicate PDF button + 409 toast + OCR-garbage cleanup + validator block-on-ERROR (P1) |
+| 6–7 | Stale terminology sweep + remaining P2 polish |
+
+Status: untouched. Pick up from Day 1 next session.
 
 ---
 
