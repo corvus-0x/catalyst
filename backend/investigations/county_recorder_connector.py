@@ -38,7 +38,8 @@ Investigative context (why this matters):
     The founding investigation centered on deeds recorded in Seneca County, Ohio.
     Key signals included:
     - Zero-consideration transfers between related parties (SR-005)
-    - A deed naming a grantee LLC that did not exist until 2 years later (SR-002)
+    - A deed naming a grantee LLC where formation date contradicts the deed
+      date (caught at the entity-resolution layer, not by a dedicated rule)
     - Repeated use of the same attorney with "without benefit of title search"
       disclaimers
 

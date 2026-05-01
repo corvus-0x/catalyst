@@ -270,6 +270,8 @@ def resolve_person(
     if role:
         create_kwargs["role_tags"] = [_role_to_tag(role)]
 
+    _validate_and_log("person", create_kwargs)
+
     person = Person.objects.create(**create_kwargs)
     _maybe_link_person_document(person, document, context_note)
     logger.debug("resolve_person: created new Person %r id=%s", raw_name, person.id)
@@ -279,6 +281,46 @@ def resolve_person(
         created=True,
         fuzzy_candidates=fuzzy_candidates,
     )
+
+
+def _validate_and_log(entity_kind: str, data: dict) -> None:
+    """Run the appropriate data_quality validator and log any issues.
+
+    Validation issues are logged at WARNING for ERROR-severity findings
+    and INFO for WARNING-severity. We do not block creation — better to
+    surface a flagged record for investigator review than to silently
+    drop it. (QA audit P1 — validators were never called from the
+    resolution path before this.)
+    """
+    try:
+        from . import data_quality
+
+        if entity_kind == "person":
+            result = data_quality.validate_person(data)
+        elif entity_kind == "organization":
+            ein = data.get("ein", "").strip() if data.get("ein") else ""
+            if not ein:
+                return
+            result = data_quality.validate_ein(ein)
+            if result.corrected_data.get("ein") and result.is_clean:
+                # Use the validator's normalized form (XX-XXXXXXX).
+                data["ein"] = result.corrected_data["ein"]
+        elif entity_kind == "property":
+            result = data_quality.validate_property(data)
+        else:
+            return
+    except Exception:  # noqa: BLE001 — validation is best-effort
+        logger.exception("data_quality validation failed for %s", entity_kind)
+        return
+
+    for issue in result.issues:
+        log_method = logger.warning if issue.severity == "ERROR" else logger.info
+        log_method(
+            "entity_validation_%s: [%s] %s",
+            entity_kind,
+            issue.severity,
+            issue.message,
+        )
 
 
 def _maybe_link_person_document(
@@ -452,6 +494,8 @@ def resolve_org(
         create_kwargs["registration_state"] = registration_state
     if notes:
         create_kwargs["notes"] = notes
+
+    _validate_and_log("organization", create_kwargs)
 
     org = Organization.objects.create(**create_kwargs)
     _maybe_link_org_document(org, document, context_note)

@@ -197,7 +197,7 @@ class FinancialData:
     net_assets_boy: Optional[int] = None
     net_assets_eoy: Optional[int] = None
 
-    # Cash position (for SR-019 CASH_HEAVY)
+    # Cash position (reserved for future cash-heavy detection rules)
     cash_non_interest_bearing_eoy: Optional[int] = None
     savings_and_temp_investments_eoy: Optional[int] = None
 

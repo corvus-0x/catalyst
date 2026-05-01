@@ -421,6 +421,7 @@ def _call_ai(
     max_tokens: int = MAX_TOKENS,
 ) -> dict:
     """Make a Claude API call and return parsed JSON response."""
+    raw = ""
     try:
         client = _get_client()
         response = client.messages.create(
@@ -430,7 +431,7 @@ def _call_ai(
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
-        raw = response.content[0].text
+        raw = response.content[0].text or ""
 
         # Try to parse JSON (may be wrapped in code fences)
         cleaned = raw.strip()
@@ -449,8 +450,11 @@ def _call_ai(
         return result
 
     except json.JSONDecodeError:
+        # Log the raw response for debugging, but don't include it in the
+        # API response — the frontend would surface arbitrary model output
+        # to the user, which can include PII or content-policy refusals.
         logger.warning("AI returned non-JSON response: %s", raw[:200])
-        return {"error": "AI returned non-JSON response", "raw": raw[:500]}
+        return {"error": "AI returned non-JSON response"}
     except Exception as e:
         logger.exception("AI call failed: %s", e)
         return {"error": str(e)}

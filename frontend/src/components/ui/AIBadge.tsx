@@ -29,8 +29,8 @@ interface AIBadgeProps {
  * Usage:
  *   <AIBadge
  *     summary="Pattern matches rapid-flip scheme seen in 3 prior cases."
- *     detail="Cross-reference with SR-018 (Related Party TX). The property at
- *             123 Main St was transferred twice within 90 days..."
+ *     detail="Cross-reference with SR-015 (Insider Property Swap). The property
+ *             at 123 Main St was transferred twice within 90 days..."
  *     state="loaded"
  *   />
  */

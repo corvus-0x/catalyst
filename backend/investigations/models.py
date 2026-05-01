@@ -223,6 +223,12 @@ class Document(UUIDPrimaryKeyModel):
     class Meta:
         db_table = "documents"
         indexes = [models.Index(fields=["case"], name="idx_documents_case_id")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "sha256_hash"],
+                name="uq_documents_case_sha256",
+            ),
+        ]
 
 
 class Person(UUIDPrimaryKeyModel):
@@ -273,7 +279,6 @@ class Organization(UUIDPrimaryKeyModel):
         null=True,
         help_text=(
             "Date the entity was legally formed per Secretary of State records."
-            " Used for SR-002 signal detection."
         ),
     )
     notes = models.TextField(blank=True, null=True)
@@ -1359,6 +1364,20 @@ class SearchJob(UUIDPrimaryKeyModel):
             models.Index(fields=["case", "-created_at"]),
         ]
         ordering = ["-created_at"]
+        constraints = [
+            # Race-proof the 409-on-double-click check for the AI pattern
+            # endpoint. Other research jobs (IRS / AOS / parcel) are
+            # cheap to re-run, so we only enforce the constraint on
+            # AI_PATTERN_ANALYSIS where a duplicate run is wasteful.
+            models.UniqueConstraint(
+                fields=["case", "job_type"],
+                condition=(
+                    models.Q(status__in=["QUEUED", "RUNNING"])
+                    & models.Q(job_type="AI_PATTERN_ANALYSIS")
+                ),
+                name="uq_one_inflight_ai_pattern_per_case",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.job_type} {self.status} ({self.id})"

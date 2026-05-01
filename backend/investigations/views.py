@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, time
 
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Case as DbCase
 from django.db.models import Count, IntegerField, Max, Q, Value, When
 from django.db.models.deletion import ProtectedError, RestrictedError
@@ -609,11 +609,35 @@ def _process_uploaded_file(
     # --- Validate before touching the file (SEC-008, SEC-009) ---
     _validate_uploaded_file(uploaded_file)
 
+    # --- Detect the actual content type once, by magic bytes (SEC-009) ---
+    # The filename extension is user-controlled and untrustworthy. Downstream
+    # gating (PDF extraction, metadata capture) keys off this MIME so a PDF
+    # mis-named ".txt" still goes through the right path. (QA audit P0 #6.)
+    actual_mime = _sniff_mime(uploaded_file)
+    is_pdf = actual_mime == "application/pdf"
+
     # --- SHA-256 on original bytes (SECURITY.md Rule 1) ---
     sha = _hashlib.sha256()
     for chunk in uploaded_file.chunks():
         sha.update(chunk)
     sha256 = sha.hexdigest()
+
+    # --- SHA-256 dedup (QA audit P0 #4) ---
+    # If the same bytes have already been uploaded to this case, return the
+    # existing Document instead of re-saving the file and re-running the
+    # entity-extraction pipeline (which would create duplicate Persons /
+    # Organizations / Findings).
+    existing = Document.objects.filter(case=case, sha256_hash=sha256).first()
+    if existing is not None:
+        logger.info(
+            "upload_dedup_hit",
+            extra={
+                "case_id": str(case.pk),
+                "doc_id": str(existing.pk),
+                "sha256": sha256,
+            },
+        )
+        return existing
 
     # --- Sanitize filename to prevent path traversal (SEC-005) ---
     safe_name = _os.path.basename(uploaded_file.name)
@@ -626,7 +650,7 @@ def _process_uploaded_file(
     extracted_text = ""
     ocr_status = OcrStatus.NOT_NEEDED
     processing_route = "non_pdf"
-    if uploaded_file.name.lower().endswith(".pdf"):
+    if is_pdf:
         if run_pipeline:
             from .extraction import extract_from_pdf
 
@@ -641,7 +665,7 @@ def _process_uploaded_file(
 
     # --- PDF metadata extraction for chain-of-custody ---
     pdf_metadata = {}
-    if uploaded_file.name.lower().endswith(".pdf"):
+    if is_pdf:
         try:
             from .extraction import extract_pdf_metadata
 
@@ -672,6 +696,30 @@ def _process_uploaded_file(
 
     is_generated = auto_classified and doc_type == DocumentType.REFERRAL_MEMO
 
+    # --- Form 990 structured parser (QA audit P0 #5) ---
+    # Extract Part IV (related-party checklist), Part VI (governance), and
+    # Part VII (officer compensation) from the OCR'd text. These are the
+    # inputs that signal rules SR-006/012/013/025/026 depend on; without
+    # this call they were silently dropped on every PDF 990.
+    parsed_990 = None
+    if doc_type == DocumentType.IRS_990 and extracted_text:
+        try:
+            from . import form990_parser
+
+            parsed_990 = form990_parser.parse_form_990(extracted_text)
+            logger.info(
+                "form990_parsed",
+                extra={
+                    "doc_filename": safe_name,
+                    "parse_quality": parsed_990.get("parse_quality", 0),
+                    "fields_extracted": parsed_990.get("extracted_fields_count", 0),
+                },
+            )
+        except Exception:
+            logger.exception(
+                "form990_parser_failed", extra={"doc_filename": safe_name}
+            )
+
     # --- Build ingestion metadata record (chain-of-custody) ---
     ingestion_meta = {
         "original_filename": uploaded_file.name,
@@ -681,6 +729,8 @@ def _process_uploaded_file(
     }
     if pdf_metadata:
         ingestion_meta["pdf"] = pdf_metadata
+    if parsed_990 is not None:
+        ingestion_meta["parsed_990"] = parsed_990
 
     # --- Atomic DB writes: Document + AuditLog (SEC-012) ---
     # If either fails, both are rolled back. File is already stored on disk;
@@ -916,10 +966,13 @@ def _process_uploaded_file(
         try:
             from .signal_rules import evaluate_case, evaluate_document, persist_signals
 
-            # evaluate_document: doc-scoped rules (SR-001,002,005,006,011,012,013)
-            # evaluate_case: case-scoped rules (SR-003,004,007,008,009,010) — called
-            # after every upload so cross-document patterns are re-evaluated as
-            # evidence accumulates, but dedup prevents re-persisting existing detections.
+            # evaluate_document: doc-scoped rules (SR-005, SR-006, SR-012, SR-013)
+            # evaluate_case: case-scoped rules (SR-003, SR-004, SR-010, SR-015,
+            #   SR-017, SR-021, SR-024, SR-025, SR-026, SR-029, plus the XML
+            #   evaluator covering SR-006/012/013/028/029 against parsed 990
+            #   data). Called after every upload so cross-document patterns
+            #   are re-evaluated as evidence accumulates; persist_signals
+            #   dedups so existing findings aren't recreated.
             all_triggers = evaluate_document(case, document) + evaluate_case(
                 case, trigger_doc=document
             )
@@ -3813,12 +3866,32 @@ def api_case_fetch_990s(request, pk):
                 },
             )
 
+        # Run the rules engine against the newly-created FinancialSnapshots.
+        # Without this, the structured-XML rule path (SR-006/012/013/025/029
+        # via evaluate_xml_financial_snapshots) and the case-scoped rules
+        # (SR-021 revenue spike, etc.) never fire on IRS-fetched data — the
+        # most reliable data source in the system. (QA audit P0 #1.)
+        findings_created = 0
+        if fetched_count > 0:
+            try:
+                from .signal_rules import evaluate_case, persist_signals
+
+                triggers = evaluate_case(case, trigger_doc=None)
+                new_findings = persist_signals(case, triggers)
+                findings_created = len(new_findings)
+            except Exception:
+                logger.exception(
+                    "fetch_990s_signal_evaluation_failed",
+                    extra={"case_id": str(case.pk), "ein": ein},
+                )
+
         return JsonResponse(
             {
                 "fetched": fetched_count,
                 "skipped": skipped_count,
                 "errors": errors,
                 "filings": filing_results,
+                "findings_created": findings_created,
             },
             status=200,
         )
@@ -3902,7 +3975,7 @@ def api_research_ohio_sos(request, pk):
 
     This endpoint queries the Ohio SOS bulk entity file for organization
     registrations, amendments, and incorporators. Useful for verifying entity
-    existence (detects PHANTOM_OFFICER — SR-002) and finding associated entities.
+    existence and finding associated officers.
 
     POST body (JSON):
         {
@@ -4535,8 +4608,8 @@ def api_case_coverage(request, pk):
       {
         "gaps": [
           {
-            "rule_id": "SR-001",
-            "rule_title": "Deceased signer",
+            "rule_id": "SR-015",
+            "rule_title": "Insider Property Swap",
             "gap_type": "RULE_BLIND",
             "message": "...",
             "recommendation": "..."
@@ -4544,9 +4617,9 @@ def api_case_coverage(request, pk):
           ...
         ],
         "coverage_score": 0.72,
-        "total_rules": 29,
-        "active_rules": 21,
-        "blind_rules": 8
+        "total_rules": 15,
+        "active_rules": 12,
+        "blind_rules": 3
       }
     """
     case = get_object_or_404(Case, pk=pk)
@@ -5052,11 +5125,25 @@ def api_ai_analyze_patterns(request, pk):
                     },
                     status=409,
                 )
-            job = SearchJob.objects.create(
-                case=case,
-                job_type=JobType.AI_PATTERN_ANALYSIS,
-                query_params={"case_id": str(case.id)},
-            )
+            try:
+                job = SearchJob.objects.create(
+                    case=case,
+                    job_type=JobType.AI_PATTERN_ANALYSIS,
+                    query_params={"case_id": str(case.id)},
+                )
+            except IntegrityError:
+                # The partial unique index uq_one_inflight_ai_pattern_per_case
+                # is the safety net behind the application-level check above.
+                # If a race slips through, surface the same 409 instead of a 500.
+                return JsonResponse(
+                    {
+                        "error": (
+                            "An AI analysis job is already running for this "
+                            "case."
+                        )
+                    },
+                    status=409,
+                )
             async_task(
                 "investigations.jobs.run_ai_pattern_analysis", str(job.id)
             )

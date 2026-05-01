@@ -3,7 +3,7 @@ Signal Detection Engine for Catalyst.
 
 Evaluates cases and documents against the active signal rule set
 (SR-003, SR-004, SR-005, SR-006, SR-010, SR-012, SR-013, SR-015, SR-017,
-SR-021, SR-024, SR-025, SR-026, SR-029).
+SR-021, SR-024, SR-025, SR-026, SR-028, SR-029).
 
 Design principles:
   - Rule evaluator functions are stateless and side-effect-free.
@@ -31,7 +31,7 @@ Entry points:
 import logging
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -180,6 +180,17 @@ RULE_REGISTRY: dict[str, RuleInfo] = {
             "show contractors performing significant work for the organization."
         ),
     ),
+    "SR-028": RuleInfo(
+        rule_id="SR-028",
+        severity="CRITICAL",
+        title="Material Diversion of Assets — Self-Disclosed on 990",
+        description=(
+            "Form 990 Part VI Line 5 answered 'Yes' to whether the organization "
+            "became aware of a material diversion or misuse of its assets during "
+            "the year. This is a self-reported governance failure — the IRS "
+            "requires a written explanation in Schedule O."
+        ),
+    ),
     "SR-029": RuleInfo(
         rule_id="SR-029",
         severity="HIGH",
@@ -208,7 +219,17 @@ class SignalTrigger:
     title: str
     detected_summary: str
     trigger_entity_id: Optional[UUID] = None
+    # Entity-type label matching FindingEntity.entity_type. Required for
+    # persist_signals to write a FindingEntity link row. One of:
+    # "person", "organization", "property", "financial_instrument".
+    trigger_entity_type: Optional[str] = None
     trigger_doc: object = None  # Document model instance or None
+    # Structured evidence captured at detection time. Persisted into
+    # Finding.evidence_snapshot so the referral PDF and the audit chain
+    # can quote the exact inputs that triggered the rule (rather than
+    # re-deriving them later, when the underlying data may have changed).
+    # Must be JSON-serializable.
+    evidence: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +361,7 @@ def evaluate_sr003_valuation_anomaly(case, trigger_doc=None) -> list[SignalTrigg
                     f"${prop.assessed_value:,.2f}."
                 ),
                 trigger_entity_id=prop.pk,
+                trigger_entity_type="property",
                 trigger_doc=trigger_doc,
             )
         )
@@ -383,7 +405,11 @@ def evaluate_sr004_ucc_burst(case, trigger_doc=None) -> list[SignalTrigger]:
 
         dates = sorted(i.filing_date for i in instruments)
         for i, anchor in enumerate(dates):
-            window_dates = [d for d in dates if abs((d - anchor).days) <= 1]
+            # filing_date is a DateField (day granularity), so "24-hour
+            # window" can only be enforced as "same calendar day". The
+            # previous condition `abs(days) <= 1` admitted pairs up to
+            # ~47 hours apart, which is twice the documented window.
+            window_dates = [d for d in dates if d == anchor]
             if len(window_dates) < 3:
                 continue
 
@@ -399,10 +425,10 @@ def evaluate_sr004_ucc_burst(case, trigger_doc=None) -> list[SignalTrigger]:
                     title=RULE_REGISTRY["SR-004"].title,
                     detected_summary=(
                         f"{len(window_dates)} UCC amendments to filing number prefix "
-                        f"'{prefix}' between {min(window_dates)} and {max(window_dates)} "
-                        f"({abs((max(window_dates) - min(window_dates)).days * 24)} hours or less)."
+                        f"'{prefix}' on {anchor} (same calendar day)."
                     ),
                     trigger_entity_id=instruments[0].pk,
+                    trigger_entity_type="financial_instrument",
                     trigger_doc=trigger_doc,
                 )
             )
@@ -511,6 +537,7 @@ def evaluate_sr010_missing_990(case, trigger_doc=None) -> list[SignalTrigger]:
                     f"documents have been added to this case."
                 ),
                 trigger_entity_id=org.pk,
+                trigger_entity_type="organization",
                 trigger_doc=trigger_doc,
             )
         )
@@ -758,7 +785,24 @@ def evaluate_sr015_insider_swap(case, trigger_doc=None) -> list[SignalTrigger]:
                     f"This transaction involves parties in the insider network."
                 ),
                 trigger_entity_id=txn.property.pk,
+                trigger_entity_type="property",
                 trigger_doc=trigger_doc,
+                evidence={
+                    "property_id": str(txn.property.pk),
+                    "property_label": prop_label,
+                    "transaction_id": str(txn.pk),
+                    "transaction_date": (
+                        txn.transaction_date.isoformat() if txn.transaction_date else None
+                    ),
+                    "price": float(txn.price) if txn.price else None,
+                    "buyer_id": str(txn.buyer_id) if txn.buyer_id else None,
+                    "buyer_name": txn.buyer_name or "",
+                    "buyer_is_insider": buyer_is_insider,
+                    "seller_id": str(txn.seller_id) if txn.seller_id else None,
+                    "seller_name": txn.seller_name or "",
+                    "seller_is_insider": seller_is_insider,
+                    "insider_links": parties,
+                },
             )
         )
 
@@ -807,6 +851,7 @@ def evaluate_sr017_blanket_lien_charity(case, trigger_doc=None) -> list[SignalTr
                         f"assets and charitable assets."
                     ),
                     trigger_entity_id=lien.pk,
+                    trigger_entity_type="financial_instrument",
                     trigger_doc=trigger_doc,
                 )
             )
@@ -869,6 +914,7 @@ def evaluate_sr021_revenue_spike(case, trigger_doc=None) -> list[SignalTrigger]:
                         f"a {growth:.0%} increase. Review contribution sources."
                     ),
                     trigger_entity_id=org_id,
+                    trigger_entity_type="organization",
                     trigger_doc=trigger_doc,
                 )
             )
@@ -928,6 +974,7 @@ def evaluate_sr024_charity_conduit(case, trigger_doc=None) -> list[SignalTrigger
                     f"Chain label: '{chain.label}'."
                 ),
                 trigger_entity_id=first_txn.property.pk,
+                trigger_entity_type="property",
                 trigger_doc=trigger_doc,
             )
         )
@@ -1055,6 +1102,25 @@ def evaluate_sr025_990_denies_related_party(case, trigger_doc=None) -> list[Sign
                     f"This is a material misrepresentation on a federal tax filing."
                 ),
                 trigger_doc=doc,
+                evidence={
+                    "denial_doc_id": str(doc.pk),
+                    "denial_doc_filename": doc.display_name or doc.filename,
+                    "contradicting_transaction_count": len(related_txns),
+                    "transaction_examples": [
+                        {
+                            "transaction_id": str(t.pk),
+                            "property_id": str(t.property.pk),
+                            "buyer_name": t.buyer_name or "",
+                            "seller_name": t.seller_name or "",
+                            "transaction_date": (
+                                t.transaction_date.isoformat() if t.transaction_date else None
+                            ),
+                        }
+                        for t in txn_examples
+                    ],
+                    "extended_network_size": len(extended_network),
+                    "charity_officer_count": len(charity_person_ids),
+                },
             )
         )
 
@@ -1177,6 +1243,7 @@ def evaluate_sr029_low_program_ratio(case, trigger_doc=None) -> list[SignalTrigg
                     f"diverted to private benefit."
                 ),
                 trigger_entity_id=snap.organization_id,
+                trigger_entity_type="organization" if snap.organization_id else None,
                 trigger_doc=snap.document,
             )
         )
@@ -1283,6 +1350,15 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
         tax_year = raw.get("tax_year", snap.tax_year)
         org_name = raw.get("taxpayer_name", snap.ein)
 
+        # Stable identifier block reused across rule fires from this snapshot.
+        snapshot_evidence = {
+            "snapshot_id": str(snap.pk),
+            "ein": snap.ein,
+            "tax_year": tax_year,
+            "taxpayer_name": org_name,
+            "source": "IRS_TEOS_XML",
+        }
+
         # --- SR-006: Schedule L missing when related-party flags are Yes ---
         rp_flags = [
             gov.get("loan_outstanding"),
@@ -1318,6 +1394,20 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                         f"Related-party transactions require Schedule L disclosure."
                     ),
                     trigger_doc=trigger_doc,
+                    trigger_entity_id=snap.organization_id,
+                    trigger_entity_type=(
+                        "organization" if snap.organization_id else None
+                    ),
+                    evidence={
+                        **snapshot_evidence,
+                        "related_party_flags": which_flags,
+                        "schedule_l_required": schedule_l_required,
+                        "loan_outstanding": gov.get("loan_outstanding"),
+                        "grant_to_related_person": gov.get("grant_to_related_person"),
+                        "business_rln_with_org_member": gov.get("business_rln_with_org_member"),
+                        "business_rln_with_family": gov.get("business_rln_with_family"),
+                        "business_rln_with_35_ctrl": gov.get("business_rln_with_35_ctrl"),
+                    },
                 )
             )
 
@@ -1346,6 +1436,17 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                         f"Self-dealing transactions are structurally undetectable."
                     ),
                     trigger_doc=trigger_doc,
+                    trigger_entity_id=snap.organization_id,
+                    trigger_entity_type=(
+                        "organization" if snap.organization_id else None
+                    ),
+                    evidence={
+                        **snapshot_evidence,
+                        "conflict_of_interest_policy": coi,
+                        "whistleblower_policy": gov.get("whistleblower_policy"),
+                        "document_retention_policy": gov.get("document_retention_policy"),
+                        "missing_policies": missing_policies,
+                    },
                 )
             )
 
@@ -1369,6 +1470,23 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                             f"compensation or related-party payments."
                         ),
                         trigger_doc=trigger_doc,
+                        trigger_entity_id=snap.organization_id,
+                        trigger_entity_type=(
+                            "organization" if snap.organization_id else None
+                        ),
+                        evidence={
+                            **snapshot_evidence,
+                            "total_revenue": total_rev,
+                            "officer_count": len(officers),
+                            "officers": [
+                                {
+                                    "name": o.get("name", ""),
+                                    "title": o.get("title", ""),
+                                    "total_compensation": o.get("total_compensation", 0),
+                                }
+                                for o in officers
+                            ],
+                        },
                     )
                 )
 
@@ -1392,23 +1510,43 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                             f"${fundraising:,}, Total: ${total_exp:,}."
                         ),
                         trigger_doc=trigger_doc,
+                        trigger_entity_id=snap.organization_id,
+                        trigger_entity_type=(
+                            "organization" if snap.organization_id else None
+                        ),
+                        evidence={
+                            **snapshot_evidence,
+                            "total_expenses": total_exp,
+                            "salaries_and_compensation": salaries,
+                            "professional_fundraising": fundraising,
+                            "program_expense_ratio": round(program_pct, 4),
+                        },
                     )
                 )
 
-        # --- Material diversion flag (governance red flag) ---
+        # --- SR-028: Material diversion self-disclosed on 990 Part VI Line 5 ---
         if gov.get("material_diversion_or_misuse") is True:
             triggers.append(
                 SignalTrigger(
-                    rule_id="SR-025",
+                    rule_id="SR-028",
                     severity="CRITICAL",
-                    title="Material Diversion or Misuse Disclosed",
+                    title=RULE_REGISTRY["SR-028"].title,
                     detected_summary=(
                         f"990 XML ({org_name}, {tax_year}): Organization "
                         f"disclosed material diversion or misuse of assets "
-                        f"in Part VI. This is a self-reported governance "
-                        f"failure requiring immediate investigation."
+                        f"in Part VI Line 5. Schedule O should contain the "
+                        f"written explanation; review immediately."
                     ),
                     trigger_doc=trigger_doc,
+                    trigger_entity_id=snap.organization_id,
+                    trigger_entity_type=(
+                        "organization" if snap.organization_id else None
+                    ),
+                    evidence={
+                        **snapshot_evidence,
+                        "material_diversion_or_misuse": True,
+                        "form_field": "Form 990 Part VI Line 5",
+                    },
                 )
             )
 
@@ -1441,8 +1579,17 @@ def persist_signals(case, triggers: list[SignalTrigger]) -> list:
     Each trigger becomes a Finding with status=NEW, evidence_weight=
     SPECULATIVE, source=AUTO. The investigator triages from there.
 
-    A trigger is skipped if a non-dismissed Finding already exists
-    for the same (case, rule_id, trigger_doc) combination.
+    Dedup key is (case, rule_id, trigger_entity_id) when an entity is
+    set, falling back to (case, rule_id, trigger_doc) for the few rules
+    that fire per-document with no natural entity. This prevents two
+    findings on the same insider just because they were triggered by
+    different documents, and prevents duplicates when re-evaluating with
+    a different trigger_doc. (QA audit P1 fix.)
+
+    Also writes a FindingEntity link row for every trigger that supplies
+    both `trigger_entity_id` and `trigger_entity_type`, so the relational
+    graph used by the referral PDF and entity views picks up rule-derived
+    findings.
 
     Returns: list of newly created Finding instances.
     """
@@ -1450,6 +1597,7 @@ def persist_signals(case, triggers: list[SignalTrigger]) -> list:
         EvidenceWeight,
         Finding,
         FindingDocument,
+        FindingEntity,
         FindingSource,
         FindingStatus,
     )
@@ -1459,12 +1607,14 @@ def persist_signals(case, triggers: list[SignalTrigger]) -> list:
 
     for trigger in triggers:
         trigger_doc = trigger.trigger_doc
-        trigger_doc_id = (
-            trigger_doc.pk if trigger_doc else None
-        )
+        trigger_doc_id = trigger_doc.pk if trigger_doc else None
+        entity_id = trigger.trigger_entity_id
+        # Prefer entity-based dedup; fall back to document for rules
+        # that only have a triggering document (rare in the active set).
+        dedup_anchor = entity_id if entity_id is not None else trigger_doc_id
 
         # Dedup within this batch
-        batch_key = (trigger.rule_id, trigger_doc_id)
+        batch_key = (trigger.rule_id, dedup_anchor)
         if batch_key in seen_this_batch:
             continue
         seen_this_batch.add(batch_key)
@@ -1473,8 +1623,11 @@ def persist_signals(case, triggers: list[SignalTrigger]) -> list:
         existing_qs = Finding.objects.filter(
             case=case,
             rule_id=trigger.rule_id,
-            trigger_doc=trigger_doc,
         ).exclude(status=FindingStatus.DISMISSED)
+        if entity_id is not None:
+            existing_qs = existing_qs.filter(trigger_entity_id=entity_id)
+        else:
+            existing_qs = existing_qs.filter(trigger_doc=trigger_doc)
 
         if existing_qs.exists():
             continue
@@ -1489,8 +1642,20 @@ def persist_signals(case, triggers: list[SignalTrigger]) -> list:
             evidence_weight=EvidenceWeight.SPECULATIVE,
             source=FindingSource.AUTO,
             trigger_doc=trigger_doc,
-            trigger_entity_id=trigger.trigger_entity_id,
+            trigger_entity_id=entity_id,
+            evidence_snapshot=trigger.evidence or {},
         )
+        # Create FindingEntity link so the relational graph and the
+        # referral PDF exporter can resolve the finding back to its
+        # subject entity. We only write the link when the evaluator
+        # supplied a type — entity_type is non-blank in the model.
+        if entity_id is not None and trigger.trigger_entity_type:
+            FindingEntity.objects.create(
+                finding=finding,
+                entity_id=entity_id,
+                entity_type=trigger.trigger_entity_type,
+                context_note="Rule trigger entity",
+            )
         # Create FindingDocument M2M link so the UI can show
         # which document triggered this finding.
         if trigger_doc:

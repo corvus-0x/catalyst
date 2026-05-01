@@ -45,6 +45,7 @@ from ..signal_rules import (
     evaluate_sr005_zero_consideration,
     evaluate_sr006_990_schedule_l,
     evaluate_sr010_missing_990,
+    evaluate_xml_financial_snapshots,
     persist_signals,
 )
 
@@ -250,15 +251,31 @@ class SR004UccBurstTests(TestCase):
     def _ucc(self, filing_number, offset_days):
         return _make_ucc(self.case, filing_number, self.base + timedelta(days=offset_days))
 
-    def test_fires_when_three_same_prefix_within_24h(self):
+    def test_fires_when_three_same_prefix_same_day(self):
+        # All three filings on the same calendar day → real 24-hour burst.
+        self._ucc(f"{self.prefix}A", 0)
+        self._ucc(f"{self.prefix}B", 0)
+        self._ucc(f"{self.prefix}C", 0)
+
+        result = evaluate_sr004_ucc_burst(self.case)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].rule_id, "SR-004")
+
+    def test_no_fire_when_third_filing_next_day(self):
+        # filing_date is a DateField. A filing at 23:59 today and another at
+        # 00:01 tomorrow are two calendar days apart in the data; we cannot
+        # distinguish a 2-minute gap from a 23-hour gap, so the conservative
+        # rule is "same calendar day". This test pins the corrected semantic
+        # — previously the rule fired on this with `abs(days) <= 1`, which
+        # let in pairs as far as ~47 hours apart. (QA audit P1.)
         self._ucc(f"{self.prefix}A", 0)
         self._ucc(f"{self.prefix}B", 0)
         self._ucc(f"{self.prefix}C", 1)
 
         result = evaluate_sr004_ucc_burst(self.case)
 
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].rule_id, "SR-004")
+        self.assertEqual(result, [])
 
     def test_no_fire_when_only_two_within_24h(self):
         self._ucc(f"{self.prefix}A", 0)
@@ -547,6 +564,344 @@ class PersistSignalsTests(TestCase):
     def test_empty_trigger_list_returns_empty(self):
         created = persist_signals(self.case, [])
         self.assertEqual(created, [])
+
+    # Regression: dedup must key on (case, rule_id, trigger_entity_id), not
+    # trigger_doc. Two transactions on the SAME insider but different
+    # documents previously produced two findings; one transaction
+    # re-evaluated with a different trigger_doc previously produced
+    # duplicates. (QA audit P1 — persist_signals dedup key.)
+    def test_dedup_keys_on_entity_not_document(self):
+        org = _make_org(self.case, "Test Org")
+        doc_a = _make_document(self.case, filename="a.pdf")
+        doc_b = _make_document(self.case, filename="b.pdf")
+
+        # Two triggers, same case + rule + entity, different documents.
+        triggers = [
+            SignalTrigger(
+                rule_id="SR-010",
+                severity="MEDIUM",
+                title="x",
+                detected_summary="y",
+                trigger_entity_id=org.pk,
+                trigger_entity_type="organization",
+                trigger_doc=doc_a,
+            ),
+            SignalTrigger(
+                rule_id="SR-010",
+                severity="MEDIUM",
+                title="x",
+                detected_summary="y",
+                trigger_entity_id=org.pk,
+                trigger_entity_type="organization",
+                trigger_doc=doc_b,
+            ),
+        ]
+        created = persist_signals(self.case, triggers)
+
+        # Same entity, same rule → exactly one Finding.
+        self.assertEqual(len(created), 1)
+        self.assertEqual(Finding.objects.filter(case=self.case).count(), 1)
+
+    def test_different_entities_same_rule_create_separate_findings(self):
+        org_a = _make_org(self.case, "Org A")
+        org_b = _make_org(self.case, "Org B")
+        triggers = [
+            SignalTrigger(
+                rule_id="SR-010",
+                severity="MEDIUM",
+                title="x",
+                detected_summary="y",
+                trigger_entity_id=org_a.pk,
+                trigger_entity_type="organization",
+            ),
+            SignalTrigger(
+                rule_id="SR-010",
+                severity="MEDIUM",
+                title="x",
+                detected_summary="y",
+                trigger_entity_id=org_b.pk,
+                trigger_entity_type="organization",
+            ),
+        ]
+        created = persist_signals(self.case, triggers)
+        self.assertEqual(len(created), 2)
+
+    # Regression: FindingEntity rows must be created so the relational
+    # graph (referral PDF, entity views) picks up rule-derived findings.
+    # Previously persist_signals only set trigger_entity_id on the Finding
+    # row but never wrote a FindingEntity link. (QA audit P1.)
+    def test_creates_finding_entity_link(self):
+        from ..models import FindingEntity
+
+        org = _make_org(self.case, "Test Org")
+        trigger = SignalTrigger(
+            rule_id="SR-010",
+            severity="MEDIUM",
+            title="x",
+            detected_summary="y",
+            trigger_entity_id=org.pk,
+            trigger_entity_type="organization",
+        )
+        created = persist_signals(self.case, [trigger])
+        self.assertEqual(len(created), 1)
+
+        links = FindingEntity.objects.filter(finding=created[0])
+        self.assertEqual(links.count(), 1)
+        link = links.first()
+        self.assertEqual(link.entity_id, org.pk)
+        self.assertEqual(link.entity_type, "organization")
+
+    # Regression: evidence_snapshot was always {} because persist_signals
+    # never read trigger.evidence. The referral PDF and audit chain need
+    # the structured inputs that triggered each rule to cite back to.
+    # (QA audit P1.)
+    def test_evidence_snapshot_is_persisted(self):
+        org = _make_org(self.case, "Test Org")
+        evidence = {
+            "officers": [{"name": "Jane Doe", "comp": 0}],
+            "total_revenue": 750000,
+            "tax_year": 2023,
+        }
+        trigger = SignalTrigger(
+            rule_id="SR-013",
+            severity="HIGH",
+            title=RULE_REGISTRY["SR-013"].title,
+            detected_summary="zero officer pay at high revenue",
+            trigger_entity_id=org.pk,
+            trigger_entity_type="organization",
+            evidence=evidence,
+        )
+        created = persist_signals(self.case, [trigger])
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].evidence_snapshot, evidence)
+
+    def test_evidence_snapshot_defaults_to_empty_dict(self):
+        org = _make_org(self.case, "Test Org")
+        trigger = SignalTrigger(
+            rule_id="SR-010",
+            severity="MEDIUM",
+            title="x",
+            detected_summary="y",
+            trigger_entity_id=org.pk,
+            trigger_entity_type="organization",
+        )
+        created = persist_signals(self.case, [trigger])
+        self.assertEqual(created[0].evidence_snapshot, {})
+
+    def test_no_finding_entity_link_when_type_missing(self):
+        from ..models import FindingEntity
+
+        # If the evaluator doesn't supply a trigger_entity_type we can't
+        # safely create a FindingEntity row (entity_type is non-blank).
+        # The Finding still persists, but no entity link is added.
+        trigger = SignalTrigger(
+            rule_id="SR-010",
+            severity="MEDIUM",
+            title="x",
+            detected_summary="y",
+            trigger_entity_id=uuid.uuid4(),
+            trigger_entity_type=None,
+        )
+        created = persist_signals(self.case, [trigger])
+        self.assertEqual(len(created), 1)
+        self.assertEqual(FindingEntity.objects.filter(finding=created[0]).count(), 0)
+
+
+# ---------------------------------------------------------------------------
+# evaluate_xml_financial_snapshots — structured 990 XML rule evaluator
+# ---------------------------------------------------------------------------
+
+
+class XmlFinancialSnapshotsTests(TestCase):
+    """The XML evaluator runs SR-006/012/013/028/029 on parsed 990 data."""
+
+    def setUp(self):
+        from ..models import FinancialSnapshot
+
+        self.FinancialSnapshot = FinancialSnapshot
+        self.case = _make_case()
+        self.doc = _make_document(self.case)
+
+    def _snapshot(self, raw):
+        return self.FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            ein="12-3456789",
+            tax_year=raw.get("tax_year", 2023),
+            source="IRS_TEOS_XML",
+            raw_extraction=raw,
+        )
+
+    # Regression: previously the evaluator fired with rule_id="SR-025" on
+    # material diversion, but SR-025 is "Denies Related-Party Transactions".
+    # That mismatched the rule registry and broke any UI that joins on
+    # rule_id. Now it fires SR-028. (QA audit P1.)
+    def test_material_diversion_fires_sr028_not_sr025(self):
+        self._snapshot(
+            {
+                "tax_year": 2023,
+                "taxpayer_name": "Bright Future Foundation",
+                "governance": {"material_diversion_or_misuse": True},
+                "financials": {},
+                "officers": [],
+            }
+        )
+
+        triggers = evaluate_xml_financial_snapshots(self.case)
+
+        rule_ids = [t.rule_id for t in triggers]
+        self.assertIn("SR-028", rule_ids)
+        self.assertNotIn("SR-025", rule_ids)
+        sr028 = next(t for t in triggers if t.rule_id == "SR-028")
+        # Title must come from the registry, not be free-form.
+        self.assertEqual(sr028.title, RULE_REGISTRY["SR-028"].title)
+        self.assertEqual(sr028.severity, "CRITICAL")
+        # Evidence must capture the structured 990 fields the referral PDF
+        # cites back to.
+        self.assertEqual(sr028.evidence["material_diversion_or_misuse"], True)
+        self.assertEqual(sr028.evidence["tax_year"], 2023)
+        self.assertEqual(sr028.evidence["taxpayer_name"], "Bright Future Foundation")
+        self.assertEqual(sr028.evidence["form_field"], "Form 990 Part VI Line 5")
+
+    def test_no_material_diversion_no_sr028(self):
+        self._snapshot(
+            {
+                "tax_year": 2023,
+                "taxpayer_name": "Honest Charity",
+                "governance": {"material_diversion_or_misuse": False},
+                "financials": {},
+                "officers": [],
+            }
+        )
+
+        triggers = evaluate_xml_financial_snapshots(self.case)
+
+        self.assertNotIn("SR-028", [t.rule_id for t in triggers])
+
+
+# ---------------------------------------------------------------------------
+# Regression: POST /api/cases/<pk>/fetch-990s/ must run the rules engine
+# after creating FinancialSnapshots, otherwise the entire structured-XML
+# rule path (SR-006/012/013/025/029) is silently dark on the most reliable
+# data source. (QA audit P0 #1.)
+# ---------------------------------------------------------------------------
+
+
+class FetchNinetyNinesRunsRulesEngineTests(TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+
+        from ..irs_connector import (
+            FinancialData,
+            GovernanceData,
+            IndexRecord,
+            OfficerCompensation,
+            Parsed990,
+            SearchResult,
+        )
+
+        self.patch = patch
+        self.IndexRecord = IndexRecord
+        self.SearchResult = SearchResult
+        self.Parsed990 = Parsed990
+        self.FinancialData = FinancialData
+        self.GovernanceData = GovernanceData
+        self.OfficerCompensation = OfficerCompensation
+
+        self.case = _make_case()
+        # FinancialSnapshot.document is non-nullable, so the case needs at
+        # least one Document for the endpoint to write snapshots.
+        self.placeholder_doc = _make_document(self.case)
+
+    def _filing(self):
+        return self.IndexRecord(
+            return_id="r1",
+            filing_type="EFILE",
+            ein="123456789",
+            tax_period="202312",
+            sub_date="2024",
+            taxpayer_name="Bright Future Foundation",
+            return_type="990",
+            dln="d1",
+            object_id="obj1",
+            xml_batch_id="2024_TEOS_XML_01A",
+            index_year=2024,
+        )
+
+    def _parsed_sr013_trigger(self):
+        # Revenue >= 500k AND every officer reports $0 → triggers SR-013.
+        return self.Parsed990(
+            ein="123456789",
+            taxpayer_name="Bright Future Foundation",
+            tax_year=2023,
+            return_type="990",
+            financials=self.FinancialData(
+                total_revenue=750_000,
+                total_expenses=600_000,
+            ),
+            governance=self.GovernanceData(),
+            officers=[
+                self.OfficerCompensation(
+                    name="Jane Doe",
+                    title="Executive Director",
+                    reportable_comp_from_org=0,
+                    reportable_comp_from_related=0,
+                    other_compensation=0,
+                ),
+                self.OfficerCompensation(
+                    name="John Smith",
+                    title="Treasurer",
+                    reportable_comp_from_org=0,
+                    reportable_comp_from_related=0,
+                    other_compensation=0,
+                ),
+            ],
+            parse_quality=1.0,
+        )
+
+    def test_fetch_990s_creates_finding_from_xml_rules(self):
+        with self.patch(
+            "investigations.irs_connector.search_990_by_ein"
+        ) as mock_search, self.patch(
+            "investigations.irs_connector.fetch_990_xml"
+        ) as mock_fetch, self.patch(
+            "investigations.irs_connector.parse_990_xml"
+        ) as mock_parse:
+            filing = self._filing()
+            mock_search.return_value = self.SearchResult(
+                ein="123456789",
+                ein_formatted="12-3456789",
+                filings=[filing],
+                years_searched=[2024],
+                total_found=1,
+            )
+            mock_fetch.return_value = "<Return />"
+            mock_parse.return_value = self._parsed_sr013_trigger()
+
+            response = self.client.post(
+                reverse("api_case_fetch_990s", args=[self.case.pk]),
+                data=json.dumps({"ein": "12-3456789"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["fetched"], 1)
+
+        # Sanity: the snapshot was persisted.
+        from ..models import FinancialSnapshot
+
+        self.assertEqual(FinancialSnapshot.objects.filter(case=self.case).count(), 1)
+
+        # The actual fix assertion: the rules engine ran on the new snapshot
+        # and produced a Finding for SR-013 (zero officer pay at high revenue).
+        sr013 = Finding.objects.filter(case=self.case, rule_id="SR-013")
+        self.assertEqual(
+            sr013.count(),
+            1,
+            "fetch-990s did not invoke the rules engine — SR-013 never fired "
+            "even though parsed XML matches its trigger conditions.",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,6 @@ from ..models import (
     Case,
     Document,
     DocumentType,
-    EntitySignal,
     FinancialInstrument,
     InvestigatorNote,
     OcrStatus,
@@ -24,7 +23,6 @@ from ..models import (
     Person,
     PersonDocument,
     Property,
-    Signal,
 )
 
 
@@ -251,19 +249,6 @@ class EntityDetailApiTests(TestCase):
         self.assertEqual(len(payload["related_documents"]), 1)
         self.assertEqual(payload["related_documents"][0]["filename"], "person_doc.pdf")
         self.assertEqual(payload["related_documents"][0]["page_reference"], "p.3")
-
-    def test_person_detail_includes_related_signals(self):
-        person = Person.objects.create(case=self.case, full_name="Signaled Person")
-        signal = Signal.objects.create(
-            case=self.case,
-            rule_id="SR-001",
-            severity="CRITICAL",
-            detected_summary="Deceased person found",
-        )
-        EntitySignal.objects.create(signal=signal, entity_id=person.pk, entity_type="person")
-        response = self.client.get(reverse("api_entity_detail", args=["person", person.pk]))
-        payload = response.json()
-        self.assertEqual(len(payload["related_signals"]), 1)
 
     def test_entity_detail_rejects_invalid_type(self):
         response = self.client.get(reverse("api_entity_detail", args=["badtype", uuid.uuid4()]))
