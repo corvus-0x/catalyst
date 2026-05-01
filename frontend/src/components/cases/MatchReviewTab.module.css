@@ -1,0 +1,224 @@
+/*
+ * MatchReviewTab — investigator-facing review surface for fuzzy entity
+ * match candidates. Shown when entity_resolution flagged an incoming
+ * name as similar-but-not-identical to an existing entity.
+ */
+
+.matchReview {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    height: 100%;
+}
+
+/* ── Toolbar (status filter + counts) ────────────────────── */
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+}
+
+.toolbarLabel {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    white-space: nowrap;
+}
+
+.statusButton {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    color: var(--text);
+    transition: background-color 120ms;
+}
+
+.statusButton:hover {
+    background: var(--surface-3);
+}
+
+.statusButtonActive {
+    composes: statusButton;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+}
+
+.toolbarSpacer {
+    flex: 1;
+}
+
+.toolbarCount {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+}
+
+/* ── Empty / loading / error states ─────────────────────── */
+
+.stateBlock {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-soft);
+}
+
+.stateTitle {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 0.5rem 0;
+}
+
+.stateDetail {
+    font-size: var(--text-sm);
+    max-width: 480px;
+    line-height: 1.4;
+}
+
+/* ── Candidate list ─────────────────────────────────────── */
+
+.list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.card {
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 1rem;
+    align-items: center;
+}
+
+.cardResolved {
+    composes: card;
+    opacity: 0.6;
+}
+
+.namesCol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.entityType {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.namePair {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.incomingName {
+    font-weight: 600;
+    color: var(--text);
+    font-size: var(--text-sm);
+}
+
+.arrow {
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+}
+
+.existingName {
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+}
+
+.similarityRow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+}
+
+.similarityBar {
+    flex: 1;
+    max-width: 120px;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.similarityFill {
+    height: 100%;
+    background: var(--accent);
+}
+
+.similarityHigh {
+    composes: similarityFill;
+    background: #d97706;
+}
+
+/* ── Action buttons ─────────────────────────────────────── */
+
+.actionsCol {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.acceptButton,
+.dismissButton {
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background-color 120ms;
+    white-space: nowrap;
+}
+
+.acceptButton:hover:not(:disabled) {
+    background: #16a34a;
+    color: white;
+    border-color: #16a34a;
+}
+
+.dismissButton:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+.acceptButton:disabled,
+.dismissButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.resolvedBadge {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    padding: 0.35rem 0.75rem;
+    background: var(--surface-3);
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}

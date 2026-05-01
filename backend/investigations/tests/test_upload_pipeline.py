@@ -198,3 +198,86 @@ class Form990ParserWiredInTests(TestCase):
 
         mock_parse.assert_not_called()
         self.assertNotIn("parsed_990", document.ingestion_metadata)
+
+
+class PropertyValidationSurfaceTests(TestCase):
+    """Property validation issues should land on Document.extraction_notes
+    so the investigator sees flagged values in the UI alongside other
+    extraction status messages. (QA audit P1.)
+    """
+
+    def setUp(self):
+        from .. import views
+
+        self.views = views
+        self.case = Case.objects.create(name="Property Validation Case")
+
+    def test_validation_warnings_appended_to_extraction_notes(self):
+        from ..models import Document, ExtractionStatus
+
+        # Pre-create a Document and manually invoke the validator helper
+        # on a payload that will produce ERRORs. This isolates the
+        # surface mechanism from the rest of the upload pipeline.
+        document = Document.objects.create(
+            case=self.case,
+            filename="x.pdf",
+            file_path="cases/x.pdf",
+            sha256_hash="z" * 64,
+            file_size=10,
+        )
+        self.views._validate_property_payload(
+            {"parcel_number": "X", "assessed_value": -1000},
+            document=document,
+        )
+
+        # The transient list should be set on the document instance.
+        self.assertTrue(hasattr(document, "_validation_warnings"))
+        self.assertGreater(len(document._validation_warnings), 0)
+        self.assertIn(
+            "[ERROR] property_validation",
+            document._validation_warnings[0],
+        )
+
+        # Simulate the final extraction_notes flip — clean status, no
+        # extraction failures, but validation warnings present.
+        warnings = document._validation_warnings
+        ext_notes = ""
+        if warnings:
+            ext_notes += "Validation warnings:\n" + "\n".join(
+                f"- {msg}" for msg in warnings
+            )
+        document.extraction_status = ExtractionStatus.COMPLETED
+        document.extraction_notes = ext_notes
+        document.save(update_fields=["extraction_status", "extraction_notes"])
+
+        document.refresh_from_db()
+        self.assertIn("Validation warnings:", document.extraction_notes)
+        self.assertIn("[ERROR] property_validation", document.extraction_notes)
+
+    def test_no_warnings_no_change(self):
+        """A clean property payload produces no warnings — surface stays empty."""
+        from ..models import Document
+
+        document = Document.objects.create(
+            case=self.case,
+            filename="x.pdf",
+            file_path="cases/x.pdf",
+            sha256_hash="y" * 64,
+            file_size=10,
+        )
+        msgs = self.views._validate_property_payload(
+            {"parcel_number": "A01-12345", "assessed_value": 50000, "purchase_price": 60000},
+            document=document,
+        )
+        self.assertEqual(msgs, [])
+        # The transient attribute may or may not exist — if it does, it's empty.
+        self.assertEqual(getattr(document, "_validation_warnings", []), [])
+
+    def test_works_without_document(self):
+        """Helper still returns messages when no document is supplied
+        (e.g., from the research add-to-case path)."""
+        msgs = self.views._validate_property_payload(
+            {"parcel_number": "X", "assessed_value": -1000},
+            document=None,
+        )
+        self.assertGreater(len(msgs), 0)

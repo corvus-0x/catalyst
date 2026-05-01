@@ -281,6 +281,44 @@ def _generate_forensic_filename(
     return f"{date_str}_{sanitized}_{doc_label}{ext}"
 
 
+def _validate_property_payload(
+    payload: dict,
+    document: Document | None = None,
+) -> list[str]:
+    """Run data_quality.validate_property, log issues, and return their messages.
+
+    Mirrors the validator wiring in entity_resolution._validate_and_log for
+    person + organization. Used at every Property create/update site in
+    this module so extracted property data gets a sanity check before
+    it's persisted.
+
+    If a Document is supplied, issue messages are also appended to a
+    transient `_validation_warnings` list on that Document instance.
+    The upload pipeline reads this list at the final extraction_status
+    flip and appends the messages to Document.extraction_notes so the
+    investigator sees them in the UI alongside other extraction issues.
+
+    Returns the list of formatted issue strings (`"[SEVERITY] message"`).
+    (QA audit P1.)
+    """
+    messages: list[str] = []
+    try:
+        from .data_quality import validate_property
+
+        result = validate_property(payload)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception("validate_property crashed for payload=%r", payload)
+        return messages
+    for issue in result.issues:
+        log = logger.warning if issue.severity == "ERROR" else logger.info
+        log("property_validation: [%s] %s", issue.severity, issue.message)
+        messages.append(f"[{issue.severity}] property_validation: {issue.message}")
+    if document is not None and messages:
+        existing = getattr(document, "_validation_warnings", [])
+        document._validation_warnings = existing + messages
+    return messages
+
+
 def _extract_property_data(extracted_text, doc_type, document, case):
     """
     Extract property data from parcel records and deeds, creating/updating
@@ -305,6 +343,22 @@ def _extract_property_data(extracted_text, doc_type, document, case):
         card = parse_auditor_parcel_card(extracted_text)
         if not card.parcel_number:
             return  # couldn't parse — nothing to save
+
+        _validate_property_payload(
+            {
+                "parcel_number": card.parcel_number,
+                "county": card.county or "DARKE",
+                "assessed_value": (
+                    float(card.current_assessed) if card.current_assessed else None
+                ),
+                "purchase_price": (
+                    float(card.most_recent_sale_price)
+                    if card.most_recent_sale_price
+                    else None
+                ),
+            },
+            document=document,
+        )
 
         # Upsert Property by parcel_number within this case
         prop, created = Property.objects.update_or_create(
@@ -413,6 +467,19 @@ def _extract_property_data(extracted_text, doc_type, document, case):
 
         # For deeds, we may not have a parcel number — use grantee + case as fallback
         parcel_number = deed.parcel_id or ""
+
+        _validate_property_payload(
+            {
+                "parcel_number": parcel_number,
+                "county": deed.county if hasattr(deed, "county") and deed.county else "DARKE",
+                "purchase_price": (
+                    float(deed.consideration)
+                    if deed.consideration and deed.consideration > 0
+                    else None
+                ),
+            },
+            document=document,
+        )
 
         if parcel_number:
             prop, created = Property.objects.update_or_create(
@@ -831,8 +898,13 @@ def _process_uploaded_file(
                 )
 
             # --- Stage 3: Entity resolution (DB persistence) ---
-            entity_summary = resolve_all_entities(
-                extraction_result, case=case, document=document)
+            # Wrap in atomic so a mid-resolution crash (after some
+            # Person rows but before Organization rows, for example)
+            # rolls back to a clean state instead of orphaning partial
+            # writes. (QA audit P1 — pipeline transactionality.)
+            with transaction.atomic():
+                entity_summary = resolve_all_entities(
+                    extraction_result, case=case, document=document)
             if entity_summary.fuzzy_candidates:
                 logger.info(
                     "entity_extraction_fuzzy_candidates",
@@ -868,12 +940,15 @@ def _process_uploaded_file(
             financials = fin_result.get("financials", [])
             meta = fin_result.get("meta", {})
             if financials:
-                _save_financial_snapshot(
-                    document=document,
-                    case=case,
-                    financials=financials,
-                    meta=meta,
-                )
+                # Per-stage atomic: a failure during snapshot creation
+                # rolls back any partially-written snapshots from this run.
+                with transaction.atomic():
+                    _save_financial_snapshot(
+                        document=document,
+                        case=case,
+                        financials=financials,
+                        meta=meta,
+                    )
         except Exception:
             logger.exception(
                 "financial_extraction_failed",
@@ -885,12 +960,13 @@ def _process_uploaded_file(
     # Property extraction for parcel records and deeds
     if run_pipeline and extracted_text and doc_type in ("PARCEL_RECORD", "DEED"):
         try:
-            _extract_property_data(
-                extracted_text=extracted_text,
-                doc_type=doc_type,
-                document=document,
-                case=case,
-            )
+            with transaction.atomic():
+                _extract_property_data(
+                    extracted_text=extracted_text,
+                    doc_type=doc_type,
+                    document=document,
+                    case=case,
+                )
         except Exception:
             logger.exception(
                 "property_extraction_failed",
@@ -976,7 +1052,11 @@ def _process_uploaded_file(
             all_triggers = evaluate_document(case, document) + evaluate_case(
                 case, trigger_doc=document
             )
-            persist_signals(case, all_triggers)
+            # Wrap persist_signals in atomic — a partial signal write is
+            # worse than no writes at all (the dedup pass on the next
+            # evaluation would skip the missing ones).
+            with transaction.atomic():
+                persist_signals(case, all_triggers)
         except Exception:
             logger.exception(
                 "signal_detection_failed",
@@ -1003,6 +1083,18 @@ def _process_uploaded_file(
     else:
         ext_status = ExtractionStatus.COMPLETED
         ext_notes = ""
+
+    # Append any data-quality validation warnings collected during the run
+    # (currently property validation only — see _validate_property_payload).
+    # These are non-fatal: they don't change the status, just give the
+    # investigator visibility into which fields the validators flagged.
+    validation_warnings = getattr(document, "_validation_warnings", [])
+    if validation_warnings:
+        if ext_notes:
+            ext_notes += "\n\n"
+        ext_notes += "Validation warnings:\n" + "\n".join(
+            f"- {msg}" for msg in validation_warnings
+        )
 
     document.extraction_status = ext_status
     document.extraction_notes = ext_notes
@@ -3615,12 +3707,41 @@ def api_case_document_bulk_upload(request, pk):
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_case_document_process_pending(request, pk):
-    """Process pending OCR documents for a case on demand."""
+    """Re-run the deferred-processing pipeline on documents that need it.
+
+    Picks up:
+      - OCR-pending documents (uploaded via bulk endpoint, never OCR'd).
+      - Documents whose extraction_status is FAILED or PARTIAL — a worker
+        crash mid-pipeline used to leave these stranded with no retry.
+        (QA audit P1.)
+    """
+    from datetime import timedelta
+
+    from .models import ExtractionStatus
+
     case = get_object_or_404(Case, pk=pk)
+
+    # Stale-PENDING window: a freshly uploaded doc is briefly PENDING while
+    # the pipeline runs; we only retry it if it has been stuck > 5 minutes
+    # (a strong signal that the worker crashed mid-processing).
+    stale_cutoff = timezone.now() - timedelta(minutes=5)
 
     pending_documents = list(
         case.documents.filter(
-            ocr_status=OcrStatus.PENDING).order_by("uploaded_at")
+            Q(ocr_status=OcrStatus.PENDING)
+            | Q(
+                extraction_status__in=[
+                    ExtractionStatus.FAILED,
+                    ExtractionStatus.PARTIAL,
+                ]
+            )
+            | Q(
+                extraction_status=ExtractionStatus.PENDING,
+                updated_at__lt=stale_cutoff,
+            )
+        )
+        .order_by("uploaded_at")
+        .distinct()
     )
 
     processed = []
@@ -5240,6 +5361,11 @@ def api_research_add_to_case(request, pk):
             except (ValueError, TypeError):
                 acreage_float = None
 
+            _validate_property_payload({
+                "parcel_number": parcel_number,
+                "county": county,
+            })
+
             prop = Property.objects.create(
                 case=case,
                 parcel_number=parcel_number,
@@ -5759,5 +5885,136 @@ def api_case_jobs(request, pk):
                 }
                 for j in jobs
             ]
+        }
+    )
+
+
+@require_http_methods(["GET"])
+def api_case_fuzzy_candidates(request, pk):
+    """List fuzzy entity-match candidates surfaced for investigator review.
+
+    These are near-matches that the resolver chose NOT to silent-merge —
+    the investigator must accept (merge) or dismiss each one. Default
+    filter is `status=PENDING`; pass `status=all` to see resolved ones too.
+    """
+    from .models import FuzzyMatchCandidate, FuzzyMatchStatus
+
+    case = get_object_or_404(Case, pk=pk)
+
+    qs = FuzzyMatchCandidate.objects.filter(case=case).order_by(
+        "-detected_at"
+    )
+
+    status_filter = request.GET.get("status", "pending").lower()
+    if status_filter == "pending":
+        qs = qs.filter(status=FuzzyMatchStatus.PENDING)
+    elif status_filter in ("merged", "dismissed"):
+        qs = qs.filter(status=status_filter.upper())
+    # status=all — no filter
+
+    entity_type = request.GET.get("entity_type", "").lower()
+    if entity_type in ("person", "organization"):
+        qs = qs.filter(entity_type=entity_type)
+
+    return JsonResponse(
+        {
+            "results": [
+                {
+                    "id": str(c.id),
+                    "entity_type": c.entity_type,
+                    "incoming_raw": c.incoming_raw,
+                    "incoming_normalized": c.incoming_normalized,
+                    "existing_entity_id": str(c.existing_entity_id),
+                    "existing_raw": c.existing_raw,
+                    "similarity": round(c.similarity, 4),
+                    "status": c.status,
+                    "detected_at": c.detected_at.isoformat(),
+                    "resolved_at": (
+                        c.resolved_at.isoformat() if c.resolved_at else None
+                    ),
+                    "detected_in_document_id": (
+                        str(c.detected_in_document_id)
+                        if c.detected_in_document_id
+                        else None
+                    ),
+                }
+                for c in qs
+            ],
+            "count": qs.count(),
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def api_case_fuzzy_candidate_detail(request, pk, candidate_id):
+    """Resolve a fuzzy match candidate by accepting or dismissing it.
+
+    Body: {"action": "accept" | "dismiss"}
+
+    "accept" → status=MERGED (investigator confirms the two are the same
+    entity). The data merge itself (reassigning FK references and folding
+    aliases) is intentionally NOT performed automatically — investigators
+    can run a separate merge tool that uses MERGED candidates as input.
+
+    "dismiss" → status=DISMISSED (investigator confirms the two are NOT
+    the same entity).
+
+    Both actions stamp resolved_at and resolved_by. Already-resolved
+    candidates return 409.
+    """
+    from .models import FuzzyMatchCandidate, FuzzyMatchStatus
+
+    case = get_object_or_404(Case, pk=pk)
+    candidate = get_object_or_404(
+        FuzzyMatchCandidate, pk=candidate_id, case=case
+    )
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    action = body.get("action", "").strip().lower()
+    if action not in ("accept", "dismiss"):
+        return JsonResponse(
+            {"error": "action must be 'accept' or 'dismiss'"},
+            status=400,
+        )
+
+    if candidate.status != FuzzyMatchStatus.PENDING:
+        return JsonResponse(
+            {
+                "error": (
+                    f"Candidate already resolved (status={candidate.status})."
+                )
+            },
+            status=409,
+        )
+
+    candidate.status = (
+        FuzzyMatchStatus.MERGED if action == "accept" else FuzzyMatchStatus.DISMISSED
+    )
+    candidate.resolved_at = timezone.now()
+    if request.user.is_authenticated:
+        candidate.resolved_by = request.user
+    candidate.save(update_fields=["status", "resolved_at", "resolved_by"])
+
+    logger.info(
+        "fuzzy_candidate_resolved",
+        extra={
+            "candidate_id": str(candidate.id),
+            "case_id": str(case.id),
+            "action": action,
+            "entity_type": candidate.entity_type,
+        },
+    )
+
+    return JsonResponse(
+        {
+            "id": str(candidate.id),
+            "status": candidate.status,
+            "resolved_at": candidate.resolved_at.isoformat(),
+            "action": action,
         }
     )

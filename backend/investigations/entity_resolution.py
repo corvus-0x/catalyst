@@ -643,6 +643,11 @@ def resolve_all_entities(
     # Sort all fuzzy candidates by similarity descending
     summary.fuzzy_candidates.sort(key=lambda c: c.similarity, reverse=True)
 
+    # Persist fuzzy candidates so investigators can review them in the UI.
+    # Previously these were returned in the summary and then discarded — this
+    # made the "human-in-the-loop" claim only true in the abstract. (QA P1.)
+    _persist_fuzzy_candidates(case, document, summary.fuzzy_candidates)
+
     logger.info(
         "resolve_all_entities: persons +%d matched=%d | orgs +%d matched=%d | fuzzy_candidates=%d",
         summary.persons_created,
@@ -653,6 +658,71 @@ def resolve_all_entities(
     )
 
     return summary
+
+
+def _persist_fuzzy_candidates(
+    case: "Case",
+    document: "Document | None",
+    candidates: list[FuzzyCandidate],
+) -> None:
+    """Write each FuzzyCandidate to the FuzzyMatchCandidate table.
+
+    Uses the unique constraint (case, entity_type, existing_entity_id,
+    incoming_normalized) as a natural idempotency key — `update_or_create`
+    refreshes similarity if it shifts on reprocessing without duplicating
+    rows. PENDING rows that have already been MERGED or DISMISSED stay in
+    their resolved state (we only update PENDING rows).
+    """
+    if not candidates:
+        return
+
+    from .models import FuzzyMatchCandidate, FuzzyMatchStatus
+
+    # Normalize the dataclass entity_type ("org") to model entity_type ("organization").
+    type_map = {"person": "person", "org": "organization"}
+
+    for cand in candidates:
+        entity_type = type_map.get(cand.entity_type, cand.entity_type)
+        try:
+            existing = FuzzyMatchCandidate.objects.filter(
+                case=case,
+                entity_type=entity_type,
+                existing_entity_id=cand.existing_id,
+                incoming_normalized=cand.incoming_normalized,
+            ).first()
+            if existing is None:
+                FuzzyMatchCandidate.objects.create(
+                    case=case,
+                    entity_type=entity_type,
+                    incoming_raw=cand.incoming_raw,
+                    incoming_normalized=cand.incoming_normalized,
+                    existing_entity_id=cand.existing_id,
+                    existing_raw=cand.existing_raw,
+                    similarity=cand.similarity,
+                    detected_in_document=document,
+                )
+            elif existing.status == FuzzyMatchStatus.PENDING:
+                # Refresh similarity / raw text if reprocessing shifted them.
+                existing.similarity = cand.similarity
+                existing.existing_raw = cand.existing_raw
+                if existing.detected_in_document_id is None and document is not None:
+                    existing.detected_in_document = document
+                existing.save(
+                    update_fields=[
+                        "similarity",
+                        "existing_raw",
+                        "detected_in_document",
+                    ]
+                )
+        except Exception:  # noqa: BLE001 — fuzzy persistence is best-effort
+            logger.exception(
+                "fuzzy_candidate_persistence_failed",
+                extra={
+                    "case_id": str(case.pk),
+                    "entity_type": entity_type,
+                    "incoming": cand.incoming_raw,
+                },
+            )
 
 
 def _link_person_to_firm(

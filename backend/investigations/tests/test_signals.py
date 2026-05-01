@@ -45,6 +45,15 @@ from ..signal_rules import (
     evaluate_sr005_zero_consideration,
     evaluate_sr006_990_schedule_l,
     evaluate_sr010_missing_990,
+    evaluate_sr012_no_coi_policy,
+    evaluate_sr013_zero_officer_pay,
+    evaluate_sr015_insider_swap,
+    evaluate_sr017_blanket_lien_charity,
+    evaluate_sr021_revenue_spike,
+    evaluate_sr024_charity_conduit,
+    evaluate_sr025_990_denies_related_party,
+    evaluate_sr026_990_denies_contractors,
+    evaluate_sr029_low_program_ratio,
     evaluate_xml_financial_snapshots,
     persist_signals,
 )
@@ -484,6 +493,651 @@ class SR010Missing990Tests(TestCase):
         result = evaluate_sr010_missing_990(self.case)
 
         self.assertEqual(len(result), 2)
+
+
+# ---------------------------------------------------------------------------
+# SR-013 — Zero Officer Pay at High Revenue (PDF text path)
+# ---------------------------------------------------------------------------
+
+
+class SR013ZeroOfficerPayTests(TestCase):
+    def setUp(self):
+        self.case = _make_case()
+
+    def _make_990(self, text):
+        return _make_document(
+            self.case, doc_type="IRS_990", extracted_text=text, filename="990.pdf"
+        )
+
+    def test_fires_on_high_revenue_with_zero_officer_comp(self):
+        # Gross receipts pattern + the explicit "0 0 0" triplet pattern.
+        text = (
+            "Form 990 — Return of Organization Exempt from Income Tax\n"
+            "Gross receipts $ 750,000\n"
+            "Section A. Officers, Directors, Trustees\n"
+            "(1) JANE EXAMPLE\n"
+            "President  40 0 0 0\n"
+            "(2) JOHN EXAMPLE\n"
+            "Treasurer  20 0 0 0\n"
+        )
+        doc = self._make_990(text)
+        result = evaluate_sr013_zero_officer_pay(self.case, doc)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].rule_id, "SR-013")
+        self.assertEqual(result[0].severity, "HIGH")
+
+    def test_no_fire_below_revenue_threshold(self):
+        text = (
+            "Form 990\n"
+            "Gross receipts $ 100,000\n"
+            "(1) JANE EXAMPLE\n"
+            "President 40 0 0 0\n"
+        )
+        doc = self._make_990(text)
+        self.assertEqual(evaluate_sr013_zero_officer_pay(self.case, doc), [])
+
+    def test_no_fire_when_doc_is_not_a_990(self):
+        text = "Gross receipts $ 750,000\n0 0 0"
+        doc = _make_document(self.case, doc_type="DEED", extracted_text=text)
+        self.assertEqual(evaluate_sr013_zero_officer_pay(self.case, doc), [])
+
+    def test_no_fire_when_no_text(self):
+        doc = _make_document(self.case, doc_type="IRS_990", extracted_text="")
+        self.assertEqual(evaluate_sr013_zero_officer_pay(self.case, doc), [])
+
+
+# ---------------------------------------------------------------------------
+# SR-015 — Insider Property Swap
+# ---------------------------------------------------------------------------
+
+
+class SR015InsiderSwapTests(TestCase):
+    """SR-015 fires when a property transaction has an insider (or someone
+    related to an insider) on either side. Insider = officer/agent of any
+    Organization in the case via PersonOrganization.
+    """
+
+    def setUp(self):
+        from ..models import (
+            PersonOrganization,
+            PropertyTransaction,
+            Relationship,
+            TransactionPartyType,
+        )
+
+        self.PersonOrganization = PersonOrganization
+        self.PropertyTransaction = PropertyTransaction
+        self.Relationship = Relationship
+        self.PartyType = TransactionPartyType
+
+        self.case = _make_case()
+        self.charity = _make_org(self.case, "Bright Future Foundation", org_type="CHARITY")
+        # Officer of the charity → an "insider"
+        self.officer = _make_person(self.case, "Karen Insider")
+        self.PersonOrganization.objects.create(
+            person=self.officer, org=self.charity, role="PRESIDENT"
+        )
+        # Officer's spouse — counts as "related to insider" via Relationship
+        self.spouse = _make_person(self.case, "Pat Insider")
+        self.Relationship.objects.create(
+            case=self.case,
+            person_a=self.officer,
+            person_b=self.spouse,
+            relationship_type="SPOUSE",
+        )
+        self.unrelated = _make_person(self.case, "Random Bystander")
+
+    def _make_txn(self, prop, *, buyer=None, seller=None):
+        return self.PropertyTransaction.objects.create(
+            property=prop,
+            buyer_id=buyer.pk if buyer else None,
+            buyer_type=self.PartyType.PERSON if buyer else "",
+            buyer_name=buyer.full_name if buyer else "",
+            seller_id=seller.pk if seller else None,
+            seller_type=self.PartyType.PERSON if seller else "",
+            seller_name=seller.full_name if seller else "",
+            transaction_date=date(2023, 6, 1),
+        )
+
+    def test_fires_when_buyer_is_a_charity_officer(self):
+        prop = _make_property(self.case, parcel_number="P1")
+        self._make_txn(prop, buyer=self.officer, seller=self.unrelated)
+
+        triggers = evaluate_sr015_insider_swap(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-015")
+        self.assertEqual(triggers[0].severity, "CRITICAL")
+        self.assertEqual(triggers[0].trigger_entity_type, "property")
+
+    def test_fires_when_seller_is_related_to_charity_officer(self):
+        prop = _make_property(self.case, parcel_number="P2")
+        self._make_txn(prop, buyer=self.unrelated, seller=self.spouse)
+
+        triggers = evaluate_sr015_insider_swap(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertIn("related to insider", triggers[0].evidence["insider_links"][0])
+
+    def test_no_fire_when_neither_party_is_insider(self):
+        prop = _make_property(self.case, parcel_number="P3")
+        outsider = _make_person(self.case, "Other Random")
+        self._make_txn(prop, buyer=self.unrelated, seller=outsider)
+
+        triggers = evaluate_sr015_insider_swap(self.case)
+
+        self.assertEqual(triggers, [])
+
+    def test_no_fire_when_case_has_no_insiders(self):
+        # Different case with property/transactions but no PersonOrganization links.
+        other_case = _make_case(name="No-Insider Case")
+        prop = Property.objects.create(case=other_case, parcel_number="X")
+        person = _make_person(other_case, "Lone Person")
+        self.PropertyTransaction.objects.create(
+            property=prop,
+            buyer_id=person.pk,
+            buyer_type=self.PartyType.PERSON,
+            buyer_name="Lone Person",
+            transaction_date=date(2023, 6, 1),
+        )
+
+        triggers = evaluate_sr015_insider_swap(other_case)
+
+        self.assertEqual(triggers, [])
+
+    def test_evidence_snapshot_captures_transaction_details(self):
+        prop = _make_property(self.case, parcel_number="P4")
+        txn = self._make_txn(prop, buyer=self.officer, seller=self.unrelated)
+
+        triggers = evaluate_sr015_insider_swap(self.case)
+
+        ev = triggers[0].evidence
+        self.assertEqual(ev["transaction_id"], str(txn.pk))
+        self.assertEqual(ev["property_id"], str(prop.pk))
+        self.assertEqual(ev["buyer_name"], "Karen Insider")
+        self.assertTrue(ev["buyer_is_insider"])
+        self.assertFalse(ev["seller_is_insider"])
+        self.assertEqual(ev["transaction_date"], "2023-06-01")
+
+
+# ---------------------------------------------------------------------------
+# SR-021 — Revenue Spike (year-over-year >= 100%)
+# ---------------------------------------------------------------------------
+
+
+class SR021RevenueSpikeTests(TestCase):
+    def setUp(self):
+        from ..models import FinancialSnapshot
+
+        self.FinancialSnapshot = FinancialSnapshot
+        self.case = _make_case()
+        self.org = _make_org(self.case, "Growing Charity", org_type="CHARITY")
+        self.doc = _make_document(self.case)
+
+    def _snap(self, *, tax_year, revenue):
+        return self.FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            organization=self.org,
+            ein="12-3456789",
+            tax_year=tax_year,
+            total_revenue=revenue,
+        )
+
+    def test_fires_on_doubling_revenue(self):
+        self._snap(tax_year=2022, revenue=100_000)
+        self._snap(tax_year=2023, revenue=300_000)  # 200% growth
+
+        triggers = evaluate_sr021_revenue_spike(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-021")
+        self.assertEqual(triggers[0].severity, "HIGH")
+        self.assertEqual(triggers[0].trigger_entity_type, "organization")
+
+    def test_no_fire_on_modest_growth(self):
+        self._snap(tax_year=2022, revenue=100_000)
+        self._snap(tax_year=2023, revenue=150_000)  # 50% growth
+
+        self.assertEqual(evaluate_sr021_revenue_spike(self.case), [])
+
+    def test_no_fire_with_only_one_snapshot(self):
+        self._snap(tax_year=2023, revenue=100_000)
+        self.assertEqual(evaluate_sr021_revenue_spike(self.case), [])
+
+    def test_no_fire_when_prior_revenue_zero(self):
+        # Division-by-zero guard: prev.total_revenue must be > 0 to compute growth.
+        self._snap(tax_year=2022, revenue=0)
+        self._snap(tax_year=2023, revenue=500_000)
+        self.assertEqual(evaluate_sr021_revenue_spike(self.case), [])
+
+    def test_fires_per_organization_independently(self):
+        other_org = _make_org(self.case, "Other Charity", org_type="CHARITY")
+        self.FinancialSnapshot.objects.create(
+            case=self.case, document=self.doc, organization=other_org,
+            ein="98-7654321", tax_year=2022, total_revenue=200_000,
+        )
+        self.FinancialSnapshot.objects.create(
+            case=self.case, document=self.doc, organization=other_org,
+            ein="98-7654321", tax_year=2023, total_revenue=600_000,  # 200%
+        )
+        # Plus a non-spiking org
+        self._snap(tax_year=2022, revenue=500_000)
+        self._snap(tax_year=2023, revenue=510_000)  # only 2% growth
+
+        triggers = evaluate_sr021_revenue_spike(self.case)
+
+        self.assertEqual(len(triggers), 1)
+
+
+# ---------------------------------------------------------------------------
+# SR-025 — 990 Denies Related-Party Transactions, Evidence Contradicts
+# ---------------------------------------------------------------------------
+
+
+class SR025FalseDisclosureTests(TestCase):
+    """SR-025 fires when:
+      (a) a 990 document text says 'No' to Line 28 (transactions with
+          interested persons), AND
+      (b) the case database contains property transactions involving the
+          extended insider network of charity officers.
+    """
+
+    def setUp(self):
+        from ..models import (
+            PersonOrganization,
+            PropertyTransaction,
+            Relationship,
+            TransactionPartyType,
+        )
+
+        self.PersonOrganization = PersonOrganization
+        self.PropertyTransaction = PropertyTransaction
+        self.Relationship = Relationship
+        self.PartyType = TransactionPartyType
+
+        self.case = _make_case()
+        self.charity = _make_org(self.case, "Bright Future Foundation", org_type="CHARITY")
+        self.officer = _make_person(self.case, "Karen Officer")
+        self.PersonOrganization.objects.create(
+            person=self.officer, org=self.charity, role="PRESIDENT"
+        )
+        self.relative = _make_person(self.case, "Pat Officer")
+        self.Relationship.objects.create(
+            case=self.case,
+            person_a=self.officer,
+            person_b=self.relative,
+            relationship_type="SPOUSE",
+        )
+
+    def _denial_doc(self):
+        # Text containing the SR-025 line-28-No regex pattern.
+        text = (
+            "Part IV Checklist of Required Schedules\n"
+            "28a Did the organization engage in a transaction with a current or "
+            "former officer ... ?  No\n"
+        )
+        return _make_document(
+            self.case, doc_type="IRS_990", extracted_text=text, filename="990.pdf",
+        )
+
+    def _make_insider_txn(self):
+        prop = _make_property(self.case, parcel_number="P1")
+        return self.PropertyTransaction.objects.create(
+            property=prop,
+            buyer_id=self.relative.pk,  # related to insider
+            buyer_type=self.PartyType.PERSON,
+            buyer_name=self.relative.full_name,
+            seller_id=self.officer.pk,
+            seller_type=self.PartyType.PERSON,
+            seller_name=self.officer.full_name,
+            transaction_date=date(2023, 6, 1),
+        )
+
+    def test_fires_when_990_denies_but_insider_txn_exists(self):
+        self._denial_doc()
+        self._make_insider_txn()
+
+        triggers = evaluate_sr025_990_denies_related_party(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-025")
+        self.assertEqual(triggers[0].severity, "CRITICAL")
+
+    def test_no_fire_without_a_denial_doc(self):
+        # Insider transaction exists, but no 990 denying it.
+        self._make_insider_txn()
+        self.assertEqual(evaluate_sr025_990_denies_related_party(self.case), [])
+
+    def test_no_fire_without_insider_transactions(self):
+        # 990 denies but no transactions in the database to contradict.
+        self._denial_doc()
+        self.assertEqual(evaluate_sr025_990_denies_related_party(self.case), [])
+
+    def test_no_fire_when_case_has_no_charity_officers(self):
+        # 990 denial + transaction, but the org isn't classified CHARITY.
+        # Replace charity with non-charity org.
+        self.PersonOrganization.objects.filter(person=self.officer).delete()
+        self.charity.org_type = "OTHER"
+        self.charity.save()
+        self.PersonOrganization.objects.create(
+            person=self.officer, org=self.charity, role="PRESIDENT"
+        )
+        self._denial_doc()
+        self._make_insider_txn()
+
+        self.assertEqual(evaluate_sr025_990_denies_related_party(self.case), [])
+
+    def test_evidence_snapshot_includes_denial_doc_and_examples(self):
+        doc = self._denial_doc()
+        txn = self._make_insider_txn()
+
+        triggers = evaluate_sr025_990_denies_related_party(self.case)
+
+        ev = triggers[0].evidence
+        self.assertEqual(ev["denial_doc_id"], str(doc.pk))
+        self.assertEqual(ev["contradicting_transaction_count"], 1)
+        self.assertEqual(len(ev["transaction_examples"]), 1)
+        self.assertEqual(ev["transaction_examples"][0]["transaction_id"], str(txn.pk))
+
+
+# ---------------------------------------------------------------------------
+# SR-012 — No Conflict of Interest Policy
+# ---------------------------------------------------------------------------
+
+
+class SR012NoCoiPolicyTests(TestCase):
+    def setUp(self):
+        self.case = _make_case()
+
+    def _make_990(self, text):
+        return _make_document(
+            self.case, doc_type="IRS_990", extracted_text=text, filename="990.pdf"
+        )
+
+    def test_fires_on_explicit_no_to_coi_question(self):
+        text = (
+            "Part VI Governance, Management, and Disclosure\n"
+            "12a Did the organization have a written conflict of interest policy? No\n"
+        )
+        doc = self._make_990(text)
+
+        triggers = evaluate_sr012_no_coi_policy(self.case, doc)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-012")
+        self.assertEqual(triggers[0].severity, "HIGH")
+
+    def test_fires_on_line_12a_no_pattern(self):
+        # Even without the full "conflict of interest policy" wording, the
+        # bare "12a ... No" pattern triggers (form numbering shorthand).
+        text = "12a No"
+        doc = self._make_990(text)
+        self.assertEqual(len(evaluate_sr012_no_coi_policy(self.case, doc)), 1)
+
+    def test_no_fire_when_policy_answer_is_yes(self):
+        text = "12a Did the organization have a written conflict of interest policy? Yes"
+        doc = self._make_990(text)
+        self.assertEqual(evaluate_sr012_no_coi_policy(self.case, doc), [])
+
+    def test_no_fire_for_non_990_doc(self):
+        doc = _make_document(
+            self.case,
+            doc_type="DEED",
+            extracted_text="conflict of interest policy ... No",
+        )
+        self.assertEqual(evaluate_sr012_no_coi_policy(self.case, doc), [])
+
+
+# ---------------------------------------------------------------------------
+# SR-017 — UCC Blanket Lien on Charity-Connected Entity
+# ---------------------------------------------------------------------------
+
+
+class SR017BlanketLienTests(TestCase):
+    def setUp(self):
+        from ..models import FinancialInstrument, InstrumentType, PersonOrganization
+
+        self.FinancialInstrument = FinancialInstrument
+        self.InstrumentType = InstrumentType
+        self.PersonOrganization = PersonOrganization
+
+        self.case = _make_case()
+        self.charity = _make_org(self.case, "Bright Future", org_type="CHARITY")
+        self.officer = _make_person(self.case, "Karen Officer")
+        self.PersonOrganization.objects.create(
+            person=self.officer, org=self.charity, role="PRESIDENT"
+        )
+
+    def _lien(self, *, debtor=None, blanket=True, filing_number="OH-LIEN-001"):
+        return self.FinancialInstrument.objects.create(
+            case=self.case,
+            instrument_type=self.InstrumentType.UCC_FILING,
+            filing_number=filing_number,
+            filing_date=date(2023, 1, 1),
+            debtor_id=debtor.pk if debtor else None,
+            collateral_description="All assets, equipment, inventory, accounts",
+            is_blanket_lien=blanket,
+        )
+
+    def test_fires_on_blanket_lien_against_charity_officer(self):
+        self._lien(debtor=self.officer)
+
+        triggers = evaluate_sr017_blanket_lien_charity(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-017")
+        self.assertEqual(triggers[0].trigger_entity_type, "financial_instrument")
+
+    def test_no_fire_on_non_blanket_lien(self):
+        self._lien(debtor=self.officer, blanket=False)
+        self.assertEqual(evaluate_sr017_blanket_lien_charity(self.case), [])
+
+    def test_no_fire_when_debtor_is_not_charity_connected(self):
+        outsider = _make_person(self.case, "Random Outsider")
+        self._lien(debtor=outsider)
+        self.assertEqual(evaluate_sr017_blanket_lien_charity(self.case), [])
+
+    def test_no_fire_when_no_blanket_liens_exist(self):
+        self.assertEqual(evaluate_sr017_blanket_lien_charity(self.case), [])
+
+
+# ---------------------------------------------------------------------------
+# SR-024 — Charity Conduit (TransactionChain)
+# ---------------------------------------------------------------------------
+
+
+class SR024CharityConduitTests(TestCase):
+    def setUp(self):
+        from ..models import (
+            PropertyTransaction,
+            TransactionChain,
+            TransactionChainLink,
+            TransactionPartyType,
+        )
+
+        self.PropertyTransaction = PropertyTransaction
+        self.TransactionChain = TransactionChain
+        self.TransactionChainLink = TransactionChainLink
+        self.PartyType = TransactionPartyType
+
+        self.case = _make_case()
+        self.prop = _make_property(self.case, parcel_number="P1")
+
+    def _txn(self, *, date_, buyer_name, seller_name):
+        return self.PropertyTransaction.objects.create(
+            property=self.prop,
+            buyer_id=None,
+            buyer_type=self.PartyType.PERSON,
+            buyer_name=buyer_name,
+            seller_id=None,
+            seller_type=self.PartyType.PERSON,
+            seller_name=seller_name,
+            transaction_date=date_,
+        )
+
+    def _build_chain(self, txns, *, label="Demo Chain"):
+        chain = self.TransactionChain.objects.create(
+            case=self.case,
+            chain_type="INSIDER_SWAP",
+            label=label,
+            time_span_days=5,
+        )
+        for i, t in enumerate(txns, start=1):
+            self.TransactionChainLink.objects.create(
+                chain=chain, transaction=t, sequence_number=i
+            )
+        return chain
+
+    def test_fires_on_two_step_insider_swap_chain(self):
+        t1 = self._txn(date_=date(2023, 1, 1), buyer_name="Charity", seller_name="Seller")
+        t2 = self._txn(date_=date(2023, 1, 6), buyer_name="Insider", seller_name="Charity")
+        self._build_chain([t1, t2])
+
+        triggers = evaluate_sr024_charity_conduit(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-024")
+        self.assertEqual(triggers[0].trigger_entity_type, "property")
+
+    def test_no_fire_on_single_link_chain(self):
+        t1 = self._txn(date_=date(2023, 1, 1), buyer_name="Charity", seller_name="Seller")
+        self._build_chain([t1])
+        self.assertEqual(evaluate_sr024_charity_conduit(self.case), [])
+
+    def test_no_fire_when_no_chains_exist(self):
+        self.assertEqual(evaluate_sr024_charity_conduit(self.case), [])
+
+    def test_only_evaluates_insider_swap_chain_type(self):
+        t1 = self._txn(date_=date(2023, 1, 1), buyer_name="A", seller_name="B")
+        t2 = self._txn(date_=date(2023, 2, 1), buyer_name="B", seller_name="C")
+        chain = self.TransactionChain.objects.create(
+            case=self.case, chain_type="OTHER", label="Other type", time_span_days=30,
+        )
+        self.TransactionChainLink.objects.create(chain=chain, transaction=t1, sequence_number=1)
+        self.TransactionChainLink.objects.create(chain=chain, transaction=t2, sequence_number=2)
+
+        self.assertEqual(evaluate_sr024_charity_conduit(self.case), [])
+
+
+# ---------------------------------------------------------------------------
+# SR-026 — 990 Denies Independent Contractors, Permits Show Otherwise
+# ---------------------------------------------------------------------------
+
+
+class SR026ContractorDenialTests(TestCase):
+    def setUp(self):
+        self.case = _make_case()
+
+    def _make_990(self, text):
+        return _make_document(
+            self.case, doc_type="IRS_990", extracted_text=text, filename="990.pdf"
+        )
+
+    def _make_permit(self, text):
+        return _make_document(
+            self.case, doc_type="BUILDING_PERMIT", extracted_text=text,
+            filename="permit.pdf",
+        )
+
+    def test_fires_when_990_denies_but_permits_exist(self):
+        self._make_990("25a Compensation of independent contractors? No")
+        self._make_permit("General Contractor: Acme Construction LLC")
+
+        triggers = evaluate_sr026_990_denies_contractors(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-026")
+        self.assertEqual(triggers[0].severity, "HIGH")
+
+    def test_no_fire_without_990_denial(self):
+        self._make_permit("Contractor: Acme Construction LLC")
+        self.assertEqual(evaluate_sr026_990_denies_contractors(self.case), [])
+
+    def test_no_fire_without_any_permits(self):
+        self._make_990("25a No")
+        self.assertEqual(evaluate_sr026_990_denies_contractors(self.case), [])
+
+    def test_fires_per_denial_doc(self):
+        # Two 990 filings denying contractors; one permit. Each filing is a
+        # separate disclosure, so each triggers a distinct finding.
+        self._make_990("25a No (year 1)")
+        self._make_990("25a No (year 2)")
+        self._make_permit("General Contractor: Acme")
+
+        self.assertEqual(len(evaluate_sr026_990_denies_contractors(self.case)), 2)
+
+
+# ---------------------------------------------------------------------------
+# SR-029 — Low Program Expense Ratio (FinancialSnapshot path)
+# ---------------------------------------------------------------------------
+
+
+class SR029LowProgramRatioTests(TestCase):
+    def setUp(self):
+        from ..models import FinancialSnapshot
+
+        self.FinancialSnapshot = FinancialSnapshot
+        self.case = _make_case()
+        self.org = _make_org(self.case, "Test Charity", org_type="CHARITY")
+        self.doc = _make_document(self.case)
+
+    def _snap(self, **kwargs):
+        defaults = {
+            "case": self.case,
+            "document": self.doc,
+            "organization": self.org,
+            "ein": "12-3456789",
+            "tax_year": 2023,
+        }
+        defaults.update(kwargs)
+        return self.FinancialSnapshot.objects.create(**defaults)
+
+    def test_fires_when_program_ratio_below_50pct(self):
+        # total_expenses = 1M, salaries = 600k, fundraising = 100k → program = 300k = 30%
+        self._snap(
+            total_expenses=1_000_000,
+            salaries_and_compensation=600_000,
+            professional_fundraising=100_000,
+            other_expenses=0,
+        )
+
+        triggers = evaluate_sr029_low_program_ratio(self.case)
+
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-029")
+        self.assertEqual(triggers[0].severity, "HIGH")
+        self.assertEqual(triggers[0].trigger_entity_type, "organization")
+
+    def test_no_fire_when_program_ratio_above_50pct(self):
+        # 1M total, 200k salaries → 800k program = 80%
+        self._snap(
+            total_expenses=1_000_000,
+            salaries_and_compensation=200_000,
+            professional_fundraising=0,
+            other_expenses=0,
+        )
+        self.assertEqual(evaluate_sr029_low_program_ratio(self.case), [])
+
+    def test_no_fire_when_total_expenses_zero(self):
+        self._snap(
+            total_expenses=0,
+            salaries_and_compensation=10_000,
+            professional_fundraising=0,
+            other_expenses=0,
+        )
+        self.assertEqual(evaluate_sr029_low_program_ratio(self.case), [])
+
+    def test_no_fire_when_components_all_missing(self):
+        # All three component fields are 0 → can't compute non-program total,
+        # rule skips (avoid division-by-zero / unreliable signal).
+        self._snap(
+            total_expenses=1_000_000,
+            salaries_and_compensation=0,
+            professional_fundraising=0,
+            other_expenses=0,
+        )
+        self.assertEqual(evaluate_sr029_low_program_ratio(self.case), [])
 
 
 # ---------------------------------------------------------------------------

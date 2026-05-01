@@ -21,6 +21,7 @@ import { SettingsView } from "./views/SettingsView";
 import { DocumentsTab } from "./components/cases/DocumentsTab";
 import { ReferralsTab } from "./components/cases/ReferralsTab";
 import { FinancialsTab } from "./components/cases/FinancialsTab";
+import { MatchReviewTab } from "./components/cases/MatchReviewTab";
 import { OverviewTab } from "./components/cases/OverviewTab";
 import { PipelineTab } from "./components/cases/PipelineTab";
 import { ResearchTab } from "./components/cases/ResearchTab";
@@ -52,6 +53,7 @@ export default function App() {
                                 <Route path="pipeline" element={<PipelineTab />} />
                                 <Route path="financials" element={<FinancialsTab />} />
                                 <Route path="referrals" element={<ReferralsTab />} />
+                                <Route path="match-review" element={<MatchReviewTab />} />
                                 {/* Legacy routes — redirect to pipeline */}
                                 <Route path="signals" element={<Navigate to="../pipeline" replace />} />
                                 <Route path="detections" element={<Navigate to="../pipeline" replace />} />

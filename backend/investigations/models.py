@@ -1305,6 +1305,96 @@ class InvestigatorNote(models.Model):
         return f"Note on {self.target_type} ({self.created_at:%Y-%m-%d})"
 
 
+# ──────────────────────────────────────────────────────────────────────
+# FuzzyMatchCandidate — investigator-facing near-match queue
+# ──────────────────────────────────────────────────────────────────────
+#
+# When entity_resolution finds an incoming name that's similar but not
+# identical to an existing Person or Organization, it does NOT silent-merge
+# (that would corrupt evidence chain of custody on a referral). Instead
+# the candidate is persisted here for human review. The investigator can
+# accept-as-merge or dismiss from the UI.
+#
+# Status is binary today (PENDING → MERGED/DISMISSED); the merge action
+# itself is a separate endpoint and is not auto-applied.
+# ──────────────────────────────────────────────────────────────────────
+
+
+class FuzzyMatchStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending review"
+    MERGED = "MERGED", "Accepted — merged into existing entity"
+    DISMISSED = "DISMISSED", "Dismissed — not the same entity"
+
+
+class FuzzyMatchCandidate(UUIDPrimaryKeyModel):
+    """A near-match surfaced for investigator review (not auto-merged)."""
+
+    case = models.ForeignKey(
+        Case, on_delete=models.CASCADE, related_name="fuzzy_match_candidates"
+    )
+    entity_type = models.CharField(
+        max_length=20,
+        help_text="'person' or 'organization' — matches FindingEntity.entity_type",
+    )
+    incoming_raw = models.CharField(max_length=500)
+    incoming_normalized = models.CharField(max_length=500)
+    existing_entity_id = models.UUIDField(
+        help_text="The Person.id or Organization.id this candidate was matched against."
+    )
+    existing_raw = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Denormalized name on the existing entity at the time of detection.",
+    )
+    similarity = models.FloatField(
+        help_text="SequenceMatcher ratio (0.0–1.0). >= FUZZY_REVIEW_THRESHOLD."
+    )
+    detected_in_document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fuzzy_match_candidates",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=FuzzyMatchStatus.choices,
+        default=FuzzyMatchStatus.PENDING,
+    )
+    detected_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fuzzy_resolutions",
+    )
+
+    class Meta:
+        db_table = "fuzzy_match_candidates"
+        ordering = ["-detected_at"]
+        indexes = [
+            models.Index(fields=["case", "status"], name="idx_fuzzy_case_status"),
+            models.Index(fields=["entity_type"], name="idx_fuzzy_entity_type"),
+        ]
+        constraints = [
+            # One review per (case, entity_type, existing_entity_id, incoming_normalized).
+            # Prevents the same near-match from piling up if the same document
+            # is reprocessed.
+            models.UniqueConstraint(
+                fields=[
+                    "case",
+                    "entity_type",
+                    "existing_entity_id",
+                    "incoming_normalized",
+                ],
+                name="uq_fuzzy_per_pair",
+            ),
+        ]
+
+
 class JobType(models.TextChoices):
     IRS_NAME_SEARCH = "IRS_NAME_SEARCH", "IRS Name Search"
     IRS_FETCH_XML = "IRS_FETCH_XML", "IRS Fetch XML"
