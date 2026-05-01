@@ -741,6 +741,30 @@ _AMOUNT_PATTERN = re.compile(
 _PARCEL_PATTERN = re.compile(r"\b([A-Z]?\d{2,3}[-\s]\d{4,7}(?:[.\-]\d{3})?)\b")
 
 # ---------------------------------------------------------------------------
+# EIN (Employer Identification Number) patterns
+#
+# Format: XX-XXXXXXX (2 digits, dash, 7 digits). This pattern can collide
+# with phone numbers (e.g. "23-1234567") and case numbers, so we only accept
+# matches that occur near a labeling cue ("EIN", "Employer ID Number",
+# "Tax ID", or "I.R.S."). Without the cue we'd flag "23-4567890" in random
+# text. The first qualifying EIN in the document is treated as the primary
+# entity EIN (used by entity_resolution to enrich the case's main org).
+# ---------------------------------------------------------------------------
+
+_EIN_PATTERN = re.compile(r"\b(\d{2}-\d{7})\b")
+_EIN_LABEL_PATTERN = re.compile(
+    r"(?:\bEIN\b"
+    r"|employer\s+identification\s+number"
+    r"|federal\s+(?:tax|id)\s+id"
+    r"|federal\s+identification\s+number"
+    r"|tax\s+id\s+number"
+    r"|tax\s+identification\s+number"
+    r"|I\.?R\.?S\.?\s+number"
+    r"|D[\s-]+Employer\s+identification\s+number)",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
 # Filing reference number patterns
 #
 # UCC filing numbers, SOS filing numbers, instrument numbers:
@@ -868,12 +892,13 @@ def extract_entities(text: str, doc_type: str = "OTHER") -> dict[str, list[dict[
         return {
             "persons": [],
             "orgs": [],
+            "eins": [],
             "dates": [],
             "amounts": [],
             "parcels": [],
             "filing_refs": [],
             "financials": [],
-            "meta": {"doc_type": doc_type, "text_length": 0},
+            "meta": {"doc_type": doc_type, "text_length": 0, "org_ein": ""},
         }
 
     persons: list[dict[str, Any]] = []
@@ -1021,6 +1046,34 @@ def extract_entities(text: str, doc_type: str = "OTHER") -> dict[str, list[dict[
                 }
             )
 
+    # --- EIN extraction (label-anchored to avoid phone-number collisions) ---
+
+    eins: list[dict[str, Any]] = []
+    seen_eins: set[str] = set()
+    label_positions = [m.end() for m in _EIN_LABEL_PATTERN.finditer(text)]
+    for m in _EIN_PATTERN.finditer(text):
+        raw = m.group(1)
+        if raw in seen_eins:
+            continue
+        # Accept only if a labeling cue ("EIN", "Tax ID", "I.R.S. ...")
+        # appears within 80 chars before this match. The window is forward-
+        # only because forms typically print the label before the value.
+        match_start = m.start()
+        nearby = any(0 <= match_start - lp <= 80 for lp in label_positions)
+        if not nearby:
+            continue
+        seen_eins.add(raw)
+        eins.append(
+            {
+                "raw": raw,
+                "normalized": raw,  # already canonical XX-XXXXXXX
+                "context": _get_context(text, m),
+                "position": match_start,
+            }
+        )
+
+    primary_ein = eins[0]["normalized"] if eins else ""
+
     # --- IRS 990 financial extraction (doc_type-specific) ---
 
     financials: list[dict[str, Any]] = []
@@ -1030,6 +1083,7 @@ def extract_entities(text: str, doc_type: str = "OTHER") -> dict[str, list[dict[
     return {
         "persons": persons,
         "orgs": orgs,
+        "eins": eins,
         "dates": dates,
         "amounts": amounts,
         "parcels": parcels,
@@ -1040,6 +1094,8 @@ def extract_entities(text: str, doc_type: str = "OTHER") -> dict[str, list[dict[
             "text_length": len(text),
             "person_count": len(persons),
             "org_count": len(orgs),
+            "ein_count": len(eins),
+            "org_ein": primary_ein,
             "date_count": len(dates),
             "amount_count": len(amounts),
             "parcel_count": len(parcels),

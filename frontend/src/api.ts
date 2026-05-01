@@ -15,6 +15,10 @@ import {
     FinancialSnapshotItem,
     FindingItem,
     FindingUpdatePayload,
+    FuzzyMatchAction,
+    FuzzyMatchEntityType,
+    FuzzyMatchListResponse,
+    FuzzyMatchStatus,
     InvestigatorNote,
     JobEnqueueResponse,
     NewCasePayload,
@@ -763,10 +767,55 @@ export async function fetchCaseJobs(
     limit = 5,
     options?: ApiRequestOptions,
 ): Promise<SearchJobSummary[]> {
-    return request<SearchJobSummary[]>(
+    const payload = await request<{ results: SearchJobSummary[] }>(
         `/api/cases/${caseId}/jobs/?limit=${limit}`,
         { method: "GET" },
         { ...options, timeoutMs: options?.timeoutMs ?? 10000 },
+    );
+    return payload.results ?? [];
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FuzzyMatchCandidate review
+// ──────────────────────────────────────────────────────────────────────
+
+export async function fetchFuzzyCandidates(
+    caseId: string,
+    params?: {
+        status?: "pending" | "merged" | "dismissed" | "all";
+        entityType?: FuzzyMatchEntityType;
+    },
+    options?: ApiRequestOptions,
+): Promise<FuzzyMatchListResponse> {
+    const search = new URLSearchParams();
+    if (params?.status) {
+        search.set("status", params.status);
+    }
+    if (params?.entityType) {
+        search.set("entity_type", params.entityType);
+    }
+    const qs = search.toString();
+    const path = `/api/cases/${caseId}/fuzzy-candidates/${qs ? `?${qs}` : ""}`;
+    return request<FuzzyMatchListResponse>(
+        path,
+        { method: "GET" },
+        { ...options, timeoutMs: options?.timeoutMs ?? 10000 },
+    );
+}
+
+export async function resolveFuzzyCandidate(
+    caseId: string,
+    candidateId: string,
+    action: FuzzyMatchAction,
+    options?: ApiRequestOptions,
+): Promise<{ id: string; status: FuzzyMatchStatus; resolved_at: string }> {
+    return request<{ id: string; status: FuzzyMatchStatus; resolved_at: string }>(
+        `/api/cases/${caseId}/fuzzy-candidates/${candidateId}/`,
+        {
+            method: "PATCH",
+            body: JSON.stringify({ action }),
+        },
+        options,
     );
 }
 

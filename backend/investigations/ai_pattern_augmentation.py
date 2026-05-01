@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import time
 from typing import Any
 
+import anthropic
 from django.db import transaction
 
 from investigations import ai_proxy
@@ -31,8 +34,27 @@ from investigations.models import (
 
 logger = logging.getLogger(__name__)
 
+
+class AIPatternError(RuntimeError):
+    """Raised when the Claude API call for pattern analysis fails.
+
+    The job runner catches this and marks the SearchJob FAILED with the
+    real error message — instead of the previous behavior of returning
+    "" and silently marking the job SUCCESS with zero findings.
+    """
+
+
 MAX_EXCERPT_CHARS = 2000
 MAX_DOCUMENTS = 60
+# Hard ceiling on the JSON-serialized context size we hand to Claude. Sonnet's
+# input window is much larger, but a 100+ doc case at 2000 chars/doc plus
+# entities and findings can blow past it; this also keeps cost predictable.
+MAX_CONTEXT_CHARS = 80_000
+
+# Retry config for transient Anthropic errors (rate-limit / 529 overload /
+# brief network blips). Total wall-time worst case = sum of backoff sleeps.
+CLAUDE_MAX_ATTEMPTS = 3
+CLAUDE_BACKOFF_BASE = 2.0  # seconds; 2, 4, 8 ...
 
 ALLOWED_AI_WEIGHTS = {"SPECULATIVE", "DIRECTIONAL"}
 REQUIRED_PATTERN_FIELDS = (
@@ -43,6 +65,16 @@ REQUIRED_PATTERN_FIELDS = (
     "doc_refs",
     "suggested_action",
 )
+
+# Runtime guard against accusatory language. The system prompt forbids these
+# words, but a model regression / jailbreak could still emit them. We scan
+# user-visible fields and drop any pattern that contains them. The stems below
+# anchor on word boundaries so "fraternity"/"decriminalize" are NOT flagged.
+_FORBIDDEN_TERM_PATTERN = re.compile(
+    r"\b(fraud|crim|illeg|guilt)\w*\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_SCAN_FIELDS = ("title", "description", "rationale", "suggested_action")
 
 SYSTEM_PROMPT = """\
 You are a pattern-detection assistant for a public-records fraud
@@ -94,7 +126,11 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
     relationships = list(Relationship.objects.filter(case=case))
     existing_findings = list(Finding.objects.filter(case=case))
 
-    docs = list(Document.objects.filter(case=case).order_by("uploaded_at")[:MAX_DOCUMENTS])
+    # Newest documents first — most likely to be relevant to the active
+    # investigation. Cap at MAX_DOCUMENTS regardless.
+    docs = list(
+        Document.objects.filter(case=case).order_by("-uploaded_at")[:MAX_DOCUMENTS]
+    )
     doc_ref_map: dict[str, str] = {}
     doc_entries: list[dict[str, Any]] = []
     for i, d in enumerate(docs, start=1):
@@ -174,7 +210,31 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
         ],
         "documents": doc_entries,
     }
+    _enforce_context_budget(ctx, doc_ref_map)
     return ctx, doc_ref_map
+
+
+def _enforce_context_budget(
+    ctx: dict[str, Any],
+    doc_ref_map: dict[str, str],
+) -> None:
+    """Trim the context in-place until it fits MAX_CONTEXT_CHARS.
+
+    Documents are by far the largest input. Drop them oldest-first (the
+    list is newest-first, so we pop from the tail) until under budget.
+    Once dropped, the corresponding Doc-N reference is removed from
+    doc_ref_map so validate_patterns() will reject any AI citation back
+    to a missing doc instead of accepting a dangling reference.
+    """
+    while len(json.dumps(ctx)) > MAX_CONTEXT_CHARS and ctx["documents"]:
+        dropped = ctx["documents"].pop()
+        doc_ref_map.pop(dropped["ref"], None)
+        logger.info(
+            "Trimmed AI context: dropped %s (%s) to fit %d-char budget",
+            dropped["ref"],
+            dropped["filename"],
+            MAX_CONTEXT_CHARS,
+        )
 
 
 def parse_response(raw: str) -> list[dict[str, Any]]:
@@ -219,8 +279,24 @@ def validate_patterns(
         if weight not in ALLOWED_AI_WEIGHTS:
             logger.info("Coercing AI evidence_weight %s -> DIRECTIONAL", weight)
             p["evidence_weight"] = "DIRECTIONAL"
+        if _contains_forbidden_terms(p):
+            dropped += 1
+            logger.warning(
+                "Dropping AI pattern with forbidden accusatory language",
+                extra={"title": str(p.get("title", ""))[:120]},
+            )
+            continue
         kept.append(p)
     return kept, dropped
+
+
+def _contains_forbidden_terms(pattern: dict[str, Any]) -> bool:
+    """True if any user-visible field contains an accusatory term."""
+    for field in _FORBIDDEN_SCAN_FIELDS:
+        value = pattern.get(field)
+        if isinstance(value, str) and _FORBIDDEN_TERM_PATTERN.search(value):
+            return True
+    return False
 
 
 def call_claude(context: dict[str, Any]) -> str:
@@ -232,32 +308,69 @@ def call_claude(context: dict[str, Any]) -> str:
     We do NOT call ai_proxy._call_ai here — that helper json.loads the
     response and returns a dict. parse_response() below expects a string
     so it can defensively handle malformed output without raising.
+
+    Retries up to CLAUDE_MAX_ATTEMPTS on transient errors (rate-limit,
+    overloaded, network blips). Permanent errors (auth, bad request,
+    content-policy refusal) are raised immediately as AIPatternError.
     """
     user_message = (
         "Here is the case. Return patterns as strict JSON per the schema in "
         "the system prompt.\n\n<case>\n" + json.dumps(context) + "\n</case>"
     )
-    try:
-        client = ai_proxy._get_client()
-        response = client.messages.create(
-            model=ai_proxy.MODEL_SONNET,
-            max_tokens=4096,
-            temperature=0.2,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        raw = response.content[0].text or ""
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            lines = [
-                line for line in lines if not line.strip().startswith("```")
-            ]
-            cleaned = "\n".join(lines).strip()
-        return cleaned
-    except Exception as exc:  # noqa: BLE001 — surface via empty-patterns path
-        logger.exception("AI pattern Claude call failed: %s", exc)
-        return ""
+    last_exc: Exception | None = None
+    for attempt in range(1, CLAUDE_MAX_ATTEMPTS + 1):
+        try:
+            client = ai_proxy._get_client()
+            response = client.messages.create(
+                model=ai_proxy.MODEL_SONNET,
+                max_tokens=4096,
+                temperature=0.2,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            raw = response.content[0].text or ""
+            cleaned = raw.strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                lines = [
+                    line for line in lines if not line.strip().startswith("```")
+                ]
+                cleaned = "\n".join(lines).strip()
+            return cleaned
+        except (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        ) as exc:
+            last_exc = exc
+            if attempt < CLAUDE_MAX_ATTEMPTS:
+                sleep_for = CLAUDE_BACKOFF_BASE ** attempt
+                logger.warning(
+                    "Transient Claude error on attempt %d/%d: %s; "
+                    "retrying in %.1fs",
+                    attempt,
+                    CLAUDE_MAX_ATTEMPTS,
+                    exc,
+                    sleep_for,
+                )
+                time.sleep(sleep_for)
+                continue
+        except Exception as exc:
+            # Permanent error (auth, bad request, content-policy, JSON
+            # decode etc.) — fail fast, no retry.
+            logger.exception("AI pattern Claude call failed: %s", exc)
+            raise AIPatternError(f"Claude API call failed: {exc}") from exc
+
+    # Exhausted retries on a transient error.
+    logger.exception(
+        "AI pattern Claude call failed after %d attempts: %s",
+        CLAUDE_MAX_ATTEMPTS,
+        last_exc,
+    )
+    raise AIPatternError(
+        f"Claude API call failed after {CLAUDE_MAX_ATTEMPTS} attempts: {last_exc}"
+    ) from last_exc
 
 
 def analyze_case(case_id: Any) -> dict[str, Any]:

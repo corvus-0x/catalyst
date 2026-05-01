@@ -101,6 +101,16 @@ urlpatterns = [
         name="api_case_jobs",
     ),
     path(
+        "api/cases/<uuid:pk>/fuzzy-candidates/",
+        views.api_case_fuzzy_candidates,
+        name="api_case_fuzzy_candidates",
+    ),
+    path(
+        "api/cases/<uuid:pk>/fuzzy-candidates/<uuid:candidate_id>/",
+        views.api_case_fuzzy_candidate_detail,
+        name="api_case_fuzzy_candidate_detail",
+    ),
+    path(
         "api/cases/<uuid:pk>/documents/<uuid:document_id>/",
         views.api_case_document_detail,
         name="api_case_document_detail",

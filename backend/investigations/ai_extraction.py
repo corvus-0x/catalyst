@@ -416,7 +416,7 @@ def ai_extract_990(
 
     This targets Part IV checklist answers, officer compensation, financial
     totals, and Schedule L/B presence — the exact data our signal rules
-    (SR-006, SR-011, SR-012, SR-013, SR-025, SR-026, SR-029) need.
+    (SR-006, SR-012, SR-013, SR-025, SR-026, SR-028, SR-029) need.
 
     Parameters
     ----------

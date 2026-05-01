@@ -471,3 +471,31 @@ export interface JobEnqueueResponse {
     job_id: string;
     status_url: string;
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Fuzzy entity-match candidates (human-in-the-loop entity resolution)
+// ──────────────────────────────────────────────────────────────────────
+
+export type FuzzyMatchStatus = "PENDING" | "MERGED" | "DISMISSED";
+export type FuzzyMatchEntityType = "person" | "organization";
+
+export interface FuzzyMatchCandidate {
+    id: string;
+    entity_type: FuzzyMatchEntityType;
+    incoming_raw: string;
+    incoming_normalized: string;
+    existing_entity_id: string;
+    existing_raw: string;
+    similarity: number;
+    status: FuzzyMatchStatus;
+    detected_at: string;
+    resolved_at: string | null;
+    detected_in_document_id: string | null;
+}
+
+export interface FuzzyMatchListResponse {
+    results: FuzzyMatchCandidate[];
+    count: number;
+}
+
+export type FuzzyMatchAction = "accept" | "dismiss";

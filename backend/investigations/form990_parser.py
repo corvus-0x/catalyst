@@ -18,11 +18,12 @@ The parser extracts:
 
 Signal Rules Dependencies:
 - SR-006: Part IV Lines 28-29 (transactions with interested persons) + Schedule L
-- SR-011: Part VI Line 1b (independent board members)
 - SR-012: Part VI Line 12a (conflict of interest policy)
 - SR-013: Part VII compensation table ($0 at high-revenue orgs)
 - SR-021: Financial data (revenue spike year-over-year)
 - SR-025: Part IV Line 28 vs Schedule L consistency
+- SR-028: Part VI Line 5 (material diversion / misuse self-disclosed)
+- SR-029: Total expenses vs program-service-expense ratio
 
 Regex Robustness:
 - Handles OCR noise (missing spaces, extra whitespace, line breaks in words)
@@ -600,7 +601,7 @@ def _parse_part_vi_section_a(text: str, result: Form990ParseResult) -> None:
 
     Key fields:
     - Line 1a: Total voting board members (numeric)
-    - Line 1b: Independent voting members (numeric) — SR-011 uses this
+    - Line 1b: Independent voting members (numeric) — governance signal
     - Lines 2-7: Yes/No governance questions
 
     IRS Context: Line 1b = 0 is a governance red flag. Independent members
@@ -889,7 +890,8 @@ def get_governance_red_flags(parsed: dict[str, Any]) -> list[str]:
     part_vi_b = parsed.get("part_vi", {}).get("section_b", {})
     part_iv = parsed.get("part_iv", {})
 
-    # SR-011: Zero independent board members
+    # Zero independent board members — flagged informationally (no
+    # dedicated active rule; surface for investigator review).
     line_1a = part_vi_a.get("line_1a")
     line_1b = part_vi_a.get("line_1b")
 

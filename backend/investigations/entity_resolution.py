@@ -270,6 +270,8 @@ def resolve_person(
     if role:
         create_kwargs["role_tags"] = [_role_to_tag(role)]
 
+    _validate_and_log("person", create_kwargs)
+
     person = Person.objects.create(**create_kwargs)
     _maybe_link_person_document(person, document, context_note)
     logger.debug("resolve_person: created new Person %r id=%s", raw_name, person.id)
@@ -279,6 +281,46 @@ def resolve_person(
         created=True,
         fuzzy_candidates=fuzzy_candidates,
     )
+
+
+def _validate_and_log(entity_kind: str, data: dict) -> None:
+    """Run the appropriate data_quality validator and log any issues.
+
+    Validation issues are logged at WARNING for ERROR-severity findings
+    and INFO for WARNING-severity. We do not block creation — better to
+    surface a flagged record for investigator review than to silently
+    drop it. (QA audit P1 — validators were never called from the
+    resolution path before this.)
+    """
+    try:
+        from . import data_quality
+
+        if entity_kind == "person":
+            result = data_quality.validate_person(data)
+        elif entity_kind == "organization":
+            ein = data.get("ein", "").strip() if data.get("ein") else ""
+            if not ein:
+                return
+            result = data_quality.validate_ein(ein)
+            if result.corrected_data.get("ein") and result.is_clean:
+                # Use the validator's normalized form (XX-XXXXXXX).
+                data["ein"] = result.corrected_data["ein"]
+        elif entity_kind == "property":
+            result = data_quality.validate_property(data)
+        else:
+            return
+    except Exception:  # noqa: BLE001 — validation is best-effort
+        logger.exception("data_quality validation failed for %s", entity_kind)
+        return
+
+    for issue in result.issues:
+        log_method = logger.warning if issue.severity == "ERROR" else logger.info
+        log_method(
+            "entity_validation_%s: [%s] %s",
+            entity_kind,
+            issue.severity,
+            issue.message,
+        )
 
 
 def _maybe_link_person_document(
@@ -453,6 +495,8 @@ def resolve_org(
     if notes:
         create_kwargs["notes"] = notes
 
+    _validate_and_log("organization", create_kwargs)
+
     org = Organization.objects.create(**create_kwargs)
     _maybe_link_org_document(org, document, context_note)
     logger.debug("resolve_org: created new Organization %r id=%s", raw_name, org.id)
@@ -599,6 +643,11 @@ def resolve_all_entities(
     # Sort all fuzzy candidates by similarity descending
     summary.fuzzy_candidates.sort(key=lambda c: c.similarity, reverse=True)
 
+    # Persist fuzzy candidates so investigators can review them in the UI.
+    # Previously these were returned in the summary and then discarded — this
+    # made the "human-in-the-loop" claim only true in the abstract. (QA P1.)
+    _persist_fuzzy_candidates(case, document, summary.fuzzy_candidates)
+
     logger.info(
         "resolve_all_entities: persons +%d matched=%d | orgs +%d matched=%d | fuzzy_candidates=%d",
         summary.persons_created,
@@ -609,6 +658,71 @@ def resolve_all_entities(
     )
 
     return summary
+
+
+def _persist_fuzzy_candidates(
+    case: "Case",
+    document: "Document | None",
+    candidates: list[FuzzyCandidate],
+) -> None:
+    """Write each FuzzyCandidate to the FuzzyMatchCandidate table.
+
+    Uses the unique constraint (case, entity_type, existing_entity_id,
+    incoming_normalized) as a natural idempotency key — `update_or_create`
+    refreshes similarity if it shifts on reprocessing without duplicating
+    rows. PENDING rows that have already been MERGED or DISMISSED stay in
+    their resolved state (we only update PENDING rows).
+    """
+    if not candidates:
+        return
+
+    from .models import FuzzyMatchCandidate, FuzzyMatchStatus
+
+    # Normalize the dataclass entity_type ("org") to model entity_type ("organization").
+    type_map = {"person": "person", "org": "organization"}
+
+    for cand in candidates:
+        entity_type = type_map.get(cand.entity_type, cand.entity_type)
+        try:
+            existing = FuzzyMatchCandidate.objects.filter(
+                case=case,
+                entity_type=entity_type,
+                existing_entity_id=cand.existing_id,
+                incoming_normalized=cand.incoming_normalized,
+            ).first()
+            if existing is None:
+                FuzzyMatchCandidate.objects.create(
+                    case=case,
+                    entity_type=entity_type,
+                    incoming_raw=cand.incoming_raw,
+                    incoming_normalized=cand.incoming_normalized,
+                    existing_entity_id=cand.existing_id,
+                    existing_raw=cand.existing_raw,
+                    similarity=cand.similarity,
+                    detected_in_document=document,
+                )
+            elif existing.status == FuzzyMatchStatus.PENDING:
+                # Refresh similarity / raw text if reprocessing shifted them.
+                existing.similarity = cand.similarity
+                existing.existing_raw = cand.existing_raw
+                if existing.detected_in_document_id is None and document is not None:
+                    existing.detected_in_document = document
+                existing.save(
+                    update_fields=[
+                        "similarity",
+                        "existing_raw",
+                        "detected_in_document",
+                    ]
+                )
+        except Exception:  # noqa: BLE001 — fuzzy persistence is best-effort
+            logger.exception(
+                "fuzzy_candidate_persistence_failed",
+                extra={
+                    "case_id": str(case.pk),
+                    "entity_type": entity_type,
+                    "incoming": cand.incoming_raw,
+                },
+            )
 
 
 def _link_person_to_firm(

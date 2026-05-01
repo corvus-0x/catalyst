@@ -10,6 +10,7 @@ import {
     deleteFinding,
     fetchCaseDetail,
     fetchCaseFindings,
+    fetchFuzzyCandidates,
 
     isAbortError,
     processPendingOcr,
@@ -33,6 +34,7 @@ const TABS = [
     { label: "Research", path: "research" },
     { label: "Financials", path: "financials" },
     { label: "Pipeline", path: "pipeline" },
+    { label: "Match Review", path: "match-review" },
     { label: "Referrals", path: "referrals" },
 ] as const;
 
@@ -86,6 +88,9 @@ export function CaseDetailView() {
     const [savingFindingId, setSavingFindingId] = useState<string | null>(null);
     const [reevaluatingFindings_, setReevaluatingFindings] = useState(false);
 
+    /* ── Fuzzy match candidates (pending count for tab badge) ── */
+    const [fuzzyPendingCount, setFuzzyPendingCount] = useState(0);
+
     /* ── Documents ────────────────────────────────────────── */
     const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
 
@@ -99,14 +104,22 @@ export function CaseDetailView() {
             setLoading(true);
             setLoadingFindings(true);
             try {
-                const [detail, findingsRes] = await Promise.all([
+                const [detail, findingsRes, fuzzyRes] = await Promise.all([
                     fetchCaseDetail(caseId!, { signal: controller.signal }),
                     fetchCaseFindings(caseId!, { signal: controller.signal }),
+                    // Pending-fuzzy count for the Match Review tab badge.
+                    // Failure here must not block the case from loading.
+                    fetchFuzzyCandidates(
+                        caseId!,
+                        { status: "pending" },
+                        { signal: controller.signal },
+                    ).catch(() => ({ results: [], count: 0 })),
                 ]);
                 if (!controller.signal.aborted) {
                     setCaseDetail(detail);
                     setCaseName(detail.name);
                     setFindings(findingsRes.results);
+                    setFuzzyPendingCount(fuzzyRes.count);
                 }
             } catch (err) {
                 if (!isAbortError(err)) pushToast("error", (err as Error).message);
@@ -341,6 +354,9 @@ export function CaseDetailView() {
                         )}
                         {tab.path === "pipeline" && findings.length > 0 && (
                             <span className={styles.tabCount}>{findings.length}</span>
+                        )}
+                        {tab.path === "match-review" && fuzzyPendingCount > 0 && (
+                            <span className={styles.tabCount}>{fuzzyPendingCount}</span>
                         )}
                     </NavLink>
                 ))}

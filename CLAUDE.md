@@ -1,5 +1,5 @@
 # CLAUDE.md — Catalyst System Map
-**Last updated:** 2026-04-21 (Session 36)
+**Last updated:** 2026-04-30 (Session 37 — QA audit P0+P1 hardening pass)
 **Owner:** Tyler Collins (tjcollinsku@gmail.com)
 **Purpose:** This is the single source of truth for the entire Catalyst system. Read this FIRST before doing any work.
 
@@ -151,16 +151,15 @@ This is the #1 problem. We have 6 data source connectors. Here is their actual s
 
 ---
 
-## SIGNAL RULES (14 Rules — cut from 29 in Session 32)
+## SIGNAL RULES (15 Rules — was 14 after Session 32 cuts; SR-028 added in QA-fix batch)
 
-Every rule below is grounded in a real pattern from the founding investigation.
-Speculative rules were cut. New rules can be added in later versions as new
-patterns emerge from real cases.
+Every rule below is grounded in a real pattern from the founding investigation
+or a literal Form 990 self-disclosed field. Speculative rules were cut.
 
 | Rule | Severity | What It Detects | Anomaly Source |
 |------|----------|----------------|----------------|
 | SR-003 | HIGH | VALUATION_ANOMALY — Purchase price deviates >50% from assessed value | Overpayment on property |
-| SR-004 | HIGH | UCC_BURST — 3+ UCC amendments to same filing within 24 hours | Debt restructuring |
+| SR-004 | HIGH | UCC_BURST — 3+ UCC amendments to same filing on the same calendar day | Debt restructuring |
 | SR-005 | HIGH | ZERO_CONSIDERATION — Zero-consideration transfer between related parties | Land swaps w/o equal value |
 | SR-006 | HIGH | SCHEDULE_L_MISSING — 990 Part IV Line 28 Yes but no Schedule L | Missing 990 schedules |
 | SR-010 | MEDIUM | MISSING_990 — Tax-exempt org has no Form 990 on file | Missing 990 schedules |
@@ -172,7 +171,19 @@ patterns emerge from real cases.
 | SR-024 | HIGH | CHARITY_CONDUIT — Charity buys from family, transfers to insider | Self-dealing |
 | SR-025 | CRITICAL | FALSE_DISCLOSURE — 990 denies related-party tx, evidence contradicts | Self-dealing |
 | SR-026 | HIGH | CONTRACTOR_DENIAL — 990 denies contractors, permits show otherwise | Missing 990 schedules |
+| SR-028 | CRITICAL | MATERIAL_DIVERSION — 990 Part VI Line 5 Yes (self-disclosed misuse of assets) | Self-dealing |
 | SR-029 | HIGH | LOW_PROGRAM_RATIO — <50% of expenses go to program services | Charity funds for personal growth |
+
+**persist_signals dedup key:** `(case, rule_id, trigger_entity_id)` with a fallback
+to `trigger_doc` when no entity is present. Previously the key included
+`trigger_doc`, which produced duplicates on re-evaluation and dropped real
+findings when two transactions on the same insider shared a trigger_doc.
+
+**Finding.evidence_snapshot** is populated by every CRITICAL rule (SR-015,
+SR-025) and the entire XML evaluator (SR-006/012/013/028/029). The dict
+captures the exact 990 fields, transaction ids, and entity ids that fired
+the rule, so the referral PDF and audit chain can cite back to the original
+inputs without re-deriving them.
 
 ---
 
@@ -591,6 +602,8 @@ Located in `docs/team/`:
 - Session 34: Document workspace (6-tab doc viewer), sticky notes on docs/entities/findings, financial anomaly highlighting on the Financials tab, entity→documents quick-view, fixed 22 stale field references in views.py (`detected_summary` → `description`, `detected_at` → `created_at`, `signal__case` → `finding__case` across dashboard, graph, search, export, AI endpoints).
 
 - Session 35: **Async research jobs.** Reproduced `502 Bad Gateway` on the "do good" IRS name search. Root cause: gunicorn 30s worker timeout + IRS name-search takes 30–120s streaming 50–90 MB index CSVs across 7 years. Fix: moved 4 slow research endpoints (IRS name search, IRS `fetch_xml`, Ohio AOS, County Parcel) to Django-Q2 async job queue with **Postgres as broker (no Redis)**. Added `SearchJob` model (UUID PK, status/job_type/query_params/result JSONField, case FK nullable, index on `(case, -created_at)`), qcluster worker container in docker-compose, 2 new endpoints (`GET /api/jobs/<id>/` for polling + `GET /api/cases/<id>/jobs/` for reattach-on-mount). Worker code in new `investigations/jobs.py` — 4 task functions mirror the old inline work, write result back to SearchJob row. 24 tests (4 model + 9 jobs + 10 views + 1 integration) — integration uses Django-Q2's `sync=True` to exercise the real cluster runner with a mocked connector. Backend smoke test confirmed: "do good" search now completes async in ~16s, returns 177 IRS filings via the poll endpoint, zero 502s. Frontend not yet wired (POST returns 202, old frontend expects synchronous result) — Research tab currently breaks with a pre-existing `0 is not iterable` error unrelated to this work. **Branch `feat/async-research-jobs`**, 15 commits (b4bc328 → cc5a017). Deferred: frontend useAsyncJob hook, polling UI, reattach-on-mount, applying pattern to batch OCR endpoint.
+
+- Session 37: **QA audit + P0/P1 hardening pass (April 2026, branch `fix/async-jobs-hotfix`).** Driven by a senior-QA audit covering rules engine, AI integration, and data extraction. **All 6 P0 bugs fixed:** (1) `fetch-990s` now invokes `evaluate_case` + `persist_signals` after creating snapshots — previously the entire structured-XML rule path silently never ran on IRS data; (2) `call_claude` raises typed `AIPatternError` on Claude failure instead of returning `""` and silently marking the job SUCCESS; (3) runtime forbidden-word filter (`fraud|crim|illeg|guilt`) on AI pattern output, anchored on `\b` so "fraternity" passes; (4) SHA-256 dedup at upload — `Document.UniqueConstraint(case, sha256_hash)` plus a query-before-save short-circuit (migration `0024`); (5) `form990_parser.parse_form_990` now wired into `_process_uploaded_file` when `classify_document` returns `IRS_990`, with the result stashed under `Document.ingestion_metadata["parsed_990"]`; (6) PDF extraction gated on sniffed MIME (`is_pdf`) instead of `.pdf` filename suffix. **All 5 rules-engine P1 fixes:** SR-004 window math corrected to same-calendar-day; new `SR-028 — Material Diversion of Assets — Self-Disclosed on 990` added to `RULE_REGISTRY` to replace the old SR-025 impersonation; `persist_signals` dedup keys on `(case, rule_id, trigger_entity_id)` with doc fallback and now writes a `FindingEntity` link when `trigger_entity_type` is provided; new `evidence: dict` field on `SignalTrigger` is plumbed into `Finding.evidence_snapshot`; populated for SR-015, SR-025, and the entire XML evaluator (SR-006/012/013/028/029) with snapshot id, ein, tax year, and the literal field values that fired the rule. **All 4 AI-integration P1s:** `_call_ai` no longer leaks raw model text into error responses; `build_context_with_refs` orders documents newest-first and self-trims under `MAX_CONTEXT_CHARS = 80000`; partial unique constraint `uq_one_inflight_ai_pattern_per_case` on `SearchJob` (migration `0025`) with view-level `IntegrityError → 409` handling; `call_claude` retries 3× with exponential backoff on `RateLimitError`/`APIConnectionError`/`APITimeoutError`/`InternalServerError`, fails fast on permanent errors. **Both extraction P1 quick wins:** `data_quality.validate_person`/`validate_ein` now invoked from `resolve_person`/`resolve_org` (org adopts the validator's normalized `XX-XXXXXXX` form); `extract_entities` gained a label-anchored EIN regex (`_EIN_LABEL_PATTERN` requires "EIN"/"Tax ID"/"I.R.S." within 80 chars before the value, blocking phone-number collisions like `23-4567890`). First EIN found is surfaced as `meta["org_ein"]`. **Stale rule references swept:** views.py comments, ai_extraction.py docstring, form990_parser.py comments, county_recorder_connector.py, models.py, irs_connector.py, the broken `test_new_endpoints.py` Signal/EntitySignal references, and the frontend `legalCitations.ts` (rewritten with active-rule-only entries) and `investigationChecklists.ts` (full rewrite for the 15-rule active set). ~40 new regression tests across `test_signals.py`, `test_ai_pattern.py`, `test_upload_pipeline.py`, `test_entity_resolution_validation.py`, `test_entity_extraction_ein.py`. Backend tests cannot run locally (Postgres + ArrayField constraints, see auto-memory `catalyst_test_environment.md`); ruff + py_compile clean throughout. **All work staged uncommitted on branch `fix/async-jobs-hotfix`** for Tyler to push to Railway and validate.
 
 - Session 36: **Frontend async wiring + AI pattern augmentation.** Two tracks executed via subagent-driven development from a 20-task plan (`docs/superpowers/plans/2026-04-21-async-frontend-and-ai-patterns.md`). **Track 1 (frontend async):** Added `useAsyncJob<TResult>` React hook — POSTs enqueue body, receives `202 + {job_id, status_url}`, polls `/api/jobs/<id>/` every 2 s, tracks `idle|queued|running|success|failed`, exposes `run / reattach / cancel`. Retrofit Research tab: three `useAsyncJob` instances (irs/aos/parcels), kept sync path for sos/recorder, reattach-on-mount via `fetchCaseJobs(caseId, 5)`. Fixed spec violation: hook now uses `fetchJob` helper, not inline poll. **Track 2 (AI patterns):** Added `FindingSource.AI` and `JobType.AI_PATTERN_ANALYSIS` (migration `0023_ai_source_and_jobtype.py`, choice-only). New module `investigations/ai_pattern_augmentation.py` (265 lines): `build_context_with_refs(case)` assembles entities/snapshots/findings/docs with Doc-N refs and 2000-char excerpts; `call_claude()` wraps `ai_proxy._call_ai` with the pattern-detection system prompt (forbids "fraud/crime/illegal/guilty", caps weight at DIRECTIONAL, requires Doc-N citations); `parse_response()` + `validate_patterns()` drop malformed patterns and coerce weight; `analyze_case()` writes each surviving pattern as a `Finding(source=AI, evidence_weight=..., status=NEW, severity=INFORMATIONAL)` with `FindingDocument` + `FindingEntity` links. 14 tests (build/parse/validate/analyze). New Django-Q task `run_ai_pattern_analysis(job_id)` in `jobs.py`. New endpoint `POST /api/cases/<id>/ai/analyze-patterns/` returns 202 (409 if an AI job is already in-flight for the case). Frontend: `runAiPatternAnalysis()` API client, `onRefreshFindings` context callback on CaseDetailView, and on the Pipeline tab: source filter chips (All/Rule/Manual/AI), AI badge on cards + detail panel ("🤖 AI", purple), "Run AI Analysis" button driven by `useAsyncJob`. On success a toast shows `{findings_created} · {patterns_dropped} dropped` and re-fetches findings. **Build state:** TypeScript clean, Vite build clean, Vitest 11/11 passing. Backend tests not run due to local-env DB setup gap — will validate on Railway after push. Branch `feat/async-research-jobs`, ending at commit `a418222`.
 
