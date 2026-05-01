@@ -38,9 +38,7 @@ class EinExtractionTests(SimpleTestCase):
         self.assertEqual(result["meta"]["org_ein"], "")
 
     def test_uses_first_qualifying_ein_as_primary(self):
-        text = (
-            "Primary org EIN: 11-1111111. Subsidiary EIN: 22-2222222."
-        )
+        text = "Primary org EIN: 11-1111111. Subsidiary EIN: 22-2222222."
         result = extract_entities(text)
         # Both labels are detected; first match wins for primary_ein.
         self.assertEqual(result["meta"]["org_ein"], "11-1111111")

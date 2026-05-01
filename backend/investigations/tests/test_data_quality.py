@@ -101,9 +101,7 @@ class ValidatePersonTests(SimpleTestCase):
         self.assertEqual(result.error_count, 1)
 
     def test_past_date_of_death_passes(self):
-        result = validate_person(
-            {"full_name": "John Smith", "date_of_death": date(1990, 1, 1)}
-        )
+        result = validate_person({"full_name": "John Smith", "date_of_death": date(1990, 1, 1)})
         self.assertTrue(result.is_clean)
 
 
@@ -120,15 +118,11 @@ class ValidatePropertyTests(SimpleTestCase):
         self.assertTrue(result.is_clean)
 
     def test_negative_assessed_value_is_error(self):
-        result = validate_property(
-            {"parcel_number": "X", "assessed_value": -1000}
-        )
+        result = validate_property({"parcel_number": "X", "assessed_value": -1000})
         self.assertGreaterEqual(result.error_count, 1)
 
     def test_negative_purchase_price_is_error(self):
-        result = validate_property(
-            {"parcel_number": "X", "purchase_price": -1000}
-        )
+        result = validate_property({"parcel_number": "X", "purchase_price": -1000})
         self.assertGreaterEqual(result.error_count, 1)
 
     def test_zero_values_are_acceptable(self):
@@ -159,9 +153,7 @@ class ValidateFinancialSnapshotTests(SimpleTestCase):
         self.assertTrue(result.is_clean)
 
     def test_missing_tax_year_is_error(self):
-        result = validate_financial_snapshot(
-            {"total_revenue": 100_000, "total_expenses": 50_000}
-        )
+        result = validate_financial_snapshot({"total_revenue": 100_000, "total_expenses": 50_000})
         self.assertGreaterEqual(result.error_count, 1)
 
     def test_tax_year_too_old_is_error(self):
@@ -190,13 +182,9 @@ class ValidateFinancialSnapshotTests(SimpleTestCase):
     def test_excessive_revenue_is_warning(self):
         # $50B revenue is implausible for a nonprofit — likely an OCR'd
         # extra digit ($5B → $50B → flag).
-        result = validate_financial_snapshot(
-            {"tax_year": 2023, "total_revenue": 50_000_000_000}
-        )
+        result = validate_financial_snapshot({"tax_year": 2023, "total_revenue": 50_000_000_000})
         self.assertGreaterEqual(result.warning_count, 1)
 
     def test_non_numeric_value_is_error(self):
-        result = validate_financial_snapshot(
-            {"tax_year": 2023, "total_revenue": "lots of money"}
-        )
+        result = validate_financial_snapshot({"tax_year": 2023, "total_revenue": "lots of money"})
         self.assertGreaterEqual(result.error_count, 1)

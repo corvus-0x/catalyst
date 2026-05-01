@@ -23,9 +23,7 @@ class NormalizePersonNameTests(SimpleTestCase):
         self.assertEqual(normalize_person_name("John A. Smith"), "john a smith")
 
     def test_inverted_form_uninverted(self):
-        self.assertEqual(
-            normalize_person_name("EXAMPLE, JOHN A."), "john a example"
-        )
+        self.assertEqual(normalize_person_name("EXAMPLE, JOHN A."), "john a example")
 
     def test_strips_honorifics(self):
         self.assertEqual(normalize_person_name("Dr. Jane Doe"), "jane doe")
@@ -59,9 +57,7 @@ class NormalizePersonNameTests(SimpleTestCase):
 
 class NormalizeOrgNameTests(SimpleTestCase):
     def test_strips_trailing_inc(self):
-        self.assertEqual(
-            normalize_org_name("Acme Holdings, Inc."), "acme holdings"
-        )
+        self.assertEqual(normalize_org_name("Acme Holdings, Inc."), "acme holdings")
         self.assertEqual(normalize_org_name("Acme Holdings Inc"), "acme holdings")
 
     def test_strips_llc(self):
@@ -69,18 +65,12 @@ class NormalizeOrgNameTests(SimpleTestCase):
         self.assertEqual(normalize_org_name("Acme Holdings L.L.C."), "acme holdings")
 
     def test_strips_filler_words(self):
-        self.assertEqual(
-            normalize_org_name("The Doe Foundation"), "doe foundation"
-        )
-        self.assertEqual(
-            normalize_org_name("Friends of the Library"), "friends library"
-        )
+        self.assertEqual(normalize_org_name("The Doe Foundation"), "doe foundation")
+        self.assertEqual(normalize_org_name("Friends of the Library"), "friends library")
 
     def test_preserves_distinguishing_words(self):
         # Should NOT strip "Holdings", "Charity", etc. — those carry meaning.
-        self.assertEqual(
-            normalize_org_name("Bright Future Charity"), "bright future charity"
-        )
+        self.assertEqual(normalize_org_name("Bright Future Charity"), "bright future charity")
 
     def test_empty_input_returns_empty(self):
         self.assertEqual(normalize_org_name(""), "")

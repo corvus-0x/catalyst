@@ -106,10 +106,7 @@ class ParseForm990EdgeCaseTests(SimpleTestCase):
     def test_handles_x_checkbox_marker(self):
         # 990 forms often use "X" or "☒" instead of "Yes" in machine-printed
         # boxes. The parser should accept either as a positive answer.
-        text = (
-            "Part IV Checklist\n"
-            "29 Business transaction with interested person? X\n"
-        )
+        text = "Part IV Checklist\n29 Business transaction with interested person? X\n"
         result = parse_form_990(text)
         # Either "Yes" or "X" depending on _normalize_yes_no; whichever it
         # is, the value must be truthy and non-None.

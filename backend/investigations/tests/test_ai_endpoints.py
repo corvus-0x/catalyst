@@ -60,9 +60,7 @@ class AiSummarizeEndpointTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_invalid_json_returns_400(self):
-        response = self.client.post(
-            self.url, data="not json", content_type="application/json"
-        )
+        response = self.client.post(self.url, data="not json", content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
     @patch("investigations.ai_proxy.ai_summarize")
@@ -114,16 +112,12 @@ class AiConnectionsEndpointTests(TestCase):
             ],
             "patterns_detected": [],
         }
-        response = self.client.post(
-            self.url, data="{}", content_type="application/json"
-        )
+        response = self.client.post(self.url, data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["suggestions"]), 1)
 
     def test_invalid_json_returns_400(self):
-        response = self.client.post(
-            self.url, data="not json", content_type="application/json"
-        )
+        response = self.client.post(self.url, data="not json", content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
     @patch("investigations.ai_proxy.ai_connections")
@@ -141,9 +135,7 @@ class AiConnectionsEndpointTests(TestCase):
     @patch("investigations.ai_proxy.ai_connections")
     def test_helper_error_maps_to_500(self, mock_helper):
         mock_helper.return_value = {"error": "boom"}
-        response = self.client.post(
-            self.url, data="{}", content_type="application/json"
-        )
+        response = self.client.post(self.url, data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 500)
 
 
@@ -173,9 +165,7 @@ class AiNarrativeEndpointTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_missing_detection_ids_returns_400(self):
-        response = self.client.post(
-            self.url, data="{}", content_type="application/json"
-        )
+        response = self.client.post(self.url, data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
     def test_invalid_tone_returns_400(self):

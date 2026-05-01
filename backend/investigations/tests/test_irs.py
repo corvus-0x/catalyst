@@ -563,7 +563,9 @@ class SearchPub78Tests(unittest.TestCase):
     def _make_records(self) -> tuple[list[Pub78Record], StalenessWarning]:
         lines = "\n".join(
             [
-                _sample_pub78_line(ein="111111111", name="EXAMPLE CHARITY MINISTRIES INC", state="OH"),
+                _sample_pub78_line(
+                    ein="111111111", name="EXAMPLE CHARITY MINISTRIES INC", state="OH"
+                ),
                 _sample_pub78_line(ein="222222222", name="COMMUNITY IMPROVEMENT CORP", state="OH"),
                 _sample_pub78_line(ein="333333333", name="TOLEDO ARTS COUNCIL", state="OH"),
                 _sample_pub78_line(ein="444444444", name="EXAMPLE CHARITY FOUNDATION", state="IL"),
@@ -655,7 +657,9 @@ class SearchEoBmfTests(unittest.TestCase):
         csv_bytes = _make_eo_bmf_csv(
             [
                 _sample_bmf_row(EIN="111111111", NAME="EXAMPLE CHARITY MINISTRIES INC", STATE="OH"),
-                _sample_bmf_row(EIN="222222222", NAME="EXAMPLE EXAMPLE EXAMPLE VETERANS CENTER INC", STATE="OH"),
+                _sample_bmf_row(
+                    EIN="222222222", NAME="EXAMPLE EXAMPLE EXAMPLE VETERANS CENTER INC", STATE="OH"
+                ),
                 _sample_bmf_row(EIN="333333333", NAME="EXAMPLE CHARITY FOUNDATION", STATE="IL"),
                 _sample_bmf_row(EIN="444444444", NAME="REVOKED ORG", STATE="OH", STATUS="12"),
             ]
@@ -743,7 +747,9 @@ class LookupEinTests(unittest.TestCase):
         csv_bytes = _make_eo_bmf_csv(
             [
                 _sample_bmf_row(EIN="341234567", NAME="EXAMPLE CHARITY MINISTRIES INC"),
-                _sample_bmf_row(EIN="341234568", NAME="EXAMPLE EXAMPLE EXAMPLE VETERANS CENTER INC", STATUS="12"),
+                _sample_bmf_row(
+                    EIN="341234568", NAME="EXAMPLE EXAMPLE EXAMPLE VETERANS CENTER INC", STATUS="12"
+                ),
             ]
         )
         records = _parse_eo_bmf(csv_bytes.decode("utf-8"))

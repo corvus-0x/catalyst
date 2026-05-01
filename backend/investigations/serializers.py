@@ -673,6 +673,7 @@ class NoteUpdateSerializer:
 # Findings
 # ---------------------------------------------------------------------------
 
+
 def serialize_finding(finding) -> dict:
     """Serialize a Finding instance to a JSON-safe dict."""
     from .signal_rules import RULE_REGISTRY
@@ -682,12 +683,8 @@ def serialize_finding(finding) -> dict:
     return {
         "id": str(finding.pk),
         "rule_id": finding.rule_id,
-        "title": finding.title or (
-            rule_info.title if rule_info else finding.rule_id
-        ),
-        "description": finding.description or (
-            rule_info.description if rule_info else ""
-        ),
+        "title": finding.title or (rule_info.title if rule_info else finding.rule_id),
+        "description": finding.description or (rule_info.description if rule_info else ""),
         "narrative": finding.narrative,
         "severity": finding.severity,
         "status": finding.status,
@@ -696,18 +693,12 @@ def serialize_finding(finding) -> dict:
         "investigator_note": finding.investigator_note,
         "legal_refs": finding.legal_refs,
         "evidence_snapshot": finding.evidence_snapshot,
-        "trigger_doc_id": (
-            str(finding.trigger_doc_id)
-            if finding.trigger_doc_id else None
-        ),
+        "trigger_doc_id": (str(finding.trigger_doc_id) if finding.trigger_doc_id else None),
         "trigger_doc_filename": (
-            finding.trigger_doc.filename
-            if finding.trigger_doc_id and finding.trigger_doc
-            else None
+            finding.trigger_doc.filename if finding.trigger_doc_id and finding.trigger_doc else None
         ),
         "trigger_entity_id": (
-            str(finding.trigger_entity_id)
-            if finding.trigger_entity_id else None
+            str(finding.trigger_entity_id) if finding.trigger_entity_id else None
         ),
         "created_at": finding.created_at.isoformat(),
         "updated_at": finding.updated_at.isoformat(),
@@ -722,16 +713,11 @@ def serialize_finding(finding) -> dict:
         "document_links": [
             {
                 "document_id": str(link.document_id),
-                "document_filename": (
-                    link.document.filename
-                    if link.document else ""
-                ),
+                "document_filename": (link.document.filename if link.document else ""),
                 "page_reference": link.page_reference,
                 "context_note": link.context_note,
             }
-            for link in finding.document_links.select_related(
-                "document"
-            )
+            for link in finding.document_links.select_related("document")
         ],
     }
 
@@ -775,25 +761,17 @@ class FindingIntakeSerializer:
         self.validated_data = {}
 
         if self.case is None:
-            self._errors = {"non_field_errors": [
-                "A case instance is required."
-            ]}
+            self._errors = {"non_field_errors": ["A case instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
-            self._errors = {"non_field_errors": [
-                "Expected a JSON object."
-            ]}
+            self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
-        unexpected_fields = (
-            sorted(set(self.initial_data.keys()) - self.allowed_fields)
-        )
+        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
-                "non_field_errors": [
-                    f"Unexpected field(s): {', '.join(unexpected_fields)}"
-                ]
+                "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
             }
             return False
 
@@ -805,47 +783,32 @@ class FindingIntakeSerializer:
         severity = (self.initial_data.get("severity") or "").strip()
         if severity not in _VALID_SEVERITIES:
             valid_list = ", ".join(sorted(_VALID_SEVERITIES))
-            self._errors = {
-                "severity": [
-                    f"Invalid severity. Expected one of: {valid_list}."
-                ]
-            }
+            self._errors = {"severity": [f"Invalid severity. Expected one of: {valid_list}."]}
             return False
 
-        evidence_weight = (
-            self.initial_data.get("evidence_weight", EvidenceWeight.SPECULATIVE)
-        )
+        evidence_weight = self.initial_data.get("evidence_weight", EvidenceWeight.SPECULATIVE)
         if evidence_weight not in _VALID_EVIDENCE_WEIGHTS:
             valid_list = ", ".join(sorted(_VALID_EVIDENCE_WEIGHTS))
             self._errors = {
-                "evidence_weight": [
-                    f"Invalid evidence_weight. "
-                    f"Expected one of: {valid_list}."
-                ]
+                "evidence_weight": [f"Invalid evidence_weight. Expected one of: {valid_list}."]
             }
             return False
 
         legal_refs = self.initial_data.get("legal_refs", [])
         if not isinstance(legal_refs, list):
-            self._errors = {"legal_refs": [
-                "legal_refs must be a list of strings."
-            ]}
+            self._errors = {"legal_refs": ["legal_refs must be a list of strings."]}
             return False
 
         self.validated_data = {
             "case": self.case,
             "title": title,
-            "narrative": (
-                self.initial_data.get("narrative", "")
-            ),
+            "narrative": (self.initial_data.get("narrative", "")),
             "severity": severity,
             "evidence_weight": evidence_weight,
             "source": FindingSource.MANUAL,
             "status": FindingStatus.NEW,
             "legal_refs": legal_refs,
-            "investigator_note": (
-                self.initial_data.get("investigator_note", "")
-            ),
+            "investigator_note": (self.initial_data.get("investigator_note", "")),
         }
         return True
 
@@ -890,55 +853,38 @@ class FindingUpdateSerializer:
         self.validated_data = {}
 
         if self.instance is None:
-            self._errors = {"non_field_errors": [
-                "A finding instance is required."
-            ]}
+            self._errors = {"non_field_errors": ["A finding instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
-            self._errors = {"non_field_errors": [
-                "Expected a JSON object."
-            ]}
+            self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
         if not self.initial_data:
-            self._errors = {"non_field_errors": [
-                "Provide at least one updatable field in the payload."
-            ]}
-            return False
-
-        unexpected_fields = (
-            sorted(set(self.initial_data.keys()) - self.allowed_fields)
-        )
-        if unexpected_fields:
             self._errors = {
-                "non_field_errors": [
-                    f"Unexpected field(s): {', '.join(unexpected_fields)}"
-                ]
+                "non_field_errors": ["Provide at least one updatable field in the payload."]
             }
             return False
 
-        new_status = self.initial_data.get(
-            "status", self.instance.status
-        )
-        if new_status not in _VALID_FINDING_STATUSES:
-            valid_list = ", ".join(sorted(_VALID_FINDING_STATUSES))
-            self._errors = {"status": [
-                f"Invalid status. Expected one of: {valid_list}."
-            ]}
+        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        if unexpected_fields:
+            self._errors = {
+                "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
+            }
             return False
 
-        new_note = self.initial_data.get(
-            "investigator_note", self.instance.investigator_note
-        )
+        new_status = self.initial_data.get("status", self.instance.status)
+        if new_status not in _VALID_FINDING_STATUSES:
+            valid_list = ", ".join(sorted(_VALID_FINDING_STATUSES))
+            self._errors = {"status": [f"Invalid status. Expected one of: {valid_list}."]}
+            return False
 
-        if new_status == FindingStatus.DISMISSED and not (
-            new_note or ""
-        ).strip():
+        new_note = self.initial_data.get("investigator_note", self.instance.investigator_note)
+
+        if new_status == FindingStatus.DISMISSED and not (new_note or "").strip():
             self._errors = {
                 "investigator_note": [
-                    "A dismissal rationale is required when "
-                    "setting status to DISMISSED."
+                    "A dismissal rationale is required when setting status to DISMISSED."
                 ]
             }
             return False
@@ -949,44 +895,33 @@ class FindingUpdateSerializer:
         }
 
         if "title" in self.initial_data:
-            self.validated_data["title"] = (
-                self.initial_data["title"]
-            )
+            self.validated_data["title"] = self.initial_data["title"]
 
         if "narrative" in self.initial_data:
-            self.validated_data["narrative"] = (
-                self.initial_data["narrative"]
-            )
+            self.validated_data["narrative"] = self.initial_data["narrative"]
 
         if "severity" in self.initial_data:
             sev = self.initial_data["severity"]
             if sev not in _VALID_SEVERITIES:
                 valid_list = ", ".join(sorted(_VALID_SEVERITIES))
-                self._errors = {"severity": [
-                    f"Invalid severity. Expected one of: {valid_list}."
-                ]}
+                self._errors = {"severity": [f"Invalid severity. Expected one of: {valid_list}."]}
                 return False
             self.validated_data["severity"] = sev
 
         if "evidence_weight" in self.initial_data:
             ew = self.initial_data["evidence_weight"]
             if ew not in _VALID_EVIDENCE_WEIGHTS:
-                valid_list = ", ".join(
-                    sorted(_VALID_EVIDENCE_WEIGHTS)
-                )
-                self._errors = {"evidence_weight": [
-                    f"Invalid evidence_weight. "
-                    f"Expected one of: {valid_list}."
-                ]}
+                valid_list = ", ".join(sorted(_VALID_EVIDENCE_WEIGHTS))
+                self._errors = {
+                    "evidence_weight": [f"Invalid evidence_weight. Expected one of: {valid_list}."]
+                }
                 return False
             self.validated_data["evidence_weight"] = ew
 
         if "legal_refs" in self.initial_data:
             lr = self.initial_data["legal_refs"]
             if not isinstance(lr, list):
-                self._errors = {"legal_refs": [
-                    "legal_refs must be a list of strings."
-                ]}
+                self._errors = {"legal_refs": ["legal_refs must be a list of strings."]}
                 return False
             self.validated_data["legal_refs"] = lr
 
@@ -996,21 +931,15 @@ class FindingUpdateSerializer:
         if not self.validated_data:
             raise ValueError("Call is_valid() before save().")
         self.instance.status = self.validated_data["status"]
-        self.instance.investigator_note = (
-            self.validated_data["investigator_note"]
-        )
+        self.instance.investigator_note = self.validated_data["investigator_note"]
         if "title" in self.validated_data:
             self.instance.title = self.validated_data["title"]
         if "narrative" in self.validated_data:
-            self.instance.narrative = (
-                self.validated_data["narrative"]
-            )
+            self.instance.narrative = self.validated_data["narrative"]
         if "severity" in self.validated_data:
             self.instance.severity = self.validated_data["severity"]
         if "evidence_weight" in self.validated_data:
-            self.instance.evidence_weight = (
-                self.validated_data["evidence_weight"]
-            )
+            self.instance.evidence_weight = self.validated_data["evidence_weight"]
         if "legal_refs" in self.validated_data:
             self.instance.legal_refs = self.validated_data["legal_refs"]
 

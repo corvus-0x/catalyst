@@ -107,25 +107,16 @@ class Command(BaseCommand):
 
         for case in cases:
             # Clear existing auto-generated findings so we start fresh
-            cleared, _ = Finding.objects.filter(
-                case=case, source="AUTO"
-            ).delete()
+            cleared, _ = Finding.objects.filter(case=case, source="AUTO").delete()
             if cleared:
-                self.stdout.write(
-                    f"  Case {case.pk}: cleared {cleared} auto-findings."
-                )
+                self.stdout.write(f"  Case {case.pk}: cleared {cleared} auto-findings.")
 
             docs = Document.objects.filter(case=case)
             for doc in docs:
-                triggers = (
-                    evaluate_document(case, doc)
-                    + evaluate_case(case, trigger_doc=doc)
-                )
+                triggers = evaluate_document(case, doc) + evaluate_case(case, trigger_doc=doc)
                 created = persist_signals(case, triggers)
                 backfill_count += len(created)
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Backfill complete. Created {backfill_count} finding(s)."
-            )
+            self.style.SUCCESS(f"Backfill complete. Created {backfill_count} finding(s).")
         )

@@ -118,9 +118,7 @@ def _make_ucc(case, filing_number, filing_date):
     )
 
 
-def _make_finding(
-    case, rule_id="SR-003", severity=Severity.CRITICAL, status=FindingStatus.NEW
-):
+def _make_finding(case, rule_id="SR-003", severity=Severity.CRITICAL, status=FindingStatus.NEW):
     return Finding.objects.create(
         case=case,
         rule_id=rule_id,
@@ -527,12 +525,7 @@ class SR013ZeroOfficerPayTests(TestCase):
         self.assertEqual(result[0].severity, "HIGH")
 
     def test_no_fire_below_revenue_threshold(self):
-        text = (
-            "Form 990\n"
-            "Gross receipts $ 100,000\n"
-            "(1) JANE EXAMPLE\n"
-            "President 40 0 0 0\n"
-        )
+        text = "Form 990\nGross receipts $ 100,000\n(1) JANE EXAMPLE\nPresident 40 0 0 0\n"
         doc = self._make_990(text)
         self.assertEqual(evaluate_sr013_zero_officer_pay(self.case, doc), [])
 
@@ -714,12 +707,20 @@ class SR021RevenueSpikeTests(TestCase):
     def test_fires_per_organization_independently(self):
         other_org = _make_org(self.case, "Other Charity", org_type="CHARITY")
         self.FinancialSnapshot.objects.create(
-            case=self.case, document=self.doc, organization=other_org,
-            ein="98-7654321", tax_year=2022, total_revenue=200_000,
+            case=self.case,
+            document=self.doc,
+            organization=other_org,
+            ein="98-7654321",
+            tax_year=2022,
+            total_revenue=200_000,
         )
         self.FinancialSnapshot.objects.create(
-            case=self.case, document=self.doc, organization=other_org,
-            ein="98-7654321", tax_year=2023, total_revenue=600_000,  # 200%
+            case=self.case,
+            document=self.doc,
+            organization=other_org,
+            ein="98-7654321",
+            tax_year=2023,
+            total_revenue=600_000,  # 200%
         )
         # Plus a non-spiking org
         self._snap(tax_year=2022, revenue=500_000)
@@ -737,10 +738,10 @@ class SR021RevenueSpikeTests(TestCase):
 
 class SR025FalseDisclosureTests(TestCase):
     """SR-025 fires when:
-      (a) a 990 document text says 'No' to Line 28 (transactions with
-          interested persons), AND
-      (b) the case database contains property transactions involving the
-          extended insider network of charity officers.
+    (a) a 990 document text says 'No' to Line 28 (transactions with
+        interested persons), AND
+    (b) the case database contains property transactions involving the
+        extended insider network of charity officers.
     """
 
     def setUp(self):
@@ -778,7 +779,10 @@ class SR025FalseDisclosureTests(TestCase):
             "former officer ... ?  No\n"
         )
         return _make_document(
-            self.case, doc_type="IRS_990", extracted_text=text, filename="990.pdf",
+            self.case,
+            doc_type="IRS_990",
+            extracted_text=text,
+            filename="990.pdf",
         )
 
     def _make_insider_txn(self):
@@ -984,9 +988,7 @@ class SR024CharityConduitTests(TestCase):
             time_span_days=5,
         )
         for i, t in enumerate(txns, start=1):
-            self.TransactionChainLink.objects.create(
-                chain=chain, transaction=t, sequence_number=i
-            )
+            self.TransactionChainLink.objects.create(chain=chain, transaction=t, sequence_number=i)
         return chain
 
     def test_fires_on_two_step_insider_swap_chain(self):
@@ -1012,7 +1014,10 @@ class SR024CharityConduitTests(TestCase):
         t1 = self._txn(date_=date(2023, 1, 1), buyer_name="A", seller_name="B")
         t2 = self._txn(date_=date(2023, 2, 1), buyer_name="B", seller_name="C")
         chain = self.TransactionChain.objects.create(
-            case=self.case, chain_type="OTHER", label="Other type", time_span_days=30,
+            case=self.case,
+            chain_type="OTHER",
+            label="Other type",
+            time_span_days=30,
         )
         self.TransactionChainLink.objects.create(chain=chain, transaction=t1, sequence_number=1)
         self.TransactionChainLink.objects.create(chain=chain, transaction=t2, sequence_number=2)
@@ -1036,7 +1041,9 @@ class SR026ContractorDenialTests(TestCase):
 
     def _make_permit(self, text):
         return _make_document(
-            self.case, doc_type="BUILDING_PERMIT", extracted_text=text,
+            self.case,
+            doc_type="BUILDING_PERMIT",
+            extracted_text=text,
             filename="permit.pdf",
         )
 
@@ -1514,13 +1521,11 @@ class FetchNinetyNinesRunsRulesEngineTests(TestCase):
         )
 
     def test_fetch_990s_creates_finding_from_xml_rules(self):
-        with self.patch(
-            "investigations.irs_connector.search_990_by_ein"
-        ) as mock_search, self.patch(
-            "investigations.irs_connector.fetch_990_xml"
-        ) as mock_fetch, self.patch(
-            "investigations.irs_connector.parse_990_xml"
-        ) as mock_parse:
+        with (
+            self.patch("investigations.irs_connector.search_990_by_ein") as mock_search,
+            self.patch("investigations.irs_connector.fetch_990_xml") as mock_fetch,
+            self.patch("investigations.irs_connector.parse_990_xml") as mock_parse,
+        ):
             filing = self._filing()
             mock_search.return_value = self.SearchResult(
                 ein="123456789",

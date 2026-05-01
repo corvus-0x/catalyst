@@ -79,9 +79,7 @@ class FuzzyCandidatePersistenceTests(TestCase):
             document=self.doc,
         )
 
-        candidates = FuzzyMatchCandidate.objects.filter(
-            case=self.case, entity_type="organization"
-        )
+        candidates = FuzzyMatchCandidate.objects.filter(case=self.case, entity_type="organization")
         self.assertEqual(candidates.count(), 1)
 
     def test_no_candidate_when_exact_match(self):
@@ -172,7 +170,9 @@ class FuzzyCandidateEndpointTests(TestCase):
         return FuzzyMatchCandidate.objects.create(**defaults)
 
     def test_default_returns_only_pending(self):
-        self._candidate(incoming_normalized="a", existing_entity_id="00000000-0000-0000-0000-0000000000a1")
+        self._candidate(
+            incoming_normalized="a", existing_entity_id="00000000-0000-0000-0000-0000000000a1"
+        )
         self._candidate(
             incoming_normalized="b",
             existing_entity_id="00000000-0000-0000-0000-0000000000b1",
@@ -200,11 +200,13 @@ class FuzzyCandidateEndpointTests(TestCase):
 
     def test_filter_by_entity_type(self):
         self._candidate(
-            incoming_normalized="p", entity_type="person",
+            incoming_normalized="p",
+            entity_type="person",
             existing_entity_id="00000000-0000-0000-0000-000000000aa1",
         )
         self._candidate(
-            incoming_normalized="o", entity_type="organization",
+            incoming_normalized="o",
+            entity_type="organization",
             existing_entity_id="00000000-0000-0000-0000-000000000bb1",
         )
 
@@ -216,9 +218,7 @@ class FuzzyCandidateEndpointTests(TestCase):
     def test_404_for_unknown_case(self):
         import uuid
 
-        response = self.client.get(
-            reverse("api_case_fuzzy_candidates", args=[uuid.uuid4()])
-        )
+        response = self.client.get(reverse("api_case_fuzzy_candidates", args=[uuid.uuid4()]))
         self.assertEqual(response.status_code, 404)
 
 
@@ -274,9 +274,7 @@ class FuzzyCandidatePatchEndpointTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_invalid_json_returns_400(self):
-        response = self.client.patch(
-            self.url, data="not json", content_type="application/json"
-        )
+        response = self.client.patch(self.url, data="not json", content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
     def test_already_resolved_returns_409(self):

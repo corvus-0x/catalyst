@@ -134,4 +134,3 @@ class PropertyTransactionAdmin(admin.ModelAdmin):
     list_filter = ("transaction_date",)
     search_fields = ("property__address", "property__parcel_number")
     ordering = ("-transaction_date",)
-

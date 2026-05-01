@@ -180,9 +180,7 @@ class ReferralPDFGenerator:
         story = []
 
         story.append(Spacer(1, 1.5 * inch))
-        story.append(
-            Paragraph("REFERRAL PACKAGE", self.styles["CoverTitle"])
-        )
+        story.append(Paragraph("REFERRAL PACKAGE", self.styles["CoverTitle"]))
         story.append(
             Paragraph(
                 f"Case: {case.name}",
@@ -200,22 +198,13 @@ class ReferralPDFGenerator:
         )
         story.append(Spacer(1, 0.3 * inch))
 
-        status_badge = (
-            f"Status: <b>{case.status}</b>"
-            if case.status
-            else "Status: Unknown"
-        )
-        story.append(
-            Paragraph(status_badge, self.styles["CoverSubtitle"])
-        )
+        status_badge = f"Status: <b>{case.status}</b>" if case.status else "Status: Unknown"
+        story.append(Paragraph(status_badge, self.styles["CoverSubtitle"]))
 
         story.append(Spacer(1, 1.5 * inch))
         story.append(
             Paragraph(
-                (
-                    "<b>CONFIDENTIAL</b><br/>"
-                    "FOR LAW ENFORCEMENT USE ONLY"
-                ),
+                ("<b>CONFIDENTIAL</b><br/>FOR LAW ENFORCEMENT USE ONLY"),
                 self.styles["CoverSubtitle"],
             )
         )
@@ -226,9 +215,7 @@ class ReferralPDFGenerator:
         """Build the executive summary section."""
         story = []
 
-        story.append(
-            Paragraph("EXECUTIVE SUMMARY", self.styles["SectionHeading"])
-        )
+        story.append(Paragraph("EXECUTIVE SUMMARY", self.styles["SectionHeading"]))
 
         # Summary table
         persons_count = case.persons.count()
@@ -251,8 +238,7 @@ class ReferralPDFGenerator:
         summary_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0),
-                     colors.HexColor("#e8e8e8")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                     ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -260,9 +246,12 @@ class ReferralPDFGenerator:
                     ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
                     ("TOPPADDING", (0, 0), (-1, 0), 6),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("ROWBACKGROUNDS",
-                     (0, 1), (-1, -1),
-                     [colors.white, colors.HexColor("#f5f5f5")]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#f5f5f5")],
+                    ),
                 ]
             )
         )
@@ -298,13 +287,9 @@ class ReferralPDFGenerator:
         )
 
         if persons or organizations:
-            story.append(
-                Paragraph("Persons", self.styles["FindingTitle"])
-            )
+            story.append(Paragraph("Persons", self.styles["FindingTitle"]))
             if persons:
-                person_data = [
-                    ["Name", "Role Tags", "Address", "Tax ID"]
-                ]
+                person_data = [["Name", "Role Tags", "Address", "Tax ID"]]
                 for p in persons:
                     roles = ", ".join(p.role_tags) if p.role_tags else "—"
                     person_data.append(
@@ -328,34 +313,29 @@ class ReferralPDFGenerator:
                 person_table.setStyle(
                     TableStyle(
                         [
-                            ("BACKGROUND", (0, 0), (-1, 0),
-                             colors.HexColor("#e8e8e8")),
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
                             ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                            ("FONTNAME", (0, 0), (-1, 0),
-                             "Helvetica-Bold"),
+                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                             ("FONTSIZE", (0, 0), (-1, -1), 8),
                             ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                             ("TOPPADDING", (0, 0), (-1, 0), 4),
-                            ("GRID", (0, 0), (-1, -1), 0.5,
-                             colors.grey),
-                            ("ROWBACKGROUNDS",
-                             (0, 1), (-1, -1),
-                             [colors.white, colors.HexColor(
-                                 "#f5f5f5")]),
+                            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                            (
+                                "ROWBACKGROUNDS",
+                                (0, 1),
+                                (-1, -1),
+                                [colors.white, colors.HexColor("#f5f5f5")],
+                            ),
                         ]
                     )
                 )
                 story.append(person_table)
                 story.append(Spacer(1, 0.2 * inch))
 
-            story.append(
-                Paragraph("Organizations", self.styles["FindingTitle"])
-            )
+            story.append(Paragraph("Organizations", self.styles["FindingTitle"]))
             if organizations:
-                org_data = [
-                    ["Name", "Type", "EIN", "Status", "Address"]
-                ]
+                org_data = [["Name", "Type", "EIN", "Status", "Address"]]
                 for o in organizations:
                     org_data.append(
                         [
@@ -380,21 +360,20 @@ class ReferralPDFGenerator:
                 org_table.setStyle(
                     TableStyle(
                         [
-                            ("BACKGROUND", (0, 0), (-1, 0),
-                             colors.HexColor("#e8e8e8")),
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
                             ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                            ("FONTNAME", (0, 0), (-1, 0),
-                             "Helvetica-Bold"),
+                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                             ("FONTSIZE", (0, 0), (-1, -1), 8),
                             ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                             ("TOPPADDING", (0, 0), (-1, 0), 4),
-                            ("GRID", (0, 0), (-1, -1), 0.5,
-                             colors.grey),
-                            ("ROWBACKGROUNDS",
-                             (0, 1), (-1, -1),
-                             [colors.white, colors.HexColor(
-                                 "#f5f5f5")]),
+                            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                            (
+                                "ROWBACKGROUNDS",
+                                (0, 1),
+                                (-1, -1),
+                                [colors.white, colors.HexColor("#f5f5f5")],
+                            ),
                         ]
                     )
                 )
@@ -413,9 +392,7 @@ class ReferralPDFGenerator:
         """Build the findings section (one per confirmed finding)."""
         story = []
 
-        story.append(
-            Paragraph("FINDINGS", self.styles["SectionHeading"])
-        )
+        story.append(Paragraph("FINDINGS", self.styles["SectionHeading"]))
 
         for idx, finding in enumerate(findings, start=1):
             story.append(
@@ -459,10 +436,7 @@ class ReferralPDFGenerator:
             entity_links = finding.entity_links.all()
             if entity_links.exists():
                 entities_text = ", ".join(
-                    [
-                        el.context_note or f"Entity ID {el.entity_id}"
-                        for el in entity_links
-                    ]
+                    [el.context_note or f"Entity ID {el.entity_id}" for el in entity_links]
                 )
                 story.append(
                     Paragraph(
@@ -482,19 +456,9 @@ class ReferralPDFGenerator:
                 )
                 for doc_link in doc_links:
                     doc = doc_link.document
-                    page_ref = (
-                        f", p.{doc_link.page_reference}"
-                        if doc_link.page_reference
-                        else ""
-                    )
-                    context = (
-                        f" ({doc_link.context_note})"
-                        if doc_link.context_note
-                        else ""
-                    )
-                    citation = (
-                        f"• {doc.filename}{page_ref}{context}"
-                    )
+                    page_ref = f", p.{doc_link.page_reference}" if doc_link.page_reference else ""
+                    context = f" ({doc_link.context_note})" if doc_link.context_note else ""
+                    citation = f"• {doc.filename}{page_ref}{context}"
                     story.append(
                         Paragraph(
                             citation,
@@ -594,24 +558,11 @@ class ReferralPDFGenerator:
 
         for fs in sorted(financials, key=lambda x: x.tax_year or 0):
             year_str = str(fs.tax_year) if fs.tax_year else "—"
-            revenue_str = (
-                f"${fs.total_revenue:,.0f}"
-                if fs.total_revenue is not None
-                else "—"
-            )
-            expenses_str = (
-                f"${fs.total_expenses:,.0f}"
-                if fs.total_expenses is not None
-                else "—"
-            )
-            assets_str = (
-                f"${fs.net_assets_eoy:,.0f}"
-                if fs.net_assets_eoy is not None
-                else "—"
-            )
+            revenue_str = f"${fs.total_revenue:,.0f}" if fs.total_revenue is not None else "—"
+            expenses_str = f"${fs.total_expenses:,.0f}" if fs.total_expenses is not None else "—"
+            assets_str = f"${fs.net_assets_eoy:,.0f}" if fs.net_assets_eoy is not None else "—"
 
-            table_data.append([year_str, revenue_str, expenses_str,
-                               assets_str])
+            table_data.append([year_str, revenue_str, expenses_str, assets_str])
 
         table = Table(
             table_data,
@@ -620,8 +571,7 @@ class ReferralPDFGenerator:
         table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0),
-                     colors.HexColor("#e8e8e8")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                     ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
                     ("ALIGN", (0, 0), (0, -1), "LEFT"),
@@ -630,9 +580,12 @@ class ReferralPDFGenerator:
                     ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                     ("TOPPADDING", (0, 0), (-1, 0), 4),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("ROWBACKGROUNDS",
-                     (0, 1), (-1, -1),
-                     [colors.white, colors.HexColor("#f5f5f5")]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#f5f5f5")],
+                    ),
                 ]
             )
         )
@@ -678,16 +631,10 @@ class ReferralPDFGenerator:
 
         for idx, doc in enumerate(docs, start=1):
             # Truncate long filenames
-            filename = (
-                doc.filename[:40] + "..."
-                if len(doc.filename) > 40
-                else doc.filename
-            )
+            filename = doc.filename[:40] + "..." if len(doc.filename) > 40 else doc.filename
             # Truncate long hash for readability
             hash_display = (
-                doc.sha256_hash[:16] + "..."
-                if len(doc.sha256_hash) > 16
-                else doc.sha256_hash
+                doc.sha256_hash[:16] + "..." if len(doc.sha256_hash) > 16 else doc.sha256_hash
             )
             doc_data.append(
                 [
@@ -705,8 +652,7 @@ class ReferralPDFGenerator:
         doc_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0),
-                     colors.HexColor("#e8e8e8")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                     ("ALIGN", (0, 0), (0, -1), "CENTER"),
                     ("ALIGN", (1, 0), (-1, -1), "LEFT"),
@@ -715,9 +661,12 @@ class ReferralPDFGenerator:
                     ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                     ("TOPPADDING", (0, 0), (-1, 0), 4),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("ROWBACKGROUNDS",
-                     (0, 1), (-1, -1),
-                     [colors.white, colors.HexColor("#f5f5f5")]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#f5f5f5")],
+                    ),
                     ("FONTNAME", (0, 1), (-1, -1), "Courier"),
                     ("FONTSIZE", (3, 1), (3, -1), 7),
                 ]

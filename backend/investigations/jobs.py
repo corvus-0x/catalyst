@@ -102,9 +102,7 @@ def run_irs_fetch_xml(job_id: str) -> None:
     try:
         query = job.query_params["query"].strip()
         cleaned = query.replace("-", "").replace(" ", "")
-        search_result = irs_connector.search_990_by_ein(
-            cleaned, years=irs_connector.INDEX_YEARS
-        )
+        search_result = irs_connector.search_990_by_ein(cleaned, years=irs_connector.INDEX_YEARS)
         records = []
         notes = []
         for filing in search_result.filings:
@@ -120,9 +118,7 @@ def run_irs_fetch_xml(job_id: str) -> None:
                 irs_connector.IRSParseError,
             ) as e:
                 record["parsed"] = None
-                notes.append(
-                    f"Could not parse {filing.return_type} {filing.tax_year}: {e}"
-                )
+                notes.append(f"Could not parse {filing.return_type} {filing.tax_year}: {e}")
             records.append(record)
 
         if search_result.total_found == 0:
@@ -157,9 +153,7 @@ def _aos_report_to_dict(report) -> dict:
         "report_type": report.report_type,
         "entity_type": report.entity_type,
         "report_period": report.report_period,
-        "release_date": (
-            report.release_date.isoformat() if report.release_date else None
-        ),
+        "release_date": (report.release_date.isoformat() if report.release_date else None),
         "has_findings_for_recovery": report.has_findings_for_recovery,
         "pdf_url": report.pdf_url,
     }
@@ -214,27 +208,20 @@ def run_county_parcel_search(job_id: str) -> None:
         county = None
         if county_str:
             try:
-                county = county_auditor_connector.OhioCounty[
-                    county_str.upper()
-                ]
+                county = county_auditor_connector.OhioCounty[county_str.upper()]
             except KeyError:
                 _mark_failed(
                     job,
                     ValueError(
-                        f"Invalid county: {county_str!r}. "
-                        "Must be a valid Ohio county name."
+                        f"Invalid county: {county_str!r}. Must be a valid Ohio county name."
                     ),
                 )
                 return
 
         if search_type == "parcel":
-            result_obj = county_auditor_connector.search_parcels_by_pin(
-                query, county=county
-            )
+            result_obj = county_auditor_connector.search_parcels_by_pin(query, county=county)
         else:
-            result_obj = county_auditor_connector.search_parcels_by_owner(
-                query, county=county
-            )
+            result_obj = county_auditor_connector.search_parcels_by_owner(query, county=county)
 
         records = [_parcel_record_to_dict(r) for r in result_obj.records]
         notes = [result_obj.note] if result_obj.note else []

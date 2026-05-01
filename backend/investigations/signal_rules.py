@@ -1395,9 +1395,7 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                     ),
                     trigger_doc=trigger_doc,
                     trigger_entity_id=snap.organization_id,
-                    trigger_entity_type=(
-                        "organization" if snap.organization_id else None
-                    ),
+                    trigger_entity_type=("organization" if snap.organization_id else None),
                     evidence={
                         **snapshot_evidence,
                         "related_party_flags": which_flags,
@@ -1437,9 +1435,7 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                     ),
                     trigger_doc=trigger_doc,
                     trigger_entity_id=snap.organization_id,
-                    trigger_entity_type=(
-                        "organization" if snap.organization_id else None
-                    ),
+                    trigger_entity_type=("organization" if snap.organization_id else None),
                     evidence={
                         **snapshot_evidence,
                         "conflict_of_interest_policy": coi,
@@ -1471,9 +1467,7 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                         ),
                         trigger_doc=trigger_doc,
                         trigger_entity_id=snap.organization_id,
-                        trigger_entity_type=(
-                            "organization" if snap.organization_id else None
-                        ),
+                        trigger_entity_type=("organization" if snap.organization_id else None),
                         evidence={
                             **snapshot_evidence,
                             "total_revenue": total_rev,
@@ -1511,9 +1505,7 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                         ),
                         trigger_doc=trigger_doc,
                         trigger_entity_id=snap.organization_id,
-                        trigger_entity_type=(
-                            "organization" if snap.organization_id else None
-                        ),
+                        trigger_entity_type=("organization" if snap.organization_id else None),
                         evidence={
                             **snapshot_evidence,
                             "total_expenses": total_exp,
@@ -1539,9 +1531,7 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                     ),
                     trigger_doc=trigger_doc,
                     trigger_entity_id=snap.organization_id,
-                    trigger_entity_type=(
-                        "organization" if snap.organization_id else None
-                    ),
+                    trigger_entity_type=("organization" if snap.organization_id else None),
                     evidence={
                         **snapshot_evidence,
                         "material_diversion_or_misuse": True,
@@ -1878,12 +1868,8 @@ def coverage_audit(case) -> list[CoverageGap]:
     # ── Manual vs automatic finding ratio ───────────────────────────
     from .models import Finding, FindingSource
 
-    auto_count = Finding.objects.filter(
-        case=case, source=FindingSource.AUTO
-    ).count()
-    manual_count = Finding.objects.filter(
-        case=case, source=FindingSource.MANUAL
-    ).count()
+    auto_count = Finding.objects.filter(case=case, source=FindingSource.AUTO).count()
+    manual_count = Finding.objects.filter(case=case, source=FindingSource.MANUAL).count()
 
     if manual_count > auto_count and manual_count >= 3:
         gaps.append(

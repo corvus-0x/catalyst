@@ -83,9 +83,7 @@ class CaseJobsViewTests(TestCase):
                 job_type=JobType.IRS_NAME_SEARCH,
                 query_params={"n": i},
             )
-        resp = self.client.get(
-            reverse("api_case_jobs", args=[self.case.id]) + "?limit=5"
-        )
+        resp = self.client.get(reverse("api_case_jobs", args=[self.case.id]) + "?limit=5")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["results"]), 5)
 
