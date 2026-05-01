@@ -110,9 +110,7 @@ class ExtractFromPdfRoutingTests(SimpleTestCase):
     @patch("investigations.extraction._extract_text_ocr")
     @patch("investigations.extraction._extract_text_direct")
     @patch("investigations.extraction._validate_pdf_header")
-    def test_sparse_text_falls_back_to_ocr(
-        self, mock_validate, mock_direct, mock_ocr
-    ):
+    def test_sparse_text_falls_back_to_ocr(self, mock_validate, mock_direct, mock_ocr):
         from ..models import OcrStatus
 
         mock_validate.return_value = True
@@ -128,9 +126,7 @@ class ExtractFromPdfRoutingTests(SimpleTestCase):
     @patch("investigations.extraction._extract_text_ocr")
     @patch("investigations.extraction._extract_text_direct")
     @patch("investigations.extraction._validate_pdf_header")
-    def test_oversized_file_skips_ocr_returns_pending(
-        self, mock_validate, mock_direct, mock_ocr
-    ):
+    def test_oversized_file_skips_ocr_returns_pending(self, mock_validate, mock_direct, mock_ocr):
         from ..models import OcrStatus
 
         mock_validate.return_value = True
@@ -144,9 +140,7 @@ class ExtractFromPdfRoutingTests(SimpleTestCase):
 
     @patch("investigations.extraction._extract_text_direct")
     @patch("investigations.extraction._validate_pdf_header")
-    def test_direct_extraction_file_not_found_returns_failed(
-        self, mock_validate, mock_direct
-    ):
+    def test_direct_extraction_file_not_found_returns_failed(self, mock_validate, mock_direct):
         from ..models import OcrStatus
 
         mock_validate.return_value = True

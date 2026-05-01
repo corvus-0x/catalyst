@@ -638,9 +638,7 @@ _ORG_PATTERN = re.compile(
 
 # Leading junk tokens that get mashed onto org names from timestamps,
 # OCR artifacts, or page headers (e.g. "PM Do Good In His Name Inc")
-_ORG_LEADING_JUNK = re.compile(
-    r"^(?:AM|PM|ST|ND|RD|TH)\s+", re.IGNORECASE
-)
+_ORG_LEADING_JUNK = re.compile(r"^(?:AM|PM|ST|ND|RD|TH)\s+", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Date patterns
@@ -949,16 +947,12 @@ def extract_entities(text: str, doc_type: str = "OTHER") -> dict[str, list[dict[
 
     # Pattern to strip trailing form section headers that got mashed
     # into org names (e.g. "INC Section A. Officers, Directors, Trust")
-    _section_tail = re.compile(
-        r"\s+Section\s+[A-Z]\.?\s.*$", re.IGNORECASE
-    )
+    _section_tail = re.compile(r"\s+Section\s+[A-Z]\.?\s.*$", re.IGNORECASE)
 
     # If a person's ALL-CAPS name precedes the org name in the text,
     # the org regex swallows it: "KAREN HOMAN Do Good Real Estate, LLC"
     # Strip any leading ALL-CAPS words that look like a person name.
-    _leading_person = re.compile(
-        r"^([A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\s+(?=[A-Z][a-z])"
-    )
+    _leading_person = re.compile(r"^([A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\s+(?=[A-Z][a-z])")
 
     for m in _ORG_PATTERN.finditer(text):
         raw = m.group(1).strip().rstrip(",")

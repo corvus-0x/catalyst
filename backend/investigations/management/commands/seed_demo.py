@@ -114,8 +114,7 @@ class Command(BaseCommand):
         if not created:
             self.stdout.write(
                 self.style.WARNING(
-                    f"Demo case already exists: {case.id}  "
-                    f"(use --reset to recreate)"
+                    f"Demo case already exists: {case.id}  (use --reset to recreate)"
                 )
             )
             self.stdout.write(f"CASE_ID={case.id}")
@@ -125,15 +124,11 @@ class Command(BaseCommand):
             self._create_demo_data(case)
 
         self.stdout.write("")
-        self.stdout.write(
-            self.style.SUCCESS("✓ Demo case created successfully!")
-        )
+        self.stdout.write(self.style.SUCCESS("✓ Demo case created successfully!"))
         self.stdout.write(f"CASE_ID={case.id}")
         self.stdout.write("")
         self.stdout.write("To explore the demo case:")
-        self.stdout.write(
-            f"  http://localhost:3000/cases/{case.id}"
-        )
+        self.stdout.write(f"  http://localhost:3000/cases/{case.id}")
 
     def _create_demo_data(self, case: Case):
         """Create all demo entities, relationships, and findings."""
@@ -168,12 +163,8 @@ class Command(BaseCommand):
             },
         )
 
-        self.stdout.write(
-            self.style.SUCCESS(f"  ✓ {bff.name}")
-        )
-        self.stdout.write(
-            self.style.SUCCESS(f"  ✓ {mitchell_dev.name}")
-        )
+        self.stdout.write(self.style.SUCCESS(f"  ✓ {bff.name}"))
+        self.stdout.write(self.style.SUCCESS(f"  ✓ {mitchell_dev.name}"))
 
         # ────────────────────────────────────────────────────────────────
         # 2. PERSONS
@@ -219,9 +210,7 @@ class Command(BaseCommand):
         )
 
         for person in [sarah, james, david, rachel]:
-            self.stdout.write(
-                self.style.SUCCESS(f"  ✓ {person.full_name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"  ✓ {person.full_name}"))
 
         # ────────────────────────────────────────────────────────────────
         # 3. PERSON-ORGANIZATION ROLES
@@ -259,9 +248,7 @@ class Command(BaseCommand):
             org=bff,
             role="Secretary / Board Member",
         )
-        self.stdout.write(
-            self.style.SUCCESS("  ✓ All person-org roles created")
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ All person-org roles created"))
 
         # ────────────────────────────────────────────────────────────────
         # 4. RELATIONSHIPS (FAMILY)
@@ -278,9 +265,7 @@ class Command(BaseCommand):
                 "confidence": 1.0,
             },
         )
-        self.stdout.write(
-            self.style.SUCCESS("  ✓ Sarah ↔ James (SPOUSE)")
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ Sarah ↔ James (SPOUSE)"))
 
         # ────────────────────────────────────────────────────────────────
         # 5. ADDRESSES
@@ -313,12 +298,8 @@ class Command(BaseCommand):
             },
         )
 
-        self.stdout.write(
-            self.style.SUCCESS(f"  ✓ {oak_st_addr.raw_text}")
-        )
-        self.stdout.write(
-            self.style.SUCCESS(f"  ✓ {elm_ave_addr.raw_text}")
-        )
+        self.stdout.write(self.style.SUCCESS(f"  ✓ {oak_st_addr.raw_text}"))
+        self.stdout.write(self.style.SUCCESS(f"  ✓ {elm_ave_addr.raw_text}"))
 
         # ────────────────────────────────────────────────────────────────
         # 6. PROPERTIES
@@ -356,14 +337,10 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"  ✓ {prop_oak.address} (parcel {prop_oak.parcel_number})"
-            )
+            self.style.SUCCESS(f"  ✓ {prop_oak.address} (parcel {prop_oak.parcel_number})")
         )
         self.stdout.write(
-            self.style.SUCCESS(
-                f"  ✓ {prop_elm.address} (parcel {prop_elm.parcel_number})"
-            )
+            self.style.SUCCESS(f"  ✓ {prop_elm.address} (parcel {prop_elm.parcel_number})")
         )
 
         # ────────────────────────────────────────────────────────────────
@@ -406,15 +383,10 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                "  ✓ BFF bought 1250 Oak from Mitchell Dev @ $425K "
-                "(assessed: $180K)"
+                "  ✓ BFF bought 1250 Oak from Mitchell Dev @ $425K (assessed: $180K)"
             )
         )
-        self.stdout.write(
-            self.style.SUCCESS(
-                "  ✓ Mitchell Dev transferred 875 Elm to James @ $0"
-            )
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ Mitchell Dev transferred 875 Elm to James @ $0"))
 
         # ────────────────────────────────────────────────────────────────
         # 8. DOCUMENTS (Metadata Only)
@@ -498,9 +470,7 @@ class Command(BaseCommand):
                 },
             )
             docs[doc_data["filename"]] = doc
-            self.stdout.write(
-                self.style.SUCCESS(f"  ✓ {doc_data['display_name']}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"  ✓ {doc_data['display_name']}"))
 
         # ────────────────────────────────────────────────────────────────
         # 9. DOCUMENT LINKS
@@ -512,8 +482,7 @@ class Command(BaseCommand):
         OrgDocument.objects.get_or_create(
             org=bff,
             document=docs["BFF_Form990_2021.pdf"],
-            defaults={
-                "context_note": "Most recent 990 filing (2021 tax year)"},
+            defaults={"context_note": "Most recent 990 filing (2021 tax year)"},
         )
         OrgDocument.objects.get_or_create(
             org=bff,
@@ -521,9 +490,7 @@ class Command(BaseCommand):
             defaults={"context_note": "Formation documents (2015)"},
         )
 
-        self.stdout.write(
-            self.style.SUCCESS("  ✓ Documents linked to entities")
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ Documents linked to entities"))
 
         # ────────────────────────────────────────────────────────────────
         # 10. FINANCIAL SNAPSHOTS (990 Data)
@@ -571,9 +538,11 @@ class Command(BaseCommand):
         ]
 
         for snap_data in snapshot_data:
-            doc = docs.get("BFF_Form990_2021.pdf") if (
-                snap_data["tax_year"] == 2021
-            ) else docs.get("BFF_Form990_2020.pdf")
+            doc = (
+                docs.get("BFF_Form990_2021.pdf")
+                if (snap_data["tax_year"] == 2021)
+                else docs.get("BFF_Form990_2020.pdf")
+            )
 
             FinancialSnapshot.objects.get_or_create(
                 document=doc or docs["BFF_Form990_2021.pdf"],
@@ -588,18 +557,10 @@ class Command(BaseCommand):
                     "investment_income": 0,
                     "other_revenue": 0,
                     "total_revenue": snap_data["total_revenue"],
-                    "grants_paid": int(
-                        snap_data["total_revenue"] * Decimal("0.15")
-                    ),
-                    "salaries_and_compensation": int(
-                        snap_data["total_revenue"] * Decimal("0.0")
-                    ),
-                    "professional_fundraising": int(
-                        snap_data["total_revenue"] * Decimal("0.10")
-                    ),
-                    "other_expenses": int(
-                        snap_data["total_revenue"] * Decimal("0.25")
-                    ),
+                    "grants_paid": int(snap_data["total_revenue"] * Decimal("0.15")),
+                    "salaries_and_compensation": int(snap_data["total_revenue"] * Decimal("0.0")),
+                    "professional_fundraising": int(snap_data["total_revenue"] * Decimal("0.10")),
+                    "other_expenses": int(snap_data["total_revenue"] * Decimal("0.25")),
                     "total_expenses": snap_data["total_expenses"],
                     "net_assets_eoy": snap_data["net_assets_eoy"],
                     "num_employees": 2,
@@ -612,8 +573,7 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"  ✓ 990 {snap_data['tax_year']}: "
-                    f"${snap_data['total_revenue']:,} revenue"
+                    f"  ✓ 990 {snap_data['tax_year']}: ${snap_data['total_revenue']:,} revenue"
                 )
             )
 
@@ -626,8 +586,7 @@ class Command(BaseCommand):
         findings_data = [
             {
                 "rule_id": "SR-003",
-                "title": "VALUATION_ANOMALY — Property purchased at 136% above "
-                "assessed value",
+                "title": "VALUATION_ANOMALY — Property purchased at 136% above assessed value",
                 "description": (
                     "1250 Oak Street assessed at $180,000 but purchased by "
                     "Bright Future Foundation from Mitchell Development Group "
@@ -653,8 +612,7 @@ class Command(BaseCommand):
             },
             {
                 "rule_id": "SR-005",
-                "title": "ZERO_CONSIDERATION — Property transferred for $0 "
-                "between related parties",
+                "title": "ZERO_CONSIDERATION — Property transferred for $0 between related parties",
                 "description": (
                     "875 Elm Avenue transferred by Mitchell Development Group "
                     "to James Mitchell (board member) for zero consideration on "
@@ -722,8 +680,7 @@ class Command(BaseCommand):
             },
             {
                 "rule_id": "SR-013",
-                "title": "ZERO_OFFICER_PAY — $0 officer compensation at $4.2M "
-                "revenue organization",
+                "title": "ZERO_OFFICER_PAY — $0 officer compensation at $4.2M revenue organization",
                 "description": (
                     "Form 990 (2021) Part VII shows $0 in officer compensation "
                     "for Bright Future Foundation despite $4.2M in total revenue. "
@@ -747,8 +704,7 @@ class Command(BaseCommand):
             },
             {
                 "rule_id": "SR-015",
-                "title": "INSIDER_SWAP — Related party on both sides of "
-                "property transaction",
+                "title": "INSIDER_SWAP — Related party on both sides of property transaction",
                 "description": (
                     "Sarah Mitchell (Executive Director) appears on both sides of "
                     "property transactions: (1) BFF purchased 1250 Oak for $425K "
@@ -773,8 +729,7 @@ class Command(BaseCommand):
             },
             {
                 "rule_id": "SR-021",
-                "title": "REVENUE_SPIKE — Year-over-year revenue increase "
-                "exceeds 100%",
+                "title": "REVENUE_SPIKE — Year-over-year revenue increase exceeds 100%",
                 "description": (
                     "Bright Future Foundation's revenue increased from $156,000 "
                     "(2017) to $890,000 (2018), a 471% increase. From 2019 to "
@@ -857,9 +812,11 @@ class Command(BaseCommand):
 
             # Link to trigger document if available
             if finding_data["rule_id"] in ["SR-003", "SR-005"]:
-                doc = docs.get("Deed_1250_Oak_St.pdf") if (
-                    finding_data["rule_id"] == "SR-003"
-                ) else docs.get("Deed_875_Elm_Ave.pdf")
+                doc = (
+                    docs.get("Deed_1250_Oak_St.pdf")
+                    if (finding_data["rule_id"] == "SR-003")
+                    else docs.get("Deed_875_Elm_Ave.pdf")
+                )
                 if doc:
                     FindingDocument.objects.get_or_create(
                         finding=finding,
@@ -871,9 +828,7 @@ class Command(BaseCommand):
                     )
 
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"  ✓ {finding_data['rule_id']}: {finding_data['title'][:50]}"
-                )
+                self.style.SUCCESS(f"  ✓ {finding_data['rule_id']}: {finding_data['title'][:50]}")
             )
 
         # ────────────────────────────────────────────────────────────────
@@ -928,9 +883,7 @@ class Command(BaseCommand):
             },
         )
 
-        self.stdout.write(
-            self.style.SUCCESS("  ✓ Investigator notes created")
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ Investigator notes created"))
 
         # ────────────────────────────────────────────────────────────────
         # 13. AUDIT LOG ENTRIES
@@ -955,6 +908,4 @@ class Command(BaseCommand):
             notes=f"Created {len(findings_data)} demo findings",
         )
 
-        self.stdout.write(
-            self.style.SUCCESS("  ✓ Audit log entries created")
-        )
+        self.stdout.write(self.style.SUCCESS("  ✓ Audit log entries created"))

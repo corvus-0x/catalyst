@@ -277,9 +277,7 @@ class Organization(UUIDPrimaryKeyModel):
     formation_date = models.DateField(
         blank=True,
         null=True,
-        help_text=(
-            "Date the entity was legally formed per Secretary of State records."
-        ),
+        help_text=("Date the entity was legally formed per Secretary of State records."),
     )
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -983,25 +981,18 @@ class Finding(UUIDPrimaryKeyModel):
     triages them by updating status and evidence_weight independently.
     """
 
-    case = models.ForeignKey(
-        Case, on_delete=models.RESTRICT, related_name="findings"
-    )
+    case = models.ForeignKey(Case, on_delete=models.RESTRICT, related_name="findings")
     rule_id = models.CharField(
         max_length=10,
         blank=True,
         default="",
-        help_text=(
-            "Signal rule that generated this (e.g. SR-003). "
-            "Blank for manual findings."
-        ),
+        help_text=("Signal rule that generated this (e.g. SR-003). Blank for manual findings."),
     )
     title = models.CharField(max_length=500)
     description = models.TextField(
         blank=True,
         default="",
-        help_text=(
-            "Machine-generated explanation of what triggered this finding."
-        ),
+        help_text=("Machine-generated explanation of what triggered this finding."),
     )
     narrative = models.TextField(
         blank=True,
@@ -1073,15 +1064,11 @@ class Finding(UUIDPrimaryKeyModel):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return (
-            f"{self.rule_id or 'MANUAL'} [{self.severity}] — {self.status}"
-        )
+        return f"{self.rule_id or 'MANUAL'} [{self.severity}] — {self.status}"
 
 
 class FindingEntity(UUIDPrimaryKeyModel):
-    finding = models.ForeignKey(
-        Finding, on_delete=models.CASCADE, related_name="entity_links"
-    )
+    finding = models.ForeignKey(Finding, on_delete=models.CASCADE, related_name="entity_links")
     entity_id = models.UUIDField()
     entity_type = models.CharField(max_length=50)
     context_note = models.TextField(blank=True, default="")
@@ -1089,24 +1076,18 @@ class FindingEntity(UUIDPrimaryKeyModel):
     class Meta:
         db_table = "finding_entity"
         indexes = [
-            models.Index(
-                fields=["finding"], name="idx_finding_entity_finding"
-            ),
+            models.Index(fields=["finding"], name="idx_finding_entity_finding"),
         ]
 
 
 class FindingDocument(UUIDPrimaryKeyModel):
-    finding = models.ForeignKey(
-        Finding, on_delete=models.CASCADE, related_name="document_links"
-    )
+    finding = models.ForeignKey(Finding, on_delete=models.CASCADE, related_name="document_links")
     document = models.ForeignKey(
         "Document",
         on_delete=models.CASCADE,
         related_name="finding_links",
     )
-    page_reference = models.CharField(
-        max_length=100, blank=True, default=""
-    )
+    page_reference = models.CharField(max_length=100, blank=True, default="")
     context_note = models.TextField(blank=True, default="")
 
     class Meta:
@@ -1329,9 +1310,7 @@ class FuzzyMatchStatus(models.TextChoices):
 class FuzzyMatchCandidate(UUIDPrimaryKeyModel):
     """A near-match surfaced for investigator review (not auto-merged)."""
 
-    case = models.ForeignKey(
-        Case, on_delete=models.CASCADE, related_name="fuzzy_match_candidates"
-    )
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="fuzzy_match_candidates")
     entity_type = models.CharField(
         max_length=20,
         help_text="'person' or 'organization' — matches FindingEntity.entity_type",

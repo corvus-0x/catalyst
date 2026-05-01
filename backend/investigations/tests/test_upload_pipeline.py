@@ -20,9 +20,7 @@ class UploadShaDedupTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.case = Case.objects.create(name="Dedup Test Case")
-        self.upload_url = reverse(
-            "api_case_document_bulk_upload", args=[self.case.pk]
-        )
+        self.upload_url = reverse("api_case_document_bulk_upload", args=[self.case.pk])
 
     def _upload(self, name="evidence.txt", content=b"plain text body"):
         return self.client.post(
@@ -100,11 +98,10 @@ class Form990ParserWiredInTests(TestCase):
     @patch("investigations.classification.classify_document")
     @patch("investigations.extraction.extract_from_pdf")
     @patch("investigations.form990_parser.parse_form_990")
-    def test_parse_form_990_called_for_form_990_doc(
-        self, mock_parse, mock_extract, mock_classify
-    ):
+    def test_parse_form_990_called_for_form_990_doc(self, mock_parse, mock_extract, mock_classify):
         mock_extract.return_value = (
-            "Form 990 Return of Organization Exempt from Income Tax", OcrStatus.COMPLETED,
+            "Form 990 Return of Organization Exempt from Income Tax",
+            OcrStatus.COMPLETED,
         )
         mock_classify.return_value = DocumentType.IRS_990
         mock_parse.return_value = {
@@ -134,27 +131,28 @@ class Form990ParserWiredInTests(TestCase):
         # Parsed 990 data is captured in ingestion_metadata so the rules
         # engine and the UI can read structured Part IV/VI/VII answers.
         self.assertIn("parsed_990", document.ingestion_metadata)
-        self.assertEqual(
-            document.ingestion_metadata["parsed_990"]["parse_quality"], 0.85
-        )
+        self.assertEqual(document.ingestion_metadata["parsed_990"]["parse_quality"], 0.85)
 
     @patch("investigations.classification.classify_document")
     @patch("investigations.extraction.extract_from_pdf")
     @patch("investigations.form990_parser.parse_form_990")
-    def test_extraction_gated_on_mime_not_extension(
-        self, mock_parse, mock_extract, mock_classify
-    ):
+    def test_extraction_gated_on_mime_not_extension(self, mock_parse, mock_extract, mock_classify):
         """A file with PDF magic bytes but a non-.pdf name must still be
         treated as a PDF — extension-based gating let these slip through
         with empty extracted_text. (QA audit P0 #6.)
         """
         mock_extract.return_value = (
-            "Form 990 Return of Organization Exempt", OcrStatus.COMPLETED,
+            "Form 990 Return of Organization Exempt",
+            OcrStatus.COMPLETED,
         )
         mock_classify.return_value = DocumentType.IRS_990
         mock_parse.return_value = {
-            "part_iv": {}, "part_vi": {}, "part_vii": {}, "financials": {},
-            "parse_quality": 0.5, "extracted_fields_count": 1,
+            "part_iv": {},
+            "part_vi": {},
+            "part_vii": {},
+            "financials": {},
+            "parse_quality": 0.5,
+            "extracted_fields_count": 1,
             "total_fields_attempted": 1,
         }
 
@@ -178,17 +176,14 @@ class Form990ParserWiredInTests(TestCase):
     @patch("investigations.classification.classify_document")
     @patch("investigations.extraction.extract_from_pdf")
     @patch("investigations.form990_parser.parse_form_990")
-    def test_parse_form_990_skipped_for_non_990_doc(
-        self, mock_parse, mock_extract, mock_classify
-    ):
+    def test_parse_form_990_skipped_for_non_990_doc(self, mock_parse, mock_extract, mock_classify):
         mock_extract.return_value = (
-            "WARRANTY DEED for property at 123 Main St", OcrStatus.COMPLETED,
+            "WARRANTY DEED for property at 123 Main St",
+            OcrStatus.COMPLETED,
         )
         mock_classify.return_value = DocumentType.DEED
 
-        upload = SimpleUploadedFile(
-            "deed.pdf", b"%PDF-1.4 fake pdf bytes", "application/pdf"
-        )
+        upload = SimpleUploadedFile("deed.pdf", b"%PDF-1.4 fake pdf bytes", "application/pdf")
         document = self.views._process_uploaded_file(
             uploaded_file=upload,
             case=self.case,
@@ -243,9 +238,7 @@ class PropertyValidationSurfaceTests(TestCase):
         warnings = document._validation_warnings
         ext_notes = ""
         if warnings:
-            ext_notes += "Validation warnings:\n" + "\n".join(
-                f"- {msg}" for msg in warnings
-            )
+            ext_notes += "Validation warnings:\n" + "\n".join(f"- {msg}" for msg in warnings)
         document.extraction_status = ExtractionStatus.COMPLETED
         document.extraction_notes = ext_notes
         document.save(update_fields=["extraction_status", "extraction_notes"])

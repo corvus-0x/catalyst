@@ -16,12 +16,7 @@ _PAD = "This document is a sample for unit testing extraction patterns. " * 2
 
 class ExtractPersonsTests(SimpleTestCase):
     def test_labeled_grantor_grantee(self):
-        text = (
-            f"WARRANTY DEED\n"
-            f"GRANTOR: John A. Smith\n"
-            f"GRANTEE: Jane Doe\n"
-            f"{_PAD}"
-        )
+        text = f"WARRANTY DEED\nGRANTOR: John A. Smith\nGRANTEE: Jane Doe\n{_PAD}"
         result = extract_entities(text, doc_type="DEED")
         names = [p["raw"] for p in result["persons"]]
         self.assertIn("John A. Smith", names)
@@ -40,12 +35,7 @@ class ExtractPersonsTests(SimpleTestCase):
         self.assertTrue(any("Doe" in n and "Jane" in n for n in names))
 
     def test_dedups_repeated_person(self):
-        text = (
-            f"GRANTOR: John A. Smith\n"
-            f"GRANTOR: John A. Smith\n"
-            f"GRANTOR: John A. Smith\n"
-            f"{_PAD}"
-        )
+        text = f"GRANTOR: John A. Smith\nGRANTOR: John A. Smith\nGRANTOR: John A. Smith\n{_PAD}"
         result = extract_entities(text, doc_type="DEED")
         smiths = [p for p in result["persons"] if "John A. Smith" == p["raw"]]
         self.assertEqual(len(smiths), 1)
@@ -56,9 +46,7 @@ class ExtractPersonsTests(SimpleTestCase):
 
 class ExtractOrgsTests(SimpleTestCase):
     def test_finds_inc_designator(self):
-        text = (
-            f"The Bright Future Foundation, Inc. is a 501(c)(3) charity. {_PAD}"
-        )
+        text = f"The Bright Future Foundation, Inc. is a 501(c)(3) charity. {_PAD}"
         result = extract_entities(text, doc_type="OTHER")
         names = [o["raw"] for o in result["orgs"]]
         self.assertTrue(
@@ -92,9 +80,7 @@ class ExtractDatesTests(SimpleTestCase):
             f"deed was dated 06/01/2020. {_PAD}"
         )
         result = extract_entities(text, doc_type="DEED")
-        normalized = sorted(
-            d.get("normalized") for d in result["dates"] if d.get("normalized")
-        )
+        normalized = sorted(d.get("normalized") for d in result["dates"] if d.get("normalized"))
         self.assertIn("2023-03-15", normalized)
         self.assertIn("2023-03-16", normalized)
 
@@ -107,10 +93,7 @@ class ExtractAmountsTests(SimpleTestCase):
         self.assertIn(250000.0, normalized)
 
     def test_finds_multiple_amounts(self):
-        text = (
-            f"Total revenue $1,000,000. Total expenses $850,000. "
-            f"Net: $150,000. {_PAD}"
-        )
+        text = f"Total revenue $1,000,000. Total expenses $850,000. Net: $150,000. {_PAD}"
         result = extract_entities(text, doc_type="OTHER")
         normalized = [a.get("normalized") for a in result["amounts"]]
         self.assertIn(1_000_000.0, normalized)
@@ -127,9 +110,7 @@ class ExtractParcelsTests(SimpleTestCase):
 
 class ExtractFilingRefsTests(SimpleTestCase):
     def test_finds_ohio_ucc_number(self):
-        text = (
-            f"UCC-1 Financing Statement filed under OH 12345678901 in 2022. {_PAD}"
-        )
+        text = f"UCC-1 Financing Statement filed under OH 12345678901 in 2022. {_PAD}"
         result = extract_entities(text, doc_type="UCC")
         refs = [f["raw"] for f in result["filing_refs"]]
         self.assertTrue(any("12345678901" in r for r in refs))

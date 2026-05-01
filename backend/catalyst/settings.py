@@ -251,12 +251,12 @@ CATALYST_REQUIRE_AUTH = os.getenv("CATALYST_REQUIRE_AUTH", "True").lower() == "t
 Q_CLUSTER = {
     "name": "catalyst",
     "workers": 2,
-    "timeout": 300,       # hard kill a task after 5 minutes
-    "retry": 360,         # must be > timeout; unused because we disable retries below
-    "max_attempts": 1,    # no retries — we surface the error to the user
-    "save_limit": 500,    # retain last 500 completed tasks in django_q_task
+    "timeout": 300,  # hard kill a task after 5 minutes
+    "retry": 360,  # must be > timeout; unused because we disable retries below
+    "max_attempts": 1,  # no retries — we surface the error to the user
+    "save_limit": 500,  # retain last 500 completed tasks in django_q_task
     "queue_limit": 50,
     "bulk": 1,
-    "orm": "default",     # use the default Django database as broker
-    "catch_up": False,    # don't re-run scheduled tasks missed while cluster was down
+    "orm": "default",  # use the default Django database as broker
+    "catch_up": False,  # don't re-run scheduled tasks missed while cluster was down
 }

@@ -92,8 +92,7 @@ def _get_client():
     try:
         from anthropic import Anthropic
     except ImportError:
-        raise ImportError(
-            "The 'anthropic' package is required. pip install anthropic")
+        raise ImportError("The 'anthropic' package is required. pip install anthropic")
     return Anthropic(api_key=_get_api_key())
 
 
@@ -179,24 +178,21 @@ def _build_case_context(case, max_chars: int = MAX_CONTEXT_CHARS) -> str:
     if orgs.exists():
         parts.append("ORGANIZATIONS:")
         for o in orgs[:10]:
-            parts.append(
-                f"  - {o.name} (type={o.org_type}, EIN={o.ein or 'N/A'})")
+            parts.append(f"  - {o.name} (type={o.org_type}, EIN={o.ein or 'N/A'})")
         parts.append("")
 
     props = Property.objects.filter(case=case)
     if props.exists():
         parts.append("PROPERTIES:")
         for pr in props[:15]:
-            parts.append(
-                f"  - {pr.address or pr.parcel_number} (assessed={pr.assessed_value})")
+            parts.append(f"  - {pr.address or pr.parcel_number} (assessed={pr.assessed_value})")
         parts.append("")
 
     instruments = FinancialInstrument.objects.filter(case=case)
     if instruments.exists():
         parts.append("FINANCIAL INSTRUMENTS:")
         for fi in instruments[:10]:
-            parts.append(
-                f"  - {fi.instrument_type} #{fi.filing_number} (amount={fi.amount})")
+            parts.append(f"  - {fi.instrument_type} #{fi.filing_number} (amount={fi.amount})")
         parts.append("")
 
     # Findings
@@ -213,8 +209,7 @@ def _build_case_context(case, max_chars: int = MAX_CONTEXT_CHARS) -> str:
     if docs.exists():
         parts.append(f"DOCUMENTS ({docs.count()} total, showing recent 20):")
         for doc in docs[:20]:
-            parts.append(
-                f"  - {doc.display_name or doc.filename} (type={doc.doc_type})")
+            parts.append(f"  - {doc.display_name or doc.filename} (type={doc.doc_type})")
         parts.append("")
 
     text = "\n".join(parts)
@@ -241,8 +236,7 @@ def _build_entity_context(entity_type: str, entity_id: str, case) -> str:
         p = Person.objects.filter(pk=entity_id, case=case).first()
         if p:
             parts.append(f"PERSON: {p.full_name}")
-            parts.append(
-                f"Roles: {', '.join(p.role_tags) if p.role_tags else 'none'}")
+            parts.append(f"Roles: {', '.join(p.role_tags) if p.role_tags else 'none'}")
             if p.aliases:
                 parts.append(f"Aliases: {', '.join(p.aliases)}")
             if p.date_of_death:
@@ -254,8 +248,7 @@ def _build_entity_context(entity_type: str, entity_id: str, case) -> str:
 
             # Documents
             for pd in PersonDocument.objects.filter(person=p).select_related("document")[:10]:
-                parts.append(
-                    f"  Document: {pd.document.display_name or pd.document.filename}")
+                parts.append(f"  Document: {pd.document.display_name or pd.document.filename}")
 
             # Findings referencing this entity
             finding_ids = FindingEntity.objects.filter(
@@ -263,24 +256,20 @@ def _build_entity_context(entity_type: str, entity_id: str, case) -> str:
                 entity_type="person",
             ).values_list("finding_id", flat=True)
             for finding in Finding.objects.filter(pk__in=finding_ids).order_by("-created_at")[:10]:
-                summary = (finding.narrative or finding.description or "")[
-                    :100]
-                parts.append(
-                    f"  Finding: [{finding.severity}] {finding.title} — {summary}")
+                summary = (finding.narrative or finding.description or "")[:100]
+                parts.append(f"  Finding: [{finding.severity}] {finding.title} — {summary}")
 
     elif entity_type == "organization":
         o = Organization.objects.filter(pk=entity_id, case=case).first()
         if o:
             parts.append(f"ORGANIZATION: {o.name}")
-            parts.append(
-                f"Type: {o.org_type}, EIN: {o.ein or 'N/A'}, Status: {o.status}")
+            parts.append(f"Type: {o.org_type}, EIN: {o.ein or 'N/A'}, Status: {o.status}")
 
             for po in PersonOrganization.objects.filter(org=o).select_related("person"):
                 parts.append(f"  Officer: {po.person.full_name} — {po.role}")
 
             for od in OrgDocument.objects.filter(org=o).select_related("document")[:10]:
-                parts.append(
-                    f"  Document: {od.document.display_name or od.document.filename}")
+                parts.append(f"  Document: {od.document.display_name or od.document.filename}")
 
     elif entity_type == "property":
         pr = Property.objects.filter(pk=entity_id, case=case).first()
@@ -292,8 +281,7 @@ def _build_entity_context(entity_type: str, entity_id: str, case) -> str:
             parts.append(county_info)
 
     elif entity_type == "financial_instrument":
-        fi = FinancialInstrument.objects.filter(
-            pk=entity_id, case=case).first()
+        fi = FinancialInstrument.objects.filter(pk=entity_id, case=case).first()
         if fi:
             header = f"FINANCIAL INSTRUMENT: {fi.instrument_type} #{fi.filing_number}"
             parts.append(header)
@@ -320,8 +308,7 @@ def _build_finding_context(finding) -> str:
         doc_name = finding.trigger_doc.display_name or finding.trigger_doc.filename
         parts.append(f"Trigger document: {doc_name}")
         if finding.trigger_doc.extracted_text:
-            parts.append(
-                f"Document excerpt: {finding.trigger_doc.extracted_text[:2000]}")
+            parts.append(f"Document excerpt: {finding.trigger_doc.extracted_text[:2000]}")
     if finding.investigator_note:
         parts.append(f"Investigator note: {finding.investigator_note}")
     return "\n".join(parts)
@@ -494,8 +481,7 @@ def ai_summarize(case, target_type: str, target_id: str) -> dict:
         from .models import Finding
 
         finding = (
-            Finding.objects.filter(pk=clean_id, case=case).select_related(
-                "trigger_doc").first()
+            Finding.objects.filter(pk=clean_id, case=case).select_related("trigger_doc").first()
         )
         if not finding:
             return {"error": "Finding not found."}
@@ -934,7 +920,7 @@ def ai_ask(
                 "type": "tool_call",
                 "id": str(i),
                 "label": f"{c['name']}({c['input'].get('query', '')}) → "
-                         f"{c.get('match_count', '?')} matches",
+                f"{c.get('match_count', '?')} matches",
             }
             for i, c in enumerate(tool_calls_made)
             if "error" not in c

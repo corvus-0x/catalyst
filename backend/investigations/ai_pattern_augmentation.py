@@ -6,6 +6,7 @@ writes each returned pattern as a Finding with source=AI.
 
 See docs/superpowers/specs/2026-04-21-async-frontend-and-ai-patterns-design.md
 """
+
 from __future__ import annotations
 
 import json
@@ -128,21 +129,21 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
 
     # Newest documents first — most likely to be relevant to the active
     # investigation. Cap at MAX_DOCUMENTS regardless.
-    docs = list(
-        Document.objects.filter(case=case).order_by("-uploaded_at")[:MAX_DOCUMENTS]
-    )
+    docs = list(Document.objects.filter(case=case).order_by("-uploaded_at")[:MAX_DOCUMENTS])
     doc_ref_map: dict[str, str] = {}
     doc_entries: list[dict[str, Any]] = []
     for i, d in enumerate(docs, start=1):
         ref = f"Doc-{i}"
         doc_ref_map[ref] = str(d.id)
         excerpt = (d.extracted_text or "")[:MAX_EXCERPT_CHARS]
-        doc_entries.append({
-            "ref": ref,
-            "doc_type": d.doc_type or "",
-            "filename": d.filename,
-            "text_excerpt": excerpt,
-        })
+        doc_entries.append(
+            {
+                "ref": ref,
+                "doc_type": d.doc_type or "",
+                "filename": d.filename,
+                "text_excerpt": excerpt,
+            }
+        )
 
     ctx: dict[str, Any] = {
         "case": {
@@ -332,9 +333,7 @@ def call_claude(context: dict[str, Any]) -> str:
             cleaned = raw.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
-                lines = [
-                    line for line in lines if not line.strip().startswith("```")
-                ]
+                lines = [line for line in lines if not line.strip().startswith("```")]
                 cleaned = "\n".join(lines).strip()
             return cleaned
         except (
@@ -345,10 +344,9 @@ def call_claude(context: dict[str, Any]) -> str:
         ) as exc:
             last_exc = exc
             if attempt < CLAUDE_MAX_ATTEMPTS:
-                sleep_for = CLAUDE_BACKOFF_BASE ** attempt
+                sleep_for = CLAUDE_BACKOFF_BASE**attempt
                 logger.warning(
-                    "Transient Claude error on attempt %d/%d: %s; "
-                    "retrying in %.1fs",
+                    "Transient Claude error on attempt %d/%d: %s; retrying in %.1fs",
                     attempt,
                     CLAUDE_MAX_ATTEMPTS,
                     exc,
@@ -431,9 +429,7 @@ def analyze_case(case_id: Any) -> dict[str, Any]:
                                 entity_type="UNKNOWN",
                             )
                     except Exception:
-                        logger.info(
-                            "Skipping invalid entity_ref %s", entity_id
-                        )
+                        logger.info("Skipping invalid entity_ref %s", entity_id)
             created += 1
         except Exception as exc:  # noqa: BLE001 — drop bad pattern, keep rest
             logger.warning(

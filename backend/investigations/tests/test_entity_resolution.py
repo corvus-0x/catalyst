@@ -128,9 +128,7 @@ class ResolveOrgExactMatchTests(TestCase):
         self.assertEqual(Organization.objects.filter(case=self.case).count(), 1)
 
     def test_exact_match_reuses_existing(self):
-        existing = Organization.objects.create(
-            case=self.case, name="Acme Holdings, Inc."
-        )
+        existing = Organization.objects.create(case=self.case, name="Acme Holdings, Inc.")
 
         result = entity_resolution.resolve_org("Acme Holdings, Inc.", self.case)
 
@@ -155,9 +153,7 @@ class ResolveOrgExactMatchTests(TestCase):
         self.assertEqual(result.org.id, existing.id)
 
     def test_link_to_document_created(self):
-        entity_resolution.resolve_org(
-            "Acme Holdings, Inc.", self.case, document=self.doc
-        )
+        entity_resolution.resolve_org("Acme Holdings, Inc.", self.case, document=self.doc)
 
         link = OrgDocument.objects.filter(document=self.doc).first()
         self.assertIsNotNone(link)
@@ -166,17 +162,13 @@ class ResolveOrgExactMatchTests(TestCase):
         existing = Organization.objects.create(case=self.case, name="Acme Holdings")
         self.assertEqual(existing.ein, "")
 
-        entity_resolution.resolve_org(
-            "Acme Holdings", self.case, ein="12-3456789"
-        )
+        entity_resolution.resolve_org("Acme Holdings", self.case, ein="12-3456789")
 
         existing.refresh_from_db()
         self.assertEqual(existing.ein, "12-3456789")
 
     def test_ein_attached_on_create(self):
-        result = entity_resolution.resolve_org(
-            "New Org", self.case, ein="12-3456789"
-        )
+        result = entity_resolution.resolve_org("New Org", self.case, ein="12-3456789")
 
         self.assertTrue(result.created)
         self.assertEqual(result.org.ein, "12-3456789")
@@ -188,6 +180,4 @@ class ResolveOrgExactMatchTests(TestCase):
         result = entity_resolution.resolve_org("Acme Holdings", self.case)
 
         self.assertTrue(result.created)
-        self.assertEqual(
-            Organization.objects.filter(case=self.case).count(), 1
-        )
+        self.assertEqual(Organization.objects.filter(case=self.case).count(), 1)

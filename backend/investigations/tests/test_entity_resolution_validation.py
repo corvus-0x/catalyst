@@ -38,9 +38,7 @@ class ResolveEntitiesValidatorWiredTests(TestCase):
 
         mock_validate.return_value = data_quality.ValidationResult()
 
-        entity_resolution.resolve_org(
-            "Bright Future Foundation", self.case, ein="12-3456789"
-        )
+        entity_resolution.resolve_org("Bright Future Foundation", self.case, ein="12-3456789")
 
         mock_validate.assert_called_once_with("12-3456789")
 

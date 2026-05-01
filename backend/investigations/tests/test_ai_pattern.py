@@ -57,7 +57,9 @@ class BuildContextTests(TestCase):
     def test_includes_financials(self):
         ctx = ai_pattern_augmentation.build_context(self.case)
         self.assertTrue(
-            any(f["tax_year"] == 2021 and f["revenue"] == 500000 for f in ctx["financial_snapshots"])
+            any(
+                f["tax_year"] == 2021 and f["revenue"] == 500000 for f in ctx["financial_snapshots"]
+            )
         )
 
     def test_assigns_doc_refs(self):
@@ -82,18 +84,27 @@ class BuildContextTests(TestCase):
 
         # Create three more docs at known timestamps.
         Document.objects.create(
-            case=self.case, filename="oldest.pdf", file_path="/tmp/o.pdf",
-            sha256_hash="o" * 64, file_size=100,
+            case=self.case,
+            filename="oldest.pdf",
+            file_path="/tmp/o.pdf",
+            sha256_hash="o" * 64,
+            file_size=100,
             uploaded_at=timezone.now() - timedelta(days=10),
         )
         Document.objects.create(
-            case=self.case, filename="middle.pdf", file_path="/tmp/m.pdf",
-            sha256_hash="m" * 64, file_size=100,
+            case=self.case,
+            filename="middle.pdf",
+            file_path="/tmp/m.pdf",
+            sha256_hash="m" * 64,
+            file_size=100,
             uploaded_at=timezone.now() - timedelta(days=5),
         )
         Document.objects.create(
-            case=self.case, filename="newest.pdf", file_path="/tmp/n.pdf",
-            sha256_hash="n" * 64, file_size=100,
+            case=self.case,
+            filename="newest.pdf",
+            file_path="/tmp/n.pdf",
+            sha256_hash="n" * 64,
+            file_size=100,
             uploaded_at=timezone.now(),
         )
         ctx = ai_pattern_augmentation.build_context(self.case)
@@ -134,19 +145,21 @@ class BuildContextTests(TestCase):
 
 class ParseResponseTests(TestCase):
     def test_happy_path(self):
-        raw = json.dumps({
-            "patterns": [
-                {
-                    "title": "Name variant",
-                    "description": "K. S. Example ~ Karen Example",
-                    "rationale": "Overlapping city and last name",
-                    "evidence_weight": "DIRECTIONAL",
-                    "entity_refs": ["uuid-a"],
-                    "doc_refs": ["Doc-1", "Doc-2"],
-                    "suggested_action": "Pull 2020 990",
-                }
-            ]
-        })
+        raw = json.dumps(
+            {
+                "patterns": [
+                    {
+                        "title": "Name variant",
+                        "description": "K. S. Example ~ Karen Example",
+                        "rationale": "Overlapping city and last name",
+                        "evidence_weight": "DIRECTIONAL",
+                        "entity_refs": ["uuid-a"],
+                        "doc_refs": ["Doc-1", "Doc-2"],
+                        "suggested_action": "Pull 2020 990",
+                    }
+                ]
+            }
+        )
         parsed = ai_pattern_augmentation.parse_response(raw)
         self.assertEqual(len(parsed), 1)
         self.assertEqual(parsed[0]["title"], "Name variant")
@@ -154,9 +167,7 @@ class ParseResponseTests(TestCase):
     def test_malformed_returns_empty(self):
         self.assertEqual(ai_pattern_augmentation.parse_response("not json"), [])
         self.assertEqual(ai_pattern_augmentation.parse_response("{}"), [])
-        self.assertEqual(
-            ai_pattern_augmentation.parse_response('{"patterns": "not a list"}'), []
-        )
+        self.assertEqual(ai_pattern_augmentation.parse_response('{"patterns": "not a list"}'), [])
 
 
 class ValidatePatternsTests(TestCase):
@@ -248,9 +259,7 @@ class ValidatePatternsTests(TestCase):
             "doc_refs": ["Doc-1"],
             "suggested_action": "z",
         }
-        kept, dropped = ai_pattern_augmentation.validate_patterns(
-            [p], {"Doc-1": "uuid"}
-        )
+        kept, dropped = ai_pattern_augmentation.validate_patterns([p], {"Doc-1": "uuid"})
         self.assertEqual(kept, [])
         self.assertEqual(dropped, 1)
 
@@ -302,17 +311,19 @@ class AnalyzeCaseTests(TestCase):
 
     @patch("investigations.ai_pattern_augmentation.call_claude")
     def test_writes_findings(self, mock_call):
-        mock_call.return_value = _mock_ai_response([
-            {
-                "title": "Name variant pattern",
-                "description": "Looks like same person",
-                "rationale": "Matching context",
-                "evidence_weight": "DIRECTIONAL",
-                "entity_refs": [],
-                "doc_refs": ["Doc-1"],
-                "suggested_action": "Pull related deed",
-            }
-        ])
+        mock_call.return_value = _mock_ai_response(
+            [
+                {
+                    "title": "Name variant pattern",
+                    "description": "Looks like same person",
+                    "rationale": "Matching context",
+                    "evidence_weight": "DIRECTIONAL",
+                    "entity_refs": [],
+                    "doc_refs": ["Doc-1"],
+                    "suggested_action": "Pull related deed",
+                }
+            ]
+        )
         result = ai_pattern_augmentation.analyze_case(self.case.id)
         self.assertEqual(result["findings_created"], 1)
         self.assertEqual(result["patterns_dropped"], 0)
@@ -327,18 +338,28 @@ class AnalyzeCaseTests(TestCase):
 
     @patch("investigations.ai_pattern_augmentation.call_claude")
     def test_drops_invalid_doc_refs(self, mock_call):
-        mock_call.return_value = _mock_ai_response([
-            {
-                "title": "good",
-                "description": "d", "rationale": "r", "evidence_weight": "DIRECTIONAL",
-                "entity_refs": [], "doc_refs": ["Doc-1"], "suggested_action": "a",
-            },
-            {
-                "title": "bad",
-                "description": "d", "rationale": "r", "evidence_weight": "DIRECTIONAL",
-                "entity_refs": [], "doc_refs": ["Doc-99"], "suggested_action": "a",
-            },
-        ])
+        mock_call.return_value = _mock_ai_response(
+            [
+                {
+                    "title": "good",
+                    "description": "d",
+                    "rationale": "r",
+                    "evidence_weight": "DIRECTIONAL",
+                    "entity_refs": [],
+                    "doc_refs": ["Doc-1"],
+                    "suggested_action": "a",
+                },
+                {
+                    "title": "bad",
+                    "description": "d",
+                    "rationale": "r",
+                    "evidence_weight": "DIRECTIONAL",
+                    "entity_refs": [],
+                    "doc_refs": ["Doc-99"],
+                    "suggested_action": "a",
+                },
+            ]
+        )
         result = ai_pattern_augmentation.analyze_case(self.case.id)
         self.assertEqual(result["findings_created"], 1)
         self.assertEqual(result["patterns_dropped"], 1)
@@ -371,9 +392,7 @@ class AnalyzeCaseTests(TestCase):
     # (QA audit P1 — no retry meant a single 529 killed the whole job.)
     @patch("investigations.ai_pattern_augmentation.time.sleep")
     @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_call_claude_retries_on_transient_error(
-        self, mock_get_client, mock_sleep
-    ):
+    def test_call_claude_retries_on_transient_error(self, mock_get_client, mock_sleep):
         import anthropic
 
         mock_client = MagicMock()
@@ -393,15 +412,11 @@ class AnalyzeCaseTests(TestCase):
 
     @patch("investigations.ai_pattern_augmentation.time.sleep")
     @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_call_claude_gives_up_after_max_attempts(
-        self, mock_get_client, mock_sleep
-    ):
+    def test_call_claude_gives_up_after_max_attempts(self, mock_get_client, mock_sleep):
         import anthropic
 
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic.APIConnectionError(
-            request=MagicMock()
-        )
+        mock_client.messages.create.side_effect = anthropic.APIConnectionError(request=MagicMock())
         mock_get_client.return_value = mock_client
 
         with self.assertRaises(ai_pattern_augmentation.AIPatternError):
@@ -430,14 +445,19 @@ class AnalyzeCaseTests(TestCase):
 
     @patch("investigations.ai_pattern_augmentation.call_claude")
     def test_links_cited_documents(self, mock_call):
-        mock_call.return_value = _mock_ai_response([
-            {
-                "title": "links",
-                "description": "d", "rationale": "r", "evidence_weight": "SPECULATIVE",
-                "entity_refs": [], "doc_refs": ["Doc-1", "Doc-2"],
-                "suggested_action": "a",
-            }
-        ])
+        mock_call.return_value = _mock_ai_response(
+            [
+                {
+                    "title": "links",
+                    "description": "d",
+                    "rationale": "r",
+                    "evidence_weight": "SPECULATIVE",
+                    "entity_refs": [],
+                    "doc_refs": ["Doc-1", "Doc-2"],
+                    "suggested_action": "a",
+                }
+            ]
+        )
         ai_pattern_augmentation.analyze_case(self.case.id)
         f = Finding.objects.filter(case=self.case, source=FindingSource.AI).first()
         self.assertIsNotNone(f)
