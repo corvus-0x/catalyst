@@ -5,7 +5,7 @@ export function ReferralsView() {
     return (
         <>
             <div className={styles.referralsViewHeader}>
-                <h2>Government Referrals</h2>
+                <h2>Referral Packages</h2>
             </div>
 
             <EmptyState

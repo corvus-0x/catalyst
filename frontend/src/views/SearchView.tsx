@@ -26,6 +26,26 @@ const TYPE_LABELS: Record<string, string> = {
     document: "Document",
 };
 
+/** English plurals \u2014 needed because "Entity" naively suffixes to "Entitys". */
+const TYPE_LABELS_PLURAL: Record<string, string> = {
+    case: "Cases",
+    finding: "Findings",
+    entity: "Entities",
+    document: "Documents",
+};
+
+/**
+ * For entity-type results, the backend returns a flat `type: "entity"`. The
+ * specific sub-type (person / organization / property / financial) lives in
+ * the `route` URL, so we read it from there to pick the right icon.
+ */
+function entityIconFromRoute(route: string): string {
+    if (route.startsWith("/entities/organization/")) return "\uD83C\uDFE2"; // \uD83C\uDFE2
+    if (route.startsWith("/entities/property/")) return "\uD83C\uDFE0"; // \uD83C\uDFE0
+    if (route.startsWith("/entities/financial_instrument/")) return "\uD83D\uDCB3"; // \uD83D\uDCB3
+    return "\uD83D\uDC64"; // \uD83D\uDC64 person (default fallback)
+}
+
 export function SearchView() {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -123,7 +143,10 @@ export function SearchView() {
         const caseNames = [...new Set(results.map((r) => r.case_name).filter(Boolean))];
         const typeBreakdown = Object.entries(typeCounts)
             .filter(([k]) => k !== "all")
-            .map(([k, v]) => `${v} ${TYPE_LABELS[k] || k}${v > 1 ? "s" : ""}`)
+            .map(([k, v]) => {
+                const label = v === 1 ? TYPE_LABELS[k] : TYPE_LABELS_PLURAL[k];
+                return `${v} ${label || k}`;
+            })
             .join(", ");
 
         return `Found ${results.length} results (${typeBreakdown}) across ${caseNames.length} case${caseNames.length !== 1 ? "s" : ""}. ` +
@@ -140,7 +163,7 @@ export function SearchView() {
                     <input
                         type="text"
                         className={styles.searchViewInput}
-                        placeholder="Search cases, signals, entities..."
+                        placeholder="Search cases, findings, entities..."
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         autoFocus
@@ -197,7 +220,7 @@ export function SearchView() {
             {!searchedQuery && !loading && (
                 <EmptyState
                     title="Search across your investigation data"
-                    detail="Enter a query to search cases, signals, entities, and documents. Use the top bar search (Cmd+K) for quick access from any view."
+                    detail="Enter a query to search cases, findings, entities, and documents. Use the top bar search (Cmd+K) for quick access from any view."
                 />
             )}
 
@@ -225,7 +248,9 @@ export function SearchView() {
                         >
                             <div className={styles.searchResultLeft}>
                                 <span className={styles.searchResultTypeIcon}>
-                                    {TYPE_ICONS[result.type] || "\uD83D\uDD0D"}
+                                    {result.type === "entity"
+                                        ? entityIconFromRoute(result.route)
+                                        : TYPE_ICONS[result.type] || "\uD83D\uDD0D"}
                                 </span>
                             </div>
                             <div className={styles.searchResultContent}>

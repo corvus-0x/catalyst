@@ -155,14 +155,14 @@ export function AIAssistantPanel({ caseId, caseName, open, onClose }: AIAssistan
         const userMsg: ChatMessage = {
             id: nextId(),
             role: "user",
-            content: "Draft an investigative narrative from detections",
+            content: "Draft an investigative narrative from findings",
             timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, userMsg]);
         setLoading(true);
 
         try {
-            // Pass empty array — the backend will use all confirmed detections
+            // Pass empty array — the backend will use all confirmed findings
             const result: AINarrativeResponse = await aiNarrative(caseId, [], "formal");
             const legalSection = result.legal_references.length > 0
                 ? `\n\n**Legal References:** ${result.legal_references.join(", ")}`

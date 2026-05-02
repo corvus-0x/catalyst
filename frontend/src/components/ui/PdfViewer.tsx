@@ -230,7 +230,7 @@ export function PdfViewer({ document: doc, caseId, onClose }: PdfViewerProps) {
                             ) : (
                                 <EmptyState
                                     title="No findings from this document"
-                                    detail="Run signal analysis to detect findings, or findings may be linked to other documents."
+                                    detail="No findings reference this document yet, or findings may be linked to other documents."
                                 />
                             )}
                         </div>

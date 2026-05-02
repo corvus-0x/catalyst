@@ -20,9 +20,37 @@ interface CellAnomalyState {
     message: string;
 }
 
-function fmt(val: number | null | undefined): string {
-    if (val == null) return "\u2014";
-    return "$" + val.toLocaleString("en-US");
+/**
+ * Format a money value, or render a tooltipped em-dash for missing data
+ * so investigators can tell the difference between $0 and "the 990 line
+ * item wasn't filed" without having to inspect the source.
+ */
+function fmt(val: number | null | undefined): JSX.Element {
+    if (val == null) {
+        return (
+            <span
+                title="Not reported on this 990 filing"
+                style={{ color: "var(--text-soft)", cursor: "help" }}
+            >
+                {"\u2014"}
+            </span>
+        );
+    }
+    return <>{"$" + val.toLocaleString("en-US")}</>;
+}
+
+function fmtPlain(val: number | null | undefined, suffix: string = ""): JSX.Element {
+    if (val == null) {
+        return (
+            <span
+                title="Not reported on this 990 filing"
+                style={{ color: "var(--text-soft)", cursor: "help" }}
+            >
+                {"\u2014"}
+            </span>
+        );
+    }
+    return <>{val.toLocaleString("en-US") + suffix}</>;
 }
 
 function yoyBadge(pct: number | undefined): JSX.Element | null {
@@ -256,7 +284,7 @@ export function FinancialsTab() {
                                                     className={`${styles.amountCell} ${cellAnomalyClass}`}
                                                 >
                                                     {item.key === "num_employees"
-                                                        ? (val != null ? val.toLocaleString() : "\u2014")
+                                                        ? fmtPlain(val)
                                                         : fmt(val)}
                                                     {yoyBadge(yoy)}
                                                 </td>
@@ -282,7 +310,16 @@ export function FinancialsTab() {
 
                                 return (
                                     <td key={snap.tax_year} className={`${styles.amountCell} ${cellClass}`}>
-                                        {ratio != null ? `${ratio.toFixed(1)}%` : "\u2014"}
+                                        {ratio != null ? (
+                                            `${ratio.toFixed(1)}%`
+                                        ) : (
+                                            <span
+                                                title="Cannot compute ratio \u2014 missing program services or total expenses"
+                                                style={{ color: "var(--text-soft)", cursor: "help" }}
+                                            >
+                                                {"\u2014"}
+                                            </span>
+                                        )}
                                     </td>
                                 );
                             })}

@@ -469,7 +469,7 @@ export function PipelineTab() {
                             title={activeStage
                                 ? `No findings at the "${stages.find((s) => s.key === activeStage)?.label ?? activeStage}" stage`
                                 : "No findings yet"}
-                            detail="Upload documents and run signal analysis to detect findings, or create a finding manually."
+                            detail="Upload documents and run finding analysis, or create a finding manually."
                         />
                     ) : (
                         filteredFindings.map((f, idx) => renderCard(f, idx))
@@ -582,12 +582,46 @@ function FindingDetailPanel({
                     </div>
                 )}
                 {finding.evidence_snapshot && Object.keys(finding.evidence_snapshot).length > 0 && (
-                    <details style={{ fontSize: "var(--text-xs)", color: "var(--text-soft)" }}>
-                        <summary style={{ cursor: "pointer", marginBottom: "0.25rem" }}>Evidence Snapshot</summary>
-                        <pre style={{ whiteSpace: "pre-wrap", fontSize: "0.7rem" }}>
-                            {JSON.stringify(finding.evidence_snapshot, null, 2)}
-                        </pre>
-                    </details>
+                    finding.source === "AI" ? (
+                        // AI findings carry a structured snapshot (rationale,
+                        // suggested_action, doc_refs, entity_refs). Render
+                        // those fields directly so the investigator can read
+                        // the AI's reasoning without parsing JSON.
+                        <div
+                            style={{
+                                fontSize: "var(--text-xs)",
+                                marginTop: "0.5rem",
+                                padding: "0.5rem 0.6rem",
+                                background: "rgba(139, 92, 246, 0.06)",
+                                border: "1px solid rgba(139, 92, 246, 0.2)",
+                                borderRadius: "var(--radius-sm)",
+                            }}
+                        >
+                            {typeof finding.evidence_snapshot.rationale === "string" && (
+                                <div style={{ marginBottom: "0.4rem" }}>
+                                    <strong style={{ color: "var(--text-soft)" }}>
+                                        AI rationale:
+                                    </strong>{" "}
+                                    {finding.evidence_snapshot.rationale as string}
+                                </div>
+                            )}
+                            {typeof finding.evidence_snapshot.suggested_action === "string" && (
+                                <div>
+                                    <strong style={{ color: "var(--text-soft)" }}>
+                                        Suggested next step:
+                                    </strong>{" "}
+                                    {finding.evidence_snapshot.suggested_action as string}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <details style={{ fontSize: "var(--text-xs)", color: "var(--text-soft)" }}>
+                            <summary style={{ cursor: "pointer", marginBottom: "0.25rem" }}>Evidence Snapshot</summary>
+                            <pre style={{ whiteSpace: "pre-wrap", fontSize: "0.7rem" }}>
+                                {JSON.stringify(finding.evidence_snapshot, null, 2)}
+                            </pre>
+                        </details>
+                    )
                 )}
             </SlidePanelSection>
 

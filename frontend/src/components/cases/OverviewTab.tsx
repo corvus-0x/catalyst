@@ -307,7 +307,7 @@ export function OverviewTab() {
                 <EmptyState
                     icon="📅"
                     title="No events to display"
-                    detail="Upload documents to build a timeline. Events are created from document dates, signals, financial records, and property transactions."
+                    detail="Upload documents to build a timeline. Events are created from document dates, findings, financial records, and property transactions."
                 />
             )}
 
@@ -436,7 +436,7 @@ export function OverviewTab() {
                 {c && (
                     <section className={`${styles.overviewCard} ${styles.overviewCardWide}`}>
                         <h3>
-                            Signal Coverage
+                            Rule Coverage
                             <span
                                 className={styles.coverageScore}
                                 style={{
@@ -452,7 +452,7 @@ export function OverviewTab() {
                             </span>
                         </h3>
                         <p className={styles.coverageSummary}>
-                            {c.active_rules} of {c.total_rules} signal rules active.{" "}
+                            {c.active_rules} of {c.total_rules} finding rules active.{" "}
                             {c.blind_rules > 0 &&
                                 `${c.blind_rules} rules cannot run due to missing data.`}
                         </p>

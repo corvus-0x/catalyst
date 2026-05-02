@@ -26,7 +26,7 @@ export function Breadcrumb({ caseName }: { caseName?: string }) {
         const topLabels: Record<string, string> = {
             cases: "Cases",
             entities: "Entities",
-            triage: "Signal Triage",
+            triage: "Finding Triage",
             referrals: "Referrals",
             search: "Search",
             settings: "Settings",
@@ -52,8 +52,9 @@ export function Breadcrumb({ caseName }: { caseName?: string }) {
                     crumbs.push({ label: displayName, to: `/cases/${params.caseId}` });
                     const tabLabels: Record<string, string> = {
                         documents: "Documents",
-                        signals: "Signals",
-                        detections: "Detections",
+                        pipeline: "Pipeline",
+                        signals: "Pipeline",
+                        detections: "Pipeline",
                         referrals: "Referrals",
                         notes: "Notes",
                         timeline: "Timeline",

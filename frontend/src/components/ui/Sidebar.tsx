@@ -10,7 +10,7 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-    { to: "/", icon: "\u2593", label: "Dashboard" },
+    { to: "/", icon: "\uD83D\uDCCA", label: "Dashboard" },
     { to: "/cases", icon: "\uD83D\uDCC1", label: "Cases" },
     { to: "/entities", icon: "\uD83D\uDC64", label: "Entities" },
     { to: "/triage", icon: "\u26A1", label: "Triage" },
@@ -59,7 +59,7 @@ export function Sidebar({ triageCount }: SidebarProps) {
     return (
         <aside className={styles.root} role="complementary" aria-label="Main navigation">
             <div className={styles.brand} aria-hidden="true">
-                <span className={styles.brandIcon}>{"\u25C6"}</span>
+                <span className={styles.brandIcon}>{"\u2697\uFE0F"}</span>
                 <span>CATALYST</span>
             </div>
 

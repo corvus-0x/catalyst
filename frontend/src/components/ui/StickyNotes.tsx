@@ -171,7 +171,7 @@ export function StickyNotes({
             <div className={styles.addNoteArea}>
                 <textarea
                     className={styles.noteTextarea}
-                    placeholder="Write a note about this document..."
+                    placeholder={`Write a note about this ${targetType}...`}
                     value={newNoteContent}
                     onChange={(e) => setNewNoteContent(e.target.value)}
                     disabled={isSaving}

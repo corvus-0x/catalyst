@@ -150,7 +150,7 @@ export function AppShell() {
                                 type="text"
                                 placeholder="Ask anything about your cases..."
                                 onKeyDown={handleSearchKeyDown}
-                                aria-label="Search cases, signals, entities"
+                                aria-label="Search cases, findings, entities"
                                 className={styles.searchInput}
                             />
                             <span className={styles.searchHint} aria-hidden="true">
