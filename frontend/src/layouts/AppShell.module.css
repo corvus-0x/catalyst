@@ -98,6 +98,22 @@
   border-color: var(--accent);
 }
 
+.signOutButton {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.38rem 0.6rem;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.signOutButton:hover {
+  color: var(--text-main);
+  border-color: var(--danger);
+}
+
 .bellBadge {
   position: absolute;
   top: -4px;

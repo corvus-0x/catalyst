@@ -7,6 +7,7 @@ import { ToastItem, ToastStack } from "../components/ui/ToastStack";
 import { AIAssistantPanel } from "../components/ai/AIAssistantPanel";
 import { useShellContext } from "../contexts/ShellContext";
 import { useTheme, ThemeMode } from "../hooks/useTheme";
+import { clearApiToken } from "../auth";
 import styles from "./AppShell.module.css";
 
 const G_NAV_MAP: Record<string, string> = {
@@ -39,6 +40,11 @@ export function AppShell() {
 
     // AI panel
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
+
+    function handleSignOut() {
+        clearApiToken();
+        navigate("/login", { replace: true });
+    }
 
     // Extract caseId from URL path: /cases/:caseId/...
     const caseIdMatch = location.pathname.match(/^\/cases\/([^/]+)/);
@@ -182,6 +188,14 @@ export function AppShell() {
                                 aria-label="Notifications"
                             >
                                 {"\uD83D\uDD14"}
+                            </button>
+                            <button
+                                className={styles.signOutButton}
+                                aria-label="Sign out"
+                                title="Sign out"
+                                onClick={handleSignOut}
+                            >
+                                Sign out
                             </button>
                         </div>
                     </div>

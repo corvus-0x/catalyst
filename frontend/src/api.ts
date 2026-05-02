@@ -27,6 +27,7 @@ import {
     SearchJobSummary,
     SearchResponse,
 } from "./types";
+import { getApiToken } from "./auth";
 
 const API_BASE = "";
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -104,6 +105,10 @@ export function isAbortError(error: unknown): boolean {
 async function request<T>(path: string, init: RequestInit = {}, options: ApiRequestOptions = {}): Promise<T> {
     const headers = new Headers(init.headers ?? {});
     headers.set("Accept", "application/json");
+    const apiToken = getApiToken();
+    if (apiToken && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${apiToken}`);
+    }
     const shouldSetJsonContentType = typeof init.body === "string";
     if (!headers.has("Content-Type") && shouldSetJsonContentType) {
         headers.set("Content-Type", "application/json");
@@ -332,12 +337,17 @@ export async function generateReferralPdf(
     caseId: string,
     options?: { include_confirmed_only?: boolean; min_evidence_weight?: string }
 ): Promise<Blob> {
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    headers.set("X-CSRFToken", getCSRFToken());
+    const apiToken = getApiToken();
+    if (apiToken) {
+        headers.set("Authorization", `Bearer ${apiToken}`);
+    }
+
     const resp = await fetch(`/api/cases/${caseId}/referral-pdf/`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": getCSRFToken(),
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify(options ?? {}),
     });

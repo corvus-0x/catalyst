@@ -5,6 +5,7 @@ import { ShellContextProvider } from "./contexts/ShellContext";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { useTheme } from "./hooks/useTheme";
 import { initCSRF } from "./api";
+import { RequireLogin } from "./components/auth/RequireLogin";
 
 // Views
 import { DashboardView } from "./views/DashboardView";
@@ -16,6 +17,7 @@ import { TriageView } from "./views/TriageView";
 import { ReferralsView } from "./views/ReferralsView";
 import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
+import { LoginView } from "./views/LoginView";
 
 // Case detail tabs
 import { DocumentsTab } from "./components/cases/DocumentsTab";
@@ -38,37 +40,41 @@ export default function App() {
             <BrowserRouter>
                 <ShellContextProvider>
                     <Routes>
-                        <Route element={<AppShell />}>
-                            <Route index element={<DashboardView />} />
+                        <Route path="login" element={<LoginView />} />
 
-                            {/* Cases list */}
-                            <Route path="cases" element={<CasesListView />} />
+                        <Route element={<RequireLogin />}>
+                            <Route element={<AppShell />}>
+                                <Route index element={<DashboardView />} />
 
-                            {/* Case detail with tabbed sub-routes */}
-                            <Route path="cases/:caseId" element={<CaseDetailView />}>
-                                <Route index element={<Navigate to="overview" replace />} />
-                                <Route path="overview" element={<OverviewTab />} />
-                                <Route path="documents" element={<DocumentsTab />} />
-                                <Route path="research" element={<ResearchTab />} />
-                                <Route path="pipeline" element={<PipelineTab />} />
-                                <Route path="financials" element={<FinancialsTab />} />
-                                <Route path="referrals" element={<ReferralsTab />} />
-                                <Route path="match-review" element={<MatchReviewTab />} />
-                                {/* Legacy routes — redirect to pipeline */}
-                                <Route path="signals" element={<Navigate to="../pipeline" replace />} />
-                                <Route path="detections" element={<Navigate to="../pipeline" replace />} />
-                                <Route path="findings" element={<Navigate to="../pipeline" replace />} />
+                                {/* Cases list */}
+                                <Route path="cases" element={<CasesListView />} />
+
+                                {/* Case detail with tabbed sub-routes */}
+                                <Route path="cases/:caseId" element={<CaseDetailView />}>
+                                    <Route index element={<Navigate to="overview" replace />} />
+                                    <Route path="overview" element={<OverviewTab />} />
+                                    <Route path="documents" element={<DocumentsTab />} />
+                                    <Route path="research" element={<ResearchTab />} />
+                                    <Route path="pipeline" element={<PipelineTab />} />
+                                    <Route path="financials" element={<FinancialsTab />} />
+                                    <Route path="referrals" element={<ReferralsTab />} />
+                                    <Route path="match-review" element={<MatchReviewTab />} />
+                                    {/* Legacy routes — redirect to pipeline */}
+                                    <Route path="signals" element={<Navigate to="../pipeline" replace />} />
+                                    <Route path="detections" element={<Navigate to="../pipeline" replace />} />
+                                    <Route path="findings" element={<Navigate to="../pipeline" replace />} />
+                                </Route>
+
+                                <Route path="entities" element={<EntityBrowserView />} />
+                                <Route path="entities/:entityType/:entityId" element={<EntityDetailView />} />
+                                <Route path="triage" element={<TriageView />} />
+                                <Route path="referrals" element={<ReferralsView />} />
+                                <Route path="search" element={<SearchView />} />
+                                <Route path="settings" element={<SettingsView />} />
+
+                                {/* Catch-all redirect */}
+                                <Route path="*" element={<Navigate to="/" replace />} />
                             </Route>
-
-                            <Route path="entities" element={<EntityBrowserView />} />
-                            <Route path="entities/:entityType/:entityId" element={<EntityDetailView />} />
-                            <Route path="triage" element={<TriageView />} />
-                            <Route path="referrals" element={<ReferralsView />} />
-                            <Route path="search" element={<SearchView />} />
-                            <Route path="settings" element={<SettingsView />} />
-
-                            {/* Catch-all redirect */}
-                            <Route path="*" element={<Navigate to="/" replace />} />
                         </Route>
                     </Routes>
                 </ShellContextProvider>
