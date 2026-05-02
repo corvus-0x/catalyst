@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-05-01
+**Last updated:** 2026-05-01 (Session 40 — frontend QA punch list cleared)
 
 This project is in active development. This file is updated every time
 the state of a major component changes. If something looks half-built,
@@ -115,6 +115,111 @@ landed across two commits.
   extraction non-EIN, entity resolution core). New Vitest suite for
   the MatchReviewTab component.
 
+**Recently completed (Session 40, May 1 2026):**
+
+Worked through every item on the May 2026 frontend QA punch list — all
+3 P0s, all 11 P1s, and 6 of 8 P2s landed across 6 commits on `main`
+(`5c727ce` → `3db9b42`). The two P2s that didn't land are explicit
+deferrals, not regressions (see "Deferred" below).
+
+- ~~Documents tab row-click triggered Delete~~ → Inline two-step
+  confirmation. Clicking Delete now arms a per-row "Confirm delete /
+  Cancel" pair instead of immediately calling the API. Confirmation
+  lives in the same row as the doc being acted on, so the misclick
+  path is closed by construction.
+- ~~Demo case Documents had empty `extracted_text`~~ → `seed_demo`
+  now populates a realistic per-doc OCR-style excerpt (Form 990 line
+  items, deed grantor/grantee language, articles of incorporation,
+  AOS findings) and writes `OrgDocument` and `PersonDocument` link
+  rows for every entity that appears in each doc. Investigators
+  clicking View on a Bright Future doc now see real text and the
+  Entities tab populates correctly.
+- ~~Triage page returned 404~~ → New cross-case
+  `GET /api/findings/?status=NEW` endpoint (`api_finding_collection`)
+  with case_id and case_name appended on every result so the Triage
+  view can render and link back to the source case.
+- ~~Dashboard severity counts didn't match KPI~~ → `api_signal_summary`
+  now also returns `by_severity` (open finding counts per severity per
+  case) and `total_count`. DashboardView aggregates `by_severity` so
+  the bars sum to the "Open Findings" KPI by construction. CasesListView
+  reads `total_count` and renames its column "Signals" → "Findings".
+- ~~AI findings rendered "MANUAL" badge~~ → The bug was in TriageView's
+  `finding.rule_id || "MANUAL"` fallback. AI findings have
+  `rule_id=""`, so they all fell through to the literal "MANUAL". Fall
+  back to `source` instead.
+- ~~Entity graph labels overlapped, all 8 nodes piled at center~~ →
+  D3 force params re-tuned: charge -300 → -800, link distance baseline
+  100 → 140, collision radius widened from `NODE_RADIUS+8` to include
+  half a 140-px label width buffer.
+- ~~Entity detail page missing related-findings panel~~ → The frontend
+  was rendering it conditionally on data presence; the demo seed
+  never wrote `FindingEntity` link rows so the array was always
+  empty. `seed_demo` now mirrors each finding's `trigger_entity_id`
+  into a matching `FindingEntity` row, so Sarah Mitchell's detail
+  page shows her 2 related findings, BFF's shows its 6, etc.
+- ~~Duplicate Generate Referral PDF button~~ → Removed the legacy
+  `<article>` block; `<ReferralsPanel>` is now the single canonical
+  source.
+- ~~AI Analysis 409 silent~~ → `useAsyncJob.run()` now reads the
+  response body's `error` field on non-OK responses, so the toast
+  shows the real reason ("An AI analysis job is already running for
+  this case.") instead of a bare "Enqueue failed: 409". Benefits
+  Research tab too.
+- ~~OCR-garbage entities persisted~~ → `_validate_and_log` now returns
+  `(blocked, reason)`; `resolve_person` / `resolve_org` skip the
+  create when blocked, returning a result with `person`/`org=None` and
+  a `blocked_reason`. `ResolutionSummary` gained `persons_blocked` and
+  `orgs_blocked` counters. Org-name validation upgraded — was
+  EIN-only, now runs the org name through `_NAME_JUNK_PATTERNS`
+  regardless of EIN presence. Three new junk patterns catch the
+  reported garbage: leading-lowercase-article fragments ("my hand",
+  "an authorized"), bare entity-type words, "Limited Liability
+  Company".
+- ~~Search missed findings + documents on "Mitchell"~~ → Finding
+  search vector extended from `title`-only to `title + description +
+  narrative` (the entity name only appears in description/narrative
+  for rule-template titles). Document search already covered
+  `extracted_text`; that field gained real content via the seed fix.
+- ~~Stale signals/detections/Government Referrals terminology~~ →
+  Sweep across 11 frontend components: ReferralsView heading,
+  Breadcrumb labels, AppShell aria-label, AIAssistantPanel narrative
+  button, SearchView placeholders, OverviewTab timeline empty state +
+  "Signal Coverage" → "Rule Coverage", PipelineTab empty state,
+  PdfViewer empty state, ReferralsTab export description.
+- ~~Sidebar `▓` Dashboard icon and `◆` brand icon rendered as text~~
+  → Replaced with `📊` and `⚗️` (alembic, thematic for "catalyst").
+- ~~AI evidence_snapshot panel rendered as raw JSON~~ → AI findings
+  now render `rationale` and `suggested_action` in a styled
+  purple-tinted block; non-AI findings keep the JSON `<details>`
+  view.
+- ~~Sticky note placeholder hardcoded "about this document"~~ →
+  Now interpolates `targetType` so entity pages say "this person",
+  finding panels say "this finding", etc.
+- ~~Search "3 Entitys" pluralization bug~~ → Added
+  `TYPE_LABELS_PLURAL` map.
+- ~~Search results all showed 👤 person icon~~ → Entity result icons
+  now derive from `result.route` (orgs 🏢, properties 🏠, financial
+  💳, persons 👤).
+- ~~Financials tab bare em-dashes looked broken~~ → Every `—` for
+  missing data now has a `title` tooltip explaining what's missing
+  ("Not reported on this 990 filing", "Cannot compute ratio —
+  missing program services or total expenses").
+- ~~Sidebar Triage count vs Triage page filter mismatch~~ → Resolved
+  as a side effect of the dashboard-counts work above. Both now
+  read NEW-status finding counts via the shared signal-summary
+  endpoint.
+
+**Deferred (intentional, not regressions):**
+- *Cross-case Referrals view rebuild.* The placeholder now correctly
+  reads "Referral Packages" and routes users to the per-case tab,
+  which is the actual workflow. A real "queue of confirmed cases not
+  yet exported" is a 1-day rebuild that doesn't change the demo
+  story; revisit if it becomes load-bearing.
+- *OCR-garbage cleanup management command.* The validator block
+  protects future ingestion. Existing junk rows in the "Do Good"
+  case can be deleted in admin or via a one-off command later if
+  needed.
+
 **Recently completed (Session 39, May 1 2026):**
 
 Two operational fixes after a full frontend QA + usability walk on the
@@ -163,120 +268,105 @@ Railway deployment:
 
 ---
 
-## Frontend QA punch list (May 2026)
+## Frontend QA punch list (May 2026) — CLEARED
 
 Captured during a full Playwright-driven walk of every view on the Railway
-deployment, plus a follow-up soak test once the worker came up. Worker is
-fixed. The 21 items below are the remaining frontend / UX / data-display
-issues to work through. Roughly 7 working days at 5–7 hrs/day.
+deployment, plus a follow-up soak test once the worker came up. **All 21
+items have been worked through in Session 40** — see the per-item entries
+under "Recently completed (Session 40)" above. The list below is preserved
+for historical context; the strikethroughs and notes show how each item
+landed. Two items were intentionally deferred (see the "Deferred" callout
+in the Session 40 summary).
 
-### 🔴 P0 — fix this week (demo-blockers)
+### 🔴 P0 — fix this week (demo-blockers) — ALL DONE
 
-- [ ] **Demo case Documents have empty `extracted_text`.** `seed_demo`
-  creates Document rows with `ocr_status=COMPLETED` but never populated the
-  text or ran entity resolution. Click "View" on any doc in Bright Future
-  → "No extracted text available", "No entities linked." Recruiter killer.
-  *Fix: have `seed_demo.py` populate realistic excerpts and call
-  `resolve_all_entities`. ~½ day.*
+- [x] ~~**Demo case Documents have empty `extracted_text`.**~~ Fixed in
+  `seed_demo` — each doc now has a realistic excerpt + Person/Org link
+  rows. (commit `8387e69`)
+- [x] ~~**Triage queue endpoint returns 404.**~~ Added cross-case
+  `api_finding_collection` at `/api/findings/`. (commit `6c840fe`)
+- [x] ~~**Clicking row whitespace on Documents triggers Delete.**~~
+  Inline two-step Confirm/Cancel in the same row. (commit `5c727ce`)
 
-- [ ] **Triage queue endpoint returns 404.** Frontend calls
-  `GET /api/findings/?status=NEW` — backend doesn't expose that path. Sidebar
-  shows a Triage badge but the page is empty with no error to the user.
-  *Fix: confirm the correct cross-case findings endpoint and update either
-  the frontend URL or restore the backend route. ~1–2 hours.*
+### 🟠 P1 — visible bugs / wrong data — ALL DONE
 
-- [ ] **Clicking row whitespace on Documents triggers Delete.** Discovered
-  by accident — clicking the Actions cell (rather than the View button
-  specifically) deletes the document. Destructive action with no
-  confirmation. *Fix: tighten click handlers, add a confirm modal on
-  delete. ~2 hours.*
+- [x] ~~**Entity relationship graph labels overlap.**~~ D3 force params
+  re-tuned; collision radius now includes a label-width buffer. (commit
+  `b6067cf`)
+- [x] ~~**Dashboard severity counts don't match KPI total.**~~ Backend
+  exposes per-case `by_severity`; DashboardView aggregates so the bars
+  sum to the KPI by construction. (commit `6c840fe`)
+- [x] ~~**Cases list "SIGNALS" column.**~~ Renamed to "Findings"; reads
+  `total_count` not just `open_count`. (commit `6c840fe`)
+- [x] ~~**Two duplicate "Generate Referral PDF" buttons.**~~ Legacy
+  `<article>` block removed. (commit `fe38416`)
+- [x] ~~**AI Analysis 409 produces no UI feedback.**~~ `useAsyncJob`
+  reads response body's `error` field; toast surfaces real reason.
+  (commit `fe38416`)
+- [x] ~~**OCR-garbage entities persisted.**~~ `_validate_and_log` now
+  blocks on ERROR-severity issues; org-name validation runs regardless
+  of EIN; three new junk patterns. (commit `fe38416`) Existing junk
+  rows in "Do Good" not cleaned up — see Deferred above.
+- [x] ~~**Entity detail page missing related-document and related-finding
+  panels.**~~ Backend was returning the data; the demo seed never wrote
+  `FindingEntity` link rows. Seed now mirrors trigger entities into the
+  link table. (commit `8387e69`)
+- [x] ~~**Note input placeholder says "this document" on entity pages.**~~
+  `StickyNotes` placeholder now uses `targetType`. (commit `3db9b42`)
+- [x] ~~**Stale "signals" terminology throughout.**~~ Sweep across 11
+  components. (commit `3db9b42`)
+- [x] ~~**AI findings render with `MANUAL` source badge.**~~ Bug was in
+  TriageView's `rule_id || "MANUAL"` fallback; AI findings have
+  `rule_id=""`. Fall back to `source` instead. (commit `b6067cf`)
 
-### 🟠 P1 — visible bugs / wrong data (~3 days)
+### 🟡 P2 — usability polish — 6 OF 8 DONE, 2 DEFERRED
 
-- [ ] **Entity relationship graph labels overlap.** All 8 nodes cluster
-  at center; labels read as garbled text. Force-directed layout isn't
-  separating nodes. *Fix: tune D3 force params + label width cap. ~½ day.*
-- [ ] **Dashboard severity counts don't match KPI total.** Says
-  "6 Open Findings" but Critical 1 + High 1 = 2. Two different queries
-  returning different definitions. *Fix: reconcile to one canonical query.
-  ~2 hours.*
-- [ ] **Cases list "SIGNALS" column.** Stale label (should be "FINDINGS")
-  and counts only `status=NEW`, not total findings. Bright Future shows
-  "0–4" depending on AI runs when it actually has 13 findings. *Fix:
-  rename + change query. ~2 hours.*
-- [ ] **Two duplicate "Generate Referral PDF" buttons.** Per-case
-  Referrals tab has both a legacy button and the post-Session-33
-  exporter. *Fix: delete the legacy button. ~30 min.*
-- [ ] **AI Analysis 409 produces no UI feedback.** Click "Run AI
-  Analysis" while a job is in flight → 409 → silent. *Fix: surface 409
-  as a toast. ~1 hour.*
-- [ ] **OCR-garbage entities persisted in "Do Good" case.** Entities
-  named "Limited Liability Company", "my hand", "an authorized", etc.
-  Validators we wired in only log; they don't block. *Fix: (a) one-off
-  cleanup management command, (b) upgrade `_validate_and_log` to skip-
-  create on ERROR-severity issues. ~1 day.*
-- [ ] **Entity detail page missing related-document and related-finding
-  panels.** STATUS.md claims they're there; they aren't. Investigator
-  has no way to navigate from Sarah Mitchell → her deeds. *Fix: add the
-  panels (data exists, frontend isn't rendering). ~½ day.*
-- [ ] **Note input placeholder says "Write a note about this **document**"
-  on entity pages.** Copy-pasted from the document workspace. *Fix:
-  context-aware placeholder. ~30 min.*
-- [ ] **Stale "signals" terminology throughout.** Search input
-  placeholder, Triage breadcrumb, Cases list column header, Cross-case
-  Referrals heading "Government Referrals", Export Case Data
-  description "documents metadata, signals, detections". *Fix:
-  find-and-replace pass on frontend strings + backend serializers. ~1–2
-  hours.*
-- [ ] **AI findings render with `MANUAL` source badge.** API correctly
-  returns `source: "AI"` (verified) but the SourceBadge component is
-  mapping it wrong. *Fix: check `frontend/src/components/cases/PipelineTab.tsx`
-  for missing case in switch/map. ~30 min.*
+- [x] ~~**Sidebar `◆` (logo) and `▓` (Dashboard icon) render as text.**~~
+  Replaced with `📊` and `⚗️` (alembic, thematic for "catalyst").
+  (commit `3db9b42`)
+- [x] ~~**Sidebar Triage count vs Triage page filter mismatch.**~~ Both
+  now read NEW-status finding counts via the shared signal-summary
+  endpoint. Resolved as a side effect of the Day-3 work. (commit
+  `6c840fe`)
+- [x] ~~**AI evidence_snapshot panel may not render.**~~ AI findings
+  now render `rationale` and `suggested_action` in a styled
+  purple-tinted block; non-AI findings keep the JSON `<details>` view.
+  (commit `3db9b42`)
+- [x] ~~**Search misses findings + documents.**~~ Finding search vector
+  extended from title-only to title + description + narrative. Document
+  search already covered `extracted_text`; that field gained content
+  via the seed fix. (commits `8387e69` + `6c840fe`)
+- [x] ~~**Search "AI Overview" typo: "3 Entitys".**~~ Added
+  `TYPE_LABELS_PLURAL` map. (commit `3db9b42`)
+- [x] ~~**Search results: Mitchell Development LLC shows 👤 person icon.**~~
+  Entity result icons now derive from `result.route` (orgs 🏢,
+  properties 🏠, financial 💳, persons 👤). (commit `3db9b42`)
+- [ ] **Cross-case Referrals view rebuild — DEFERRED.** Heading renamed
+  to "Referral Packages" (commit `3db9b42`); placeholder still routes
+  users to the per-case tab. Building a real "queue of confirmed cases
+  not yet exported" is a 1-day rebuild that doesn't move the demo
+  story. Revisit if it becomes load-bearing.
+- [x] ~~**Financials tab shows bare em-dashes for missing data.**~~
+  Every `—` for missing data now has a hover tooltip explaining what
+  isn't reported. (commit `3db9b42`)
 
-### 🟡 P2 — usability polish (~1 week)
+### Also deferred (mentioned under P1)
 
-- [ ] **Sidebar `◆` (logo) and `▓` (Dashboard icon) render as text
-  characters.** Other icons (📁 👤 ⚡ 📤 🔍 ⚙️) render fine. *Fix:
-  inline SVG or supported emoji. ~30 min.*
-- [ ] **Sidebar Triage count vs Triage page filter mismatch.** Sidebar
-  badge counts something broader than `status=NEW` while the page
-  defaults to that filter. Numbers disagree. *Fix: settle on one
-  definition. ~1 hour.*
-- [ ] **AI evidence_snapshot panel may not render.** AI cards don't show
-  rationale + suggested_action that the validator captures. Worth
-  checking the API output and frontend renderer. *Fix: read
-  `evidence_snapshot` field on AI findings; render expanded view. ~½ day
-  if data is there.*
-- [ ] **Search misses findings + documents.** Searching "Mitchell"
-  returns 3 entities but 0 findings + 0 documents, even though findings
-  text contains "Mitchell" and deeds reference Mitchell Development.
-  *Fix: extend SearchVector. ~½ day.*
-- [ ] **Search "AI Overview" typo: "3 Entitys" → "3 Entities".** Pluralization
-  bug. *Fix: 5 minutes.*
-- [ ] **Search results: Mitchell Development LLC shows 👤 person icon
-  instead of 🏢 organization icon.** *Fix: wire entity_type → icon
-  mapping. ~30 min.*
-- [ ] **Cross-case Referrals view is just a placeholder** pointing
-  users to the per-case tab. Heading still says "Government Referrals"
-  (the model was removed in Session 33). *Fix: build a queue of
-  confirmed-and-not-yet-exported cases, OR remove the sidebar entry. ~1
-  day or 5 min.*
-- [ ] **Financials tab shows bare em-dashes for missing data** with
-  no explanation. Looks broken when in fact the seed data is incomplete.
-  *Fix: tooltip on the em-dash, OR fill the seed data. ~2 hours.*
+- **OCR-garbage cleanup management command.** The validator block in
+  `_validate_and_log` protects future ingestion; existing junk rows in
+  the "Do Good" case can be deleted in admin or via a one-off command
+  later. (commit `fe38416` covered the block.)
 
-### Suggested fix order (5–7 hr/day cadence)
+### Suggested fix order — fully executed in Session 40
 
-| Day | Items |
-|---|---|
-| 1 | Row-click delete bug (P0) — destructive, easiest win |
-| 2 | Demo seed text + entities (P0) — recruiter-facing |
-| 3 | Triage 404 + dashboard counts + Cases list signals column (P0/P1, related root cause) |
-| 4 | Entity graph layout + entity detail panels + AI badge mapping (P1) |
-| 5 | Duplicate PDF button + 409 toast + OCR-garbage cleanup + validator block-on-ERROR (P1) |
-| 6–7 | Stale terminology sweep + remaining P2 polish |
-
-Status: untouched. Pick up from Day 1 next session.
+| Day | Items | Status |
+|---|---|---|
+| 1 | Row-click delete bug (P0) | ✅ commit `5c727ce` |
+| 2 | Demo seed text + entities (P0) | ✅ commit `8387e69` |
+| 3 | Triage 404 + dashboard counts + Cases list signals column (P0/P1) | ✅ commit `6c840fe` |
+| 4 | Entity graph layout + entity detail panels + AI badge mapping (P1) | ✅ commits `b6067cf` + `8387e69` |
+| 5 | Duplicate PDF button + 409 toast + OCR-garbage block (P1) | ✅ commit `fe38416` |
+| 6–7 | Stale terminology sweep + P2 polish | ✅ commit `3db9b42` |
 
 ---
 
