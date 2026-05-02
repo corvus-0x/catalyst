@@ -284,6 +284,16 @@ export function EntityGraph({
             });
 
         // ── Force simulation ───────────────────────────────────
+        // Tuned for legibility on small graphs (~8 nodes) without flying
+        // apart on larger ones. The previous params (-300 charge, 100/weight
+        // link distance, +8 collision buffer) caused all nodes to pile up
+        // at the center with overlapping text labels. The fixes:
+        //   - stronger repulsion so unrelated nodes push apart
+        //   - longer baseline link distance so connected nodes still spread
+        //   - collision radius sized for the *label*, not just the shape,
+        //     since labels are 18 chars × ~7px ≈ 126px wide and were
+        //     overlapping each other across the chart
+        const labelHalfWidth = 70; // ~18 chars at 11px font
         const simulation = d3
             .forceSimulation<SimNode>(simNodes)
             .force(
@@ -291,16 +301,18 @@ export function EntityGraph({
                 d3
                     .forceLink<SimNode, SimLink>(simLinks)
                     .id((d) => d.id)
-                    .distance((d) => 100 / Math.max(1, d.weight * 0.5))
+                    .distance((d) => 140 + 30 / Math.max(1, d.weight * 0.5))
             )
-            .force("charge", d3.forceManyBody().strength(-300))
+            .force("charge", d3.forceManyBody().strength(-800))
             .force("center", d3.forceCenter(0, 0))
             .force(
                 "collision",
-                d3.forceCollide<SimNode>().radius((d) => (NODE_RADIUS[d.type] || 16) + 8)
+                d3
+                    .forceCollide<SimNode>()
+                    .radius((d) => (NODE_RADIUS[d.type] || 16) + labelHalfWidth)
             )
-            .force("x", d3.forceX(0).strength(0.05))
-            .force("y", d3.forceY(0).strength(0.05));
+            .force("x", d3.forceX(0).strength(0.04))
+            .force("y", d3.forceY(0).strength(0.04));
 
         simRef.current = simulation;
 

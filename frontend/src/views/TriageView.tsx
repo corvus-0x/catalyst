@@ -160,7 +160,9 @@ export function TriageView() {
                                             {finding.case_name}
                                         </button>
                                     </div>
-                                    <p className={styles.signalSubhead}>{finding.rule_id || "MANUAL"}</p>
+                                    <p className={styles.signalSubhead}>
+                                        {finding.rule_id || (finding.source === "AI" ? "AI" : "MANUAL")}
+                                    </p>
                                     <p>{finding.description}</p>
                                     <p className={styles.signalSubhead}>Created: {formatDate(finding.created_at)}</p>
                                 </div>
