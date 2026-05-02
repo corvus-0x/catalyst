@@ -14,6 +14,11 @@ urlpatterns = [
         views.api_signal_summary,
         name="api_signal_summary",
     ),
+    path(
+        "api/findings/",
+        views.api_finding_collection,
+        name="api_finding_collection",
+    ),
     path("api/search/", views.api_search, name="api_search"),
     path(
         "api/entities/",

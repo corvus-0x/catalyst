@@ -47,7 +47,7 @@ export function CasesListView() {
     const navigate = useNavigate();
     const [cases, setCases] = useState<CaseSummary[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, string>>({});
-    const [signalCounts, setSignalCounts] = useState<Record<string, number>>({});
+    const [findingCounts, setFindingCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
@@ -85,10 +85,10 @@ export function CasesListView() {
                 const cntMap: Record<string, number> = {};
                 for (const item of summaryRes.results as FindingSummaryItem[]) {
                     sevMap[item.case_id] = item.highest_severity;
-                    cntMap[item.case_id] = item.open_count;
+                    cntMap[item.case_id] = item.total_count;
                 }
                 setSeverityMap(sevMap);
-                setSignalCounts(cntMap);
+                setFindingCounts(cntMap);
             } catch (err) {
                 if (!isAbortError(err)) pushToast("error", (err as Error).message);
             } finally {
@@ -214,7 +214,7 @@ export function CasesListView() {
                                             </div>
                                             {c.referral_ref && <span className={styles.kanbanCardRef}>Ref: {c.referral_ref}</span>}
                                             <div className={styles.kanbanCardMeta}>
-                                                <span>{signalCounts[c.id] ?? 0} signals</span>
+                                                <span>{findingCounts[c.id] ?? 0} findings</span>
                                                 <span>{relativeTime(c.updated_at)}</span>
                                             </div>
                                         </button>
@@ -236,7 +236,7 @@ export function CasesListView() {
                                 <th style={{ width: 36 }}></th>
                                 <th>Case Name</th>
                                 <th>Status</th>
-                                <th>Signals</th>
+                                <th>Findings</th>
                                 <th>Docs</th>
                                 <th>Updated</th>
                             </tr>
@@ -256,7 +256,7 @@ export function CasesListView() {
                                         {c.referral_ref && <span className={styles.caseRowRef}>Ref: {c.referral_ref}</span>}
                                     </td>
                                     <td><span className={`${styles.statusPill} ${styles[`status${c.status.charAt(0).toUpperCase() + c.status.slice(1).toLowerCase()}`]}`}>{c.status}</span></td>
-                                    <td className={styles.numCell}>{signalCounts[c.id] ?? 0}</td>
+                                    <td className={styles.numCell}>{findingCounts[c.id] ?? 0}</td>
                                     <td className={styles.numCell}>{"\u2014"}</td>
                                     <td className={styles.timeCell}>{relativeTime(c.updated_at)}</td>
                                 </tr>

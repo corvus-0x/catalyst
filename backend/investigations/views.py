@@ -2022,13 +2022,28 @@ _RANK_TO_SEVERITY = {v: k for k, v in _SEVERITY_RANK.items()}
 
 @require_http_methods(["GET"])
 def api_signal_summary(request):
-    """Return the highest open signal severity per case.
+    """Return per-case finding metrics used by the dashboard and cases list.
 
     Response shape:
-      { "results": [{ "case_id": "<uuid>", "highest_severity": "HIGH", "open_count": 3 }, ...] }
+      { "results": [
+          {
+            "case_id": "<uuid>",
+            "highest_severity": "HIGH",
+            "open_count": 3,             # NEW-status findings (legacy field)
+            "total_count": 13,           # all findings on the case
+            "by_severity": {             # NEW-status findings by severity
+              "CRITICAL": 1, "HIGH": 1, "MEDIUM": 0, "LOW": 0
+            }
+          },
+          ...
+      ] }
 
-    Only cases that have at least one signal are included. Cases with no
-    signals are omitted — the frontend treats absence as no severity badge.
+    Only cases that have at least one finding are included. Cases with no
+    findings are omitted — the frontend treats absence as no severity badge.
+
+    `by_severity` sums to `open_count` so dashboard severity bars match the
+    "Open Findings" KPI. `total_count` is what the cases list shows in the
+    findings column.
     """
     severity_expr = DbCase(
         When(severity=Severity.CRITICAL, then=Value(4)),
@@ -2041,11 +2056,18 @@ def api_signal_summary(request):
 
     from django.db.models import Count
 
+    new_filter = Q(status="NEW")
+
     rows = (
         Finding.objects.values("case_id")
         .annotate(
             max_rank=Max(severity_expr),
-            open_count=Count("id", filter=Q(status="NEW")),
+            open_count=Count("id", filter=new_filter),
+            total_count=Count("id"),
+            critical_open=Count("id", filter=new_filter & Q(severity=Severity.CRITICAL)),
+            high_open=Count("id", filter=new_filter & Q(severity=Severity.HIGH)),
+            medium_open=Count("id", filter=new_filter & Q(severity=Severity.MEDIUM)),
+            low_open=Count("id", filter=new_filter & Q(severity=Severity.LOW)),
         )
         .filter(max_rank__gt=0)
     )
@@ -2055,6 +2077,13 @@ def api_signal_summary(request):
             "case_id": str(row["case_id"]),
             "highest_severity": _RANK_TO_SEVERITY.get(row["max_rank"], "LOW"),
             "open_count": row["open_count"],
+            "total_count": row["total_count"],
+            "by_severity": {
+                "CRITICAL": row["critical_open"],
+                "HIGH": row["high_open"],
+                "MEDIUM": row["medium_open"],
+                "LOW": row["low_open"],
+            },
         }
         for row in rows
     ]
@@ -2174,7 +2203,15 @@ def api_search(request):
 
     # --- Findings ---
     if raw_type in (None, "finding"):
-        vector = SearchVector("title", weight="A")
+        # Title alone misses real-world queries — the title is a rule
+        # template (e.g. "VALUATION_ANOMALY — Property purchased at 136%
+        # above assessed value"), while entity names ("Mitchell") only
+        # appear in description/narrative. Index all three.
+        vector = (
+            SearchVector("title", weight="A")
+            + SearchVector("description", weight="B")
+            + SearchVector("narrative", weight="C")
+        )
         finding_qs = (
             Finding.objects.select_related("case")
             .annotate(rank=SearchRank(vector, search_query))
@@ -2803,6 +2840,71 @@ def api_case_finding_detail(request, pk, finding_id):
         performed_by=getattr(request, "api_token", None),
     )
     return JsonResponse(serialize_finding(updated))
+
+
+@require_http_methods(["GET"])
+def api_finding_collection(request):
+    """Cross-case list of findings used by the Triage view.
+
+    GET query params:
+        status      — filter by status (e.g. NEW, NEEDS_EVIDENCE, CONFIRMED)
+        severity    — filter by severity
+        case_id     — restrict to a single case
+        rule_id     — restrict to a single rule
+        order_by    — sort field (default: created_at)
+        direction   — asc or desc (default: desc)
+        limit       — page size
+        offset      — pagination offset
+
+    Each result is the per-case finding shape with `case_id` and `case_name`
+    appended so the Triage view can render and link back to the source case.
+    """
+    qs = Finding.objects.select_related("case").prefetch_related(
+        "entity_links",
+        "document_links",
+    )
+
+    if status := request.GET.get("status"):
+        qs = qs.filter(status=status)
+    if severity := request.GET.get("severity"):
+        qs = qs.filter(severity=severity)
+    if case_id := request.GET.get("case_id"):
+        qs = qs.filter(case_id=case_id)
+    if rule_id := request.GET.get("rule_id"):
+        qs = qs.filter(rule_id=rule_id)
+
+    order_by, direction, sort_error = _parse_sort_params(
+        request,
+        allowed_fields=FINDING_SORT_FIELDS,
+        default_field="created_at",
+    )
+    if sort_error is not None:
+        return sort_error
+    qs = qs.order_by(*_build_ordering_fields(order_by, direction))
+
+    limit, offset, err = _parse_limit_offset(request)
+    if err:
+        return err
+    total = qs.count()
+    page = qs[offset : offset + limit]
+
+    results = []
+    for finding in page:
+        data = serialize_finding(finding)
+        data["case_id"] = str(finding.case_id) if finding.case_id else None
+        data["case_name"] = finding.case.name if finding.case_id and finding.case else ""
+        results.append(data)
+
+    return JsonResponse(
+        {
+            "count": total,
+            "limit": limit,
+            "offset": offset,
+            "next_offset": offset + limit if offset + limit < total else None,
+            "previous_offset": max(0, offset - limit) if offset > 0 else None,
+            "results": results,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

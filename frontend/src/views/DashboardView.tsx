@@ -73,9 +73,16 @@ export function DashboardView() {
     const activeCases = cases.filter((c) => c.status === "ACTIVE").length;
     const totalOpenFindings = findingSummary.reduce((sum, s) => sum + s.open_count, 0);
 
+    // Sum NEW-status finding counts per severity across cases. By using
+    // by_severity (whose totals equal open_count per case), the bars below
+    // sum to totalOpenFindings instead of counting cases by their highest
+    // severity — which previously made KPI totals disagree with the bars.
     const sevCounts: Record<string, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
     for (const s of findingSummary) {
-        if (s.highest_severity in sevCounts) sevCounts[s.highest_severity]++;
+        sevCounts.CRITICAL += s.by_severity?.CRITICAL ?? 0;
+        sevCounts.HIGH += s.by_severity?.HIGH ?? 0;
+        sevCounts.MEDIUM += s.by_severity?.MEDIUM ?? 0;
+        sevCounts.LOW += s.by_severity?.LOW ?? 0;
     }
 
     const referredCases = cases.filter((c) => c.status === "REFERRED").length;

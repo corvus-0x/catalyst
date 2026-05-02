@@ -270,6 +270,13 @@ export interface FindingSummaryItem {
     case_id: string;
     highest_severity: string;
     open_count: number;
+    total_count: number;
+    by_severity: {
+        CRITICAL: number;
+        HIGH: number;
+        MEDIUM: number;
+        LOW: number;
+    };
 }
 
 export async function fetchFindingSummary(options?: ApiRequestOptions): Promise<{ results: FindingSummaryItem[] }> {
