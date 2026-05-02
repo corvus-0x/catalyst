@@ -499,6 +499,17 @@ _NAME_JUNK_PATTERNS = [
     re.compile(r"^[A-Z]{1,2}$"),  # Single or double letter (state abbrev)
     re.compile(r"^(mr|mrs|ms|dr|jr|sr|ii|iii|iv)\.?$", re.IGNORECASE),  # Titles only
     re.compile(r"^(section|schedule|form|part|line|page)\b", re.IGNORECASE),  # Form labels
+    # Leading lowercase articles caught from deed/trust boilerplate, e.g.
+    # "my hand", "an authorized agent", "the petitioner". Real proper names
+    # are TitleCase, so the lowercase anchor is safe.
+    re.compile(r"^(my|an|a|the)\s+\w+(\s+\w+)?$"),
+    # Bare entity-type words that surface when an organization extractor
+    # captures the type label without a real name attached.
+    re.compile(
+        r"^(limited|llc|inc|incorporated|corporation|corp|company|co)$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^limited\s+liability\s+company$", re.IGNORECASE),
 ]
 
 

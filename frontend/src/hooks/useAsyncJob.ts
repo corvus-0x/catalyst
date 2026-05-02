@@ -111,7 +111,19 @@ export function useAsyncJob<TResult = unknown>(
                     body: JSON.stringify(body),
                 });
                 if (!res.ok) {
-                    throw new Error(`Enqueue failed: ${res.status}`);
+                    // Surface the backend's `error` body field when present —
+                    // e.g. the 409 "An AI analysis job is already running for
+                    // this case." instead of a bare "Enqueue failed: 409".
+                    let detail = `Enqueue failed: ${res.status}`;
+                    try {
+                        const body = (await res.json()) as { error?: string };
+                        if (body && typeof body.error === "string" && body.error) {
+                            detail = body.error;
+                        }
+                    } catch {
+                        // Body was empty or non-JSON; fall back to the status.
+                    }
+                    throw new Error(detail);
                 }
                 const enqueue = (await res.json()) as JobEnqueueResponse;
                 setJobId(enqueue.job_id);

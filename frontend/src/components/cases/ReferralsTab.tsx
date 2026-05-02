@@ -62,35 +62,14 @@ export function ReferralsTab() {
                 generatingPdf={generatingPdf}
             />
 
-            {/* Generate referral package PDF */}
-            <article className="info-card">
-                <div className="card-toolbar">
-                    <h3>{"📋"} Generate Referral Package (PDF)</h3>
-                </div>
-                <p className={styles.memoHint}>
-                    Generate a deterministic, citation-bearing referral package PDF for
-                    submission to government agencies. All findings and evidence traces are
-                    included in the output.
-                </p>
-                <div className={styles.exportButtons}>
-                    <Button
-                        variant="primary"
-                        disabled={generatingPdf}
-                        onClick={handleGenerateReferralPdf}
-                    >
-                        {generatingPdf ? "Generating..." : "Generate Referral Package"}
-                    </Button>
-                </div>
-            </article>
-
             {/* Report generation / export */}
             <article className="info-card">
                 <div className="card-toolbar">
                     <h3>{"\uD83D\uDCE4"} Export Case Data</h3>
                 </div>
                 <p className={styles.memoHint}>
-                    Export all case data including documents metadata, signals, detections, entities, and referrals.
-                    Use the formal referral memo (Documents tab) for agency submissions, or export raw data here for analysis.
+                    Export all case data including document metadata, findings, and entities.
+                    Use the referral package (above) for agency submissions, or export raw data here for analysis.
                 </p>
                 <div className={styles.exportButtons}>
                     <Button

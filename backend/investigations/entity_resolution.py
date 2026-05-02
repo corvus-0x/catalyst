@@ -69,27 +69,37 @@ class PersonResolutionResult:
 
     Attributes:
         person:           The Person record that was matched or created.
+                          None if creation was blocked by an ERROR-severity
+                          data-quality issue (e.g. OCR garbage like "an
+                          authorized" or "Limited Liability Company").
         created:          True if a new Person record was inserted.
         matched_alias:    If matched via an alias, the alias that matched.
         fuzzy_candidates: List of near-matches found (but not merged).
+        blocked_reason:   When person is None, the reason creation was
+                          blocked. Empty string otherwise.
     """
 
-    person: "Person"
+    person: "Person | None"
     created: bool
     matched_alias: str | None = None
     fuzzy_candidates: list["FuzzyCandidate"] = field(default_factory=list)
+    blocked_reason: str = ""
 
 
 @dataclass
 class OrgResolutionResult:
     """
     Returned by resolve_org() for each candidate org name.
+
+    Attributes mirror PersonResolutionResult; `org` is None when an
+    ERROR-severity validation issue blocked creation.
     """
 
-    org: "Organization"
+    org: "Organization | None"
     created: bool
     matched_alias: str | None = None
     fuzzy_candidates: list["FuzzyCandidate"] = field(default_factory=list)
+    blocked_reason: str = ""
 
 
 @dataclass
@@ -270,7 +280,19 @@ def resolve_person(
     if role:
         create_kwargs["role_tags"] = [_role_to_tag(role)]
 
-    _validate_and_log("person", create_kwargs)
+    blocked, block_reason = _validate_and_log("person", create_kwargs)
+    if blocked:
+        logger.warning(
+            "resolve_person: blocked creation of %r — %s",
+            raw_name,
+            block_reason,
+        )
+        return PersonResolutionResult(
+            person=None,
+            created=False,
+            fuzzy_candidates=fuzzy_candidates,
+            blocked_reason=block_reason,
+        )
 
     person = Person.objects.create(**create_kwargs)
     _maybe_link_person_document(person, document, context_note)
@@ -283,14 +305,19 @@ def resolve_person(
     )
 
 
-def _validate_and_log(entity_kind: str, data: dict) -> None:
-    """Run the appropriate data_quality validator and log any issues.
+def _validate_and_log(entity_kind: str, data: dict) -> tuple[bool, str]:
+    """Run the appropriate data_quality validator, log issues, and report
+    whether creation should be blocked.
 
-    Validation issues are logged at WARNING for ERROR-severity findings
-    and INFO for WARNING-severity. We do not block creation — better to
-    surface a flagged record for investigator review than to silently
-    drop it. (QA audit P1 — validators were never called from the
-    resolution path before this.)
+    Returns a (blocked, reason) tuple. Blocking occurs when at least one
+    issue has severity ERROR — the upstream Day-5 fix that stopped OCR
+    garbage like "Limited Liability Company" or "an authorized" from
+    landing as Person/Organization rows. WARNING-severity issues do not
+    block; they are logged at INFO so an investigator can review them.
+
+    Validation infrastructure failures (the validator itself raising) do
+    not block — better to surface a flagged record than to silently drop
+    a real entity over a transient validator bug.
     """
     try:
         from . import data_quality
@@ -298,29 +325,66 @@ def _validate_and_log(entity_kind: str, data: dict) -> None:
         if entity_kind == "person":
             result = data_quality.validate_person(data)
         elif entity_kind == "organization":
+            # Validate the org name against the same junk patterns we use
+            # for persons (catches bare entity-type strings like "Limited
+            # Liability Company" leaking through as org names). EIN is
+            # validated separately if present and its normalized form is
+            # written back into `data`.
+            from .data_quality import (
+                ValidationIssue,
+                ValidationResult,
+                _NAME_JUNK_PATTERNS,
+            )
+            result = ValidationResult()
+            name = (data.get("name") or "").strip()
+            for pattern in _NAME_JUNK_PATTERNS:
+                if pattern.match(name):
+                    result.add_issue(
+                        ValidationIssue(
+                            field="name",
+                            severity="ERROR",
+                            message=(
+                                f"Organization name '{name}' matches junk "
+                                "pattern (likely OCR artifact)."
+                            ),
+                            raw_value=name,
+                        )
+                    )
+                    break
             ein = data.get("ein", "").strip() if data.get("ein") else ""
-            if not ein:
-                return
-            result = data_quality.validate_ein(ein)
-            if result.corrected_data.get("ein") and result.is_clean:
-                # Use the validator's normalized form (XX-XXXXXXX).
-                data["ein"] = result.corrected_data["ein"]
+            if ein:
+                ein_result = data_quality.validate_ein(ein)
+                if ein_result.corrected_data.get("ein") and ein_result.is_clean:
+                    # Use the validator's normalized form (XX-XXXXXXX).
+                    data["ein"] = ein_result.corrected_data["ein"]
+                for issue in ein_result.issues:
+                    result.add_issue(issue)
         elif entity_kind == "property":
             result = data_quality.validate_property(data)
         else:
-            return
+            return False, ""
     except Exception:  # noqa: BLE001 — validation is best-effort
         logger.exception("data_quality validation failed for %s", entity_kind)
-        return
+        return False, ""
 
+    blocked = False
+    block_reason = ""
     for issue in result.issues:
-        log_method = logger.warning if issue.severity == "ERROR" else logger.info
+        if issue.severity == "ERROR":
+            log_method = logger.warning
+            if not blocked:
+                blocked = True
+                block_reason = issue.message
+        else:
+            log_method = logger.info
         log_method(
             "entity_validation_%s: [%s] %s",
             entity_kind,
             issue.severity,
             issue.message,
         )
+
+    return blocked, block_reason
 
 
 def _maybe_link_person_document(
@@ -495,7 +559,19 @@ def resolve_org(
     if notes:
         create_kwargs["notes"] = notes
 
-    _validate_and_log("organization", create_kwargs)
+    blocked, block_reason = _validate_and_log("organization", create_kwargs)
+    if blocked:
+        logger.warning(
+            "resolve_org: blocked creation of %r — %s",
+            raw_name,
+            block_reason,
+        )
+        return OrgResolutionResult(
+            org=None,
+            created=False,
+            fuzzy_candidates=fuzzy_candidates,
+            blocked_reason=block_reason,
+        )
 
     org = Organization.objects.create(**create_kwargs)
     _maybe_link_org_document(org, document, context_note)
@@ -564,16 +640,23 @@ class ResolutionSummary:
     Attributes:
         persons_created:     Number of new Person records inserted.
         persons_matched:     Number of existing Person records matched.
+        persons_blocked:     Number of Person hits dropped because the
+                             data-quality validator returned an
+                             ERROR-severity issue (OCR garbage etc.).
         orgs_created:        Number of new Organization records inserted.
         orgs_matched:        Number of existing Organization records matched.
+        orgs_blocked:        Number of Organization hits dropped on
+                             ERROR-severity validation.
         fuzzy_candidates:    All fuzzy candidates across persons and orgs,
                              sorted by similarity descending.
     """
 
     persons_created: int = 0
     persons_matched: int = 0
+    persons_blocked: int = 0
     orgs_created: int = 0
     orgs_matched: int = 0
+    orgs_blocked: int = 0
     fuzzy_candidates: list[FuzzyCandidate] = field(default_factory=list)
 
 
@@ -610,6 +693,10 @@ def resolve_all_entities(
             aliases=person_hit.get("aliases"),
             notes=person_hit.get("notes"),
         )
+        if result.person is None:
+            summary.persons_blocked += 1
+            summary.fuzzy_candidates.extend(result.fuzzy_candidates)
+            continue
         # If this is a 990 preparer, link them to the firm org
         if person_hit.get("source") == "990_preparer" and meta.get("preparer_firm"):
             _link_person_to_firm(result.person, meta["preparer_firm"], case, document)
@@ -630,6 +717,10 @@ def resolve_all_entities(
             address=org_hit.get("address"),
             phone=org_hit.get("phone"),
         )
+        if result.org is None:
+            summary.orgs_blocked += 1
+            summary.fuzzy_candidates.extend(result.fuzzy_candidates)
+            continue
         if result.created:
             summary.orgs_created += 1
         else:
