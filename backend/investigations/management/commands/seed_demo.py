@@ -45,6 +45,7 @@ from investigations.models import (
     FinancialSnapshot,
     Finding,
     FindingDocument,
+    FindingEntity,
     FindingSource,
     FindingStatus,
     InvestigatorNote,
@@ -54,6 +55,7 @@ from investigations.models import (
     OrganizationType,
     OrgDocument,
     Person,
+    PersonDocument,
     PersonOrganization,
     PersonRole,
     Property,
@@ -394,7 +396,9 @@ class Command(BaseCommand):
 
         self.stdout.write("Creating document records...")
 
-        # Create minimal document records (no actual files)
+        # Create minimal document records (no actual files). `extracted_text`
+        # holds realistic OCR-style excerpts so the document workspace has
+        # something to display for recruiters / demo viewers.
         docs_data = [
             {
                 "filename": "BFF_Form990_2021.pdf",
@@ -403,6 +407,35 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/990/2021/",
                 "sha256_hash": "a" * 64,
                 "file_size": 245000,
+                "extracted_text": (
+                    "FORM 990  Return of Organization Exempt From Income Tax\n"
+                    "For the 2021 calendar year\n"
+                    "Name of organization: BRIGHT FUTURE FOUNDATION\n"
+                    "EIN: 31-1234567   State of incorporation: OH\n"
+                    "Address: 123 Oak Street, Columbus, OH 43215\n\n"
+                    "Part I — Summary\n"
+                    "Total revenue (Line 12): $4,200,000\n"
+                    "Total expenses (Line 18): $4,050,000\n"
+                    "Net assets, end of year (Line 22): $403,000\n"
+                    "Number of voting members of governing body: 4\n"
+                    "Number of employees: 2\n\n"
+                    "Part IV — Checklist of Required Schedules\n"
+                    "Line 28a — Did the organization have a transaction with a "
+                    "related party (officer, director, key employee)? YES\n"
+                    "Schedule L attached: NO\n\n"
+                    "Part VII — Compensation of Officers, Directors, Trustees\n"
+                    "Sarah Mitchell, Executive Director — $0\n"
+                    "James Mitchell, Board Member — $0\n"
+                    "David Chen, Treasurer — $0\n"
+                    "Rachel Torres, Secretary — $0\n"
+                ),
+                "linked_orgs": [(bff, "Filer of the 2021 Form 990")],
+                "linked_persons": [
+                    (sarah, "Listed as Executive Director, Part VII"),
+                    (james, "Listed as Board Member, Part VII"),
+                    (david, "Listed as Treasurer, Part VII"),
+                    (rachel, "Listed as Secretary, Part VII"),
+                ],
             },
             {
                 "filename": "BFF_Form990_2020.pdf",
@@ -411,6 +444,25 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/990/2020/",
                 "sha256_hash": "b" * 64,
                 "file_size": 238000,
+                "extracted_text": (
+                    "FORM 990  Return of Organization Exempt From Income Tax\n"
+                    "For the 2020 calendar year\n"
+                    "Name of organization: BRIGHT FUTURE FOUNDATION\n"
+                    "EIN: 31-1234567   State of incorporation: OH\n\n"
+                    "Part I — Summary\n"
+                    "Total revenue (Line 12): $2,800,000\n"
+                    "Total expenses (Line 18): $2,720,000\n"
+                    "Net assets, end of year (Line 22): $253,000\n\n"
+                    "Part VII — Compensation of Officers\n"
+                    "Sarah Mitchell, Executive Director — $0\n"
+                    "James Mitchell, Board Member — $0\n"
+                    "David Chen, Treasurer — $0\n"
+                ),
+                "linked_orgs": [(bff, "Filer of the 2020 Form 990")],
+                "linked_persons": [
+                    (sarah, "Listed as Executive Director, Part VII"),
+                    (james, "Listed as Board Member, Part VII"),
+                ],
             },
             {
                 "filename": "Deed_1250_Oak_St.pdf",
@@ -419,6 +471,30 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/deeds/",
                 "sha256_hash": "c" * 64,
                 "file_size": 150000,
+                "extracted_text": (
+                    "GENERAL WARRANTY DEED\n"
+                    "Instrument number: 2021-0045678\n"
+                    "Recorded: June 28, 2021, Franklin County, Ohio\n\n"
+                    "GRANTOR: Mitchell Development Group LLC, an Ohio limited "
+                    "liability company\n"
+                    "GRANTEE: Bright Future Foundation, an Ohio nonprofit "
+                    "corporation\n\n"
+                    "For valuable consideration in the sum of FOUR HUNDRED "
+                    "TWENTY-FIVE THOUSAND DOLLARS ($425,000.00), receipt of "
+                    "which is hereby acknowledged, GRANTOR conveys to GRANTEE "
+                    "the following described real property:\n\n"
+                    "Parcel R-2024-0891, situated at 1250 Oak Street, "
+                    "Columbus, OH 43215, Franklin County.\n\n"
+                    "Signed: Sarah Mitchell, Manager of Mitchell Development "
+                    "Group LLC."
+                ),
+                "linked_orgs": [
+                    (bff, "Grantee on the deed"),
+                    (mitchell_dev, "Grantor on the deed"),
+                ],
+                "linked_persons": [
+                    (sarah, "Signed as Manager of Mitchell Development Group LLC"),
+                ],
             },
             {
                 "filename": "Deed_875_Elm_Ave.pdf",
@@ -427,6 +503,24 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/deeds/",
                 "sha256_hash": "d" * 64,
                 "file_size": 145000,
+                "extracted_text": (
+                    "QUITCLAIM DEED\n"
+                    "Instrument number: 2021-0058901\n"
+                    "Recorded: August 15, 2021, Franklin County, Ohio\n\n"
+                    "GRANTOR: Mitchell Development Group LLC\n"
+                    "GRANTEE: James Mitchell, individually\n\n"
+                    "For consideration of ZERO DOLLARS ($0.00), GRANTOR "
+                    "quitclaims to GRANTEE all interest in the following:\n\n"
+                    "Parcel R-2024-1456, located at 875 Elm Avenue, "
+                    "Columbus, OH 43217, Franklin County.\n\n"
+                    "Signed: Sarah Mitchell, Manager of Mitchell Development "
+                    "Group LLC."
+                ),
+                "linked_orgs": [(mitchell_dev, "Grantor on the deed")],
+                "linked_persons": [
+                    (james, "Grantee on the deed (received property at $0)"),
+                    (sarah, "Signed as Manager of grantor LLC"),
+                ],
             },
             {
                 "filename": "BFF_Articles_Incorporation.pdf",
@@ -435,6 +529,24 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/corp/",
                 "sha256_hash": "e" * 64,
                 "file_size": 50000,
+                "extracted_text": (
+                    "ARTICLES OF INCORPORATION\n"
+                    "State of Ohio — Domestic Nonprofit Corporation\n"
+                    "Filed: March 15, 2015\n\n"
+                    "Name of corporation: BRIGHT FUTURE FOUNDATION\n"
+                    "Principal office: 123 Oak Street, Columbus, OH 43215\n"
+                    "Purpose: Charitable and educational under IRC 501(c)(3).\n\n"
+                    "Initial Directors:\n"
+                    "  Sarah Mitchell, Executive Director\n"
+                    "  David Chen\n\n"
+                    "Statutory agent: Sarah Mitchell, 789 Maple Ave, "
+                    "Columbus, OH 43216."
+                ),
+                "linked_orgs": [(bff, "Subject of articles of incorporation")],
+                "linked_persons": [
+                    (sarah, "Listed as initial Executive Director and statutory agent"),
+                    (david, "Listed as initial Director"),
+                ],
             },
             {
                 "filename": "Mitchell_Dev_Formation.pdf",
@@ -443,6 +555,24 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/corp/",
                 "sha256_hash": "f" * 64,
                 "file_size": 45000,
+                "extracted_text": (
+                    "ARTICLES OF ORGANIZATION\n"
+                    "State of Ohio — Limited Liability Company\n"
+                    "Filed: January 20, 2019\n\n"
+                    "Name of LLC: MITCHELL DEVELOPMENT GROUP LLC\n"
+                    "Principal office: 456 Business Park Dr, "
+                    "Columbus, OH 43219\n"
+                    "Purpose: Real estate acquisition, development, and "
+                    "management.\n\n"
+                    "Manager: Sarah Mitchell\n"
+                    "Member: James Mitchell\n\n"
+                    "Statutory agent: Sarah Mitchell."
+                ),
+                "linked_orgs": [(mitchell_dev, "Subject of LLC articles of organization")],
+                "linked_persons": [
+                    (sarah, "Listed as Manager and statutory agent"),
+                    (james, "Listed as Member"),
+                ],
             },
             {
                 "filename": "Ohio_AOS_Audit_2020.pdf",
@@ -451,6 +581,25 @@ class Command(BaseCommand):
                 "file_path": "/mnt/documents/government/",
                 "sha256_hash": "1" * 64,
                 "file_size": 85000,
+                "extracted_text": (
+                    "OHIO AUDITOR OF STATE — REGULAR AUDIT REPORT\n"
+                    "Subject: Bright Future Foundation\n"
+                    "Period covered: Fiscal year ending Dec 31, 2020\n"
+                    "Report issued: November 10, 2020\n\n"
+                    "Findings:\n"
+                    "  1. Lack of documented internal control procedures over "
+                    "expenditure approval.\n"
+                    "  2. No conflict-of-interest policy on file despite "
+                    "evidence of related-party transactions.\n"
+                    "  3. Board minutes do not reflect approval of property "
+                    "acquisitions over $100,000.\n\n"
+                    "Recommendation: Adopt written internal control policies "
+                    "and a conflict-of-interest disclosure procedure."
+                ),
+                "linked_orgs": [(bff, "Subject of the audit")],
+                "linked_persons": [
+                    (david, "Treasurer at time of audit; signatory on response letter"),
+                ],
             },
         ]
 
@@ -467,6 +616,7 @@ class Command(BaseCommand):
                     "file_size": doc_data["file_size"],
                     "ocr_status": OcrStatus.COMPLETED,
                     "extraction_status": ExtractionStatus.COMPLETED,
+                    "extracted_text": doc_data["extracted_text"],
                 },
             )
             docs[doc_data["filename"]] = doc
@@ -478,17 +628,20 @@ class Command(BaseCommand):
 
         self.stdout.write("Linking documents to entities...")
 
-        # Link organizations to documents
-        OrgDocument.objects.get_or_create(
-            org=bff,
-            document=docs["BFF_Form990_2021.pdf"],
-            defaults={"context_note": "Most recent 990 filing (2021 tax year)"},
-        )
-        OrgDocument.objects.get_or_create(
-            org=bff,
-            document=docs["BFF_Articles_Incorporation.pdf"],
-            defaults={"context_note": "Formation documents (2015)"},
-        )
+        for doc_data in docs_data:
+            doc = docs[doc_data["filename"]]
+            for org, note in doc_data.get("linked_orgs", []):
+                OrgDocument.objects.get_or_create(
+                    org=org,
+                    document=doc,
+                    defaults={"context_note": note},
+                )
+            for person, note in doc_data.get("linked_persons", []):
+                PersonDocument.objects.get_or_create(
+                    person=person,
+                    document=doc,
+                    defaults={"context_note": note},
+                )
 
         self.stdout.write(self.style.SUCCESS("  ✓ Documents linked to entities"))
 
@@ -609,6 +762,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "ORC § 1702.33"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
             {
                 "rule_id": "SR-005",
@@ -634,6 +788,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
                 "trigger_entity_id": james.id,
+                "trigger_entity_type": "person",
             },
             {
                 "rule_id": "SR-006",
@@ -652,6 +807,7 @@ class Command(BaseCommand):
                 "source": FindingSource.AUTO,
                 "legal_refs": ["26 U.S.C. § 6011", "IRS Form 990 Instructions"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
             {
                 "rule_id": "SR-012",
@@ -677,6 +833,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["ORC § 1702.33", "IRS Form 990 Part VI"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
             {
                 "rule_id": "SR-013",
@@ -701,6 +858,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["26 U.S.C. § 4958", "IRS Form 990 Part VII"],
                 "trigger_entity_id": sarah.id,
+                "trigger_entity_type": "person",
             },
             {
                 "rule_id": "SR-015",
@@ -726,6 +884,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
                 "trigger_entity_id": sarah.id,
+                "trigger_entity_type": "person",
             },
             {
                 "rule_id": "SR-021",
@@ -743,6 +902,7 @@ class Command(BaseCommand):
                 "source": FindingSource.AUTO,
                 "legal_refs": ["IRS Form 990 Part I"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
             {
                 "rule_id": "SR-025",
@@ -770,6 +930,7 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["26 U.S.C. § 6652", "18 U.S.C. § 1001"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
             {
                 "rule_id": "SR-029",
@@ -795,11 +956,13 @@ class Command(BaseCommand):
                 ),
                 "legal_refs": ["ORC § 1702.33", "IRS Form 990 Part I"],
                 "trigger_entity_id": bff.id,
+                "trigger_entity_type": "organization",
             },
         ]
 
         for finding_data in findings_data:
             trigger_entity_id = finding_data.pop("trigger_entity_id", None)
+            trigger_entity_type = finding_data.pop("trigger_entity_type", None)
             finding, _ = Finding.objects.get_or_create(
                 case=case,
                 rule_id=finding_data["rule_id"],
@@ -809,6 +972,16 @@ class Command(BaseCommand):
             if trigger_entity_id:
                 finding.trigger_entity_id = trigger_entity_id
                 finding.save()
+                # Mirror the trigger entity into the FindingEntity link table
+                # so the entity detail page can list this finding under its
+                # related-findings panel.
+                if trigger_entity_type:
+                    FindingEntity.objects.get_or_create(
+                        finding=finding,
+                        entity_id=trigger_entity_id,
+                        entity_type=trigger_entity_type,
+                        defaults={"context_note": "Trigger entity for this rule"},
+                    )
 
             # Link to trigger document if available
             if finding_data["rule_id"] in ["SR-003", "SR-005"]:
