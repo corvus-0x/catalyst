@@ -26,6 +26,7 @@ export function DocumentsTab() {
     const [docTypeFilter, setDocTypeFilter] = useState("all");
     const [ocrFilter, setOcrFilter] = useState("all");
     const [viewingDoc, setViewingDoc] = useState<DocumentItem | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     const documentTypes = useMemo(
         () => Array.from(new Set(documents.map((d) => d.doc_type))).sort(),
@@ -128,21 +129,46 @@ export function DocumentsTab() {
                                         <td>{formatSize(doc.file_size)}</td>
                                         <td>{formatDate(doc.uploaded_at)}</td>
                                         <td className={styles.docActionsCell}>
-                                            <Button
-                                                variant="secondary"
-                                                onClick={() => setViewingDoc(doc)}
-                                                aria-label={`View file ${doc.filename}`}
-                                            >
-                                                {"\uD83D\uDC41"} View
-                                            </Button>
-                                            <Button
-                                                variant="secondary"
-                                                onClick={() => onDeleteDocument(doc.id)}
-                                                disabled={deletingDocumentId === doc.id}
-                                                aria-label={`Delete file ${doc.filename}`}
-                                            >
-                                                {deletingDocumentId === doc.id ? "Deleting..." : "Delete"}
-                                            </Button>
+                                            {pendingDeleteId === doc.id ? (
+                                                <>
+                                                    <Button
+                                                        variant="danger"
+                                                        onClick={() => {
+                                                            onDeleteDocument(doc.id);
+                                                            setPendingDeleteId(null);
+                                                        }}
+                                                        disabled={deletingDocumentId === doc.id}
+                                                        aria-label={`Confirm delete of ${doc.filename}`}
+                                                    >
+                                                        {deletingDocumentId === doc.id ? "Deleting..." : "Confirm delete"}
+                                                    </Button>
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={() => setPendingDeleteId(null)}
+                                                        disabled={deletingDocumentId === doc.id}
+                                                        aria-label="Cancel delete"
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={() => setViewingDoc(doc)}
+                                                        aria-label={`View file ${doc.filename}`}
+                                                    >
+                                                        {"\uD83D\uDC41"} View
+                                                    </Button>
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={() => setPendingDeleteId(doc.id)}
+                                                        aria-label={`Delete file ${doc.filename}`}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
