@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-05-01 (Session 40 — frontend QA punch list cleared)
+**Last updated:** 2026-05-04 (Session 41 — case workspace design spec + layout shell)
 
 This project is in active development. This file is updated every time
 the state of a major component changes. If something looks half-built,
@@ -50,7 +50,54 @@ the right answer when something is mid-refactor is to say so.
 
 | Component | Why it's being refactored |
 |-----------|---------------------------|
+| Case workspace UI | Full rewrite to a graph-first, Maltego-influenced five-zone layout per [docs/architecture/frontend-design-spec.md](docs/architecture/frontend-design-spec.md). Replaces the 7-tab `CaseDetailView` with a single canvas + composable side panes (990 Viewer, Financials, Package), citation-bearing edges on the entity graph, and a multi-tab bottom dock (Audit log, Triage, Transforms, Documents, Selection). Ships at `/cases/:caseId/workspace` until feature-complete; will be promoted to the canonical case route at end of the 19-step build sequence. |
 | Repo presentation | This file. `README.md`. `CLAUDE.md`. Keeping surface-level docs in sync with the rebuild as it lands. |
+
+**Recently completed (Session 41, May 4 2026):**
+
+Started the case workspace UI rewrite. Two pieces landed: a canonical
+design spec, and the layout shell that other steps will build on top of.
+
+- **New design spec** — [docs/architecture/frontend-design-spec.md](docs/architecture/frontend-design-spec.md).
+  Living document, owner-authored, built from a research pass on Maltego,
+  i2 Analyst's Notebook, Palantir Gotham, and Cytoscape.js. Core moves:
+  *(1)* the graph is the primary canvas, not a tab — flags appear as
+  badges on entity nodes AND as a sortable list in the bottom dock;
+  *(2)* every edge carries a `[Doc-N]` citation chip (paper-trail
+  assembly, not OSINT discovery); *(3)* manually drawn or AI-extracted
+  edges start as SPECULATIVE and cannot be exported until upgraded with
+  citations; *(4)* single-screen baseline locked at 1366×768 with
+  multi-monitor popout deferred to v2; *(5)* discoverability section
+  with first-time-user tour, learn-as-you-go toasts, mouse-only
+  achievability of every workflow; *(6)* professional library stack
+  locked. Seven open questions resolved into a decisions log inside the
+  spec.
+- **Professional library stack installed** (spec §16.5) — Cytoscape.js
+  (graph engine, replacing D3), `react-cytoscapejs`, `cytoscape-cose-bilkent`,
+  `lucide-react` (icons), Radix UI primitives (Dialog, Popover, Tooltip,
+  DropdownMenu, ContextMenu, Tabs, ToggleGroup), `@tanstack/react-table`,
+  `cmdk` (command palette), `react-resizable-panels@^2` (pinned — v4
+  released a breaking-API rename), `tinykeys`, `sonner`, `react-pdf`,
+  `date-fns`, `driver.js`. Build green at 21.4 s, 2412 modules, JS bundle
+  144 → 156 KB gzipped (libraries loaded but only `react-resizable-panels`
+  and `lucide-react` actively imported yet).
+- **Layout shell shipped** at `/cases/:caseId/workspace` — five zones
+  (top bar / left rail / center canvas / right detail / bottom dock)
+  with resize-and-collapse mechanics via `react-resizable-panels`. Each
+  zone renders placeholders annotated with the spec section that will
+  fill it. View toggles (Graph / 990 Viewer / Financials / Package) on
+  the top bar split the center horizontally — Graph is locked open, the
+  other three are opt-in. AppShell extended with a `viewContentFullbleed`
+  mode so the workspace can fill edge-to-edge instead of being constrained
+  by the 1200 px max-width that the other views need. Existing
+  `/cases/:caseId` tabbed `CaseDetailView` preserved unchanged.
+
+Next steps (per spec §18 build sequence): step 2 — wrap Radix primitives
+in token-aware UI components; step 3 — audit log on TanStack Table (the
+"chain of custody made visible" panel); then graph migration to
+Cytoscape.js at step 6.
+
+---
 
 **Recently completed (Session 37–38, QA-audit hardening pass):**
 

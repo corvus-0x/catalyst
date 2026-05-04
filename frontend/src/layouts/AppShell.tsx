@@ -202,7 +202,13 @@ export function AppShell() {
                     <Breadcrumb caseName={caseName ?? undefined} />
                 </header>
 
-                <main id="main-content" className={styles.viewContent} role="main">
+                <main
+                    id="main-content"
+                    className={`${styles.viewContent} ${
+                        location.pathname.includes("/workspace") ? styles.viewContentFullbleed : ""
+                    }`}
+                    role="main"
+                >
                     <Outlet context={{ pushToast }} />
                 </main>
 

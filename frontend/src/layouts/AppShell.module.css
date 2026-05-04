@@ -190,3 +190,13 @@
   padding: 1.5rem;
   max-width: 1200px;
 }
+
+/* Full-bleed mode: case workspace and other views that manage their own
+   layout edge-to-edge. Removes padding and max-width constraint. */
+.viewContentFullbleed {
+  padding: 0;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

@@ -1,0 +1,460 @@
+/*
+ * CaseWorkspace — five-zone case workspace styles
+ * Spec: docs/architecture/frontend-design-spec.md §5–§10
+ *
+ * Baseline viewport: 1366×768 (§5.1). On a typical 1920×1080 monitor the
+ * default proportions give comfortable canvas room; on the 1366 baseline
+ * the user collapses the rails as needed.
+ */
+
+/* ── Workspace shell ────────────────────────────────────────────── */
+.workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    background: var(--bg-ink);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    overflow: hidden;
+}
+
+/* ── Zone 1: Top bar ────────────────────────────────────────────── */
+.topBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0 var(--space-md);
+    background: var(--surface-strong);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: var(--space-md);
+}
+
+.topBarLeft {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 160px;
+    flex-shrink: 0;
+}
+
+.caseLabel {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-main);
+    letter-spacing: 0.01em;
+}
+
+.caseLabelMuted {
+    color: var(--text-soft);
+    font-weight: 400;
+    margin-left: var(--space-xs);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+
+.topBarCenter {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+    justify-content: center;
+}
+
+.viewToggle {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    letter-spacing: 0.01em;
+}
+
+.viewToggle:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+.viewToggle:disabled {
+    cursor: default;
+}
+
+.viewToggleActive {
+    background: var(--sidebar-active);
+    color: var(--text-main);
+    border-color: var(--accent);
+}
+
+.topBarRight {
+    display: flex;
+    gap: 2px;
+    min-width: 160px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
+.iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.iconButton:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+/* ── Panel groups ───────────────────────────────────────────────── */
+.horizontalGroup {
+    flex: 1;
+    min-height: 0;
+}
+
+.verticalGroup {
+    height: 100%;
+}
+
+/* ── Zone surfaces ──────────────────────────────────────────────── */
+.panel {
+    background: var(--bg-deep);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.leftRail {
+    border-right: 1px solid var(--border);
+}
+
+.rightPanel {
+    border-left: 1px solid var(--border);
+}
+
+.bottomDock {
+    border-top: 1px solid var(--border);
+}
+
+.panelCollapsed {
+    /* Collapsed panels render only the stub; suppress padding noise */
+    overflow: visible;
+}
+
+/* ── Zone interior ──────────────────────────────────────────────── */
+.zoneInner {
+    height: 100%;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.zoneHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+    font-weight: 500;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+.zoneSectionHeader {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+    font-weight: 500;
+    margin: var(--space-md) 0 var(--space-sm);
+    flex-shrink: 0;
+}
+
+.zoneSection {
+    flex-shrink: 0;
+}
+
+/* ── Placeholder cards ──────────────────────────────────────────── */
+.placeholder {
+    padding: var(--space-md);
+    background: var(--state-block-bg);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.placeholderTitle {
+    font-size: var(--text-sm);
+    color: var(--text-main);
+    font-weight: 500;
+}
+
+.placeholderRef {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+}
+
+/* ── Center canvas ──────────────────────────────────────────────── */
+.canvas {
+    height: 100%;
+    width: 100%;
+    background: var(--graph-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.canvasPlaceholder {
+    text-align: center;
+    color: var(--text-soft);
+}
+
+.canvasTitle {
+    font-size: var(--text-xl);
+    color: var(--text-main);
+    font-weight: 500;
+    margin-bottom: var(--space-xs);
+    letter-spacing: 0.01em;
+}
+
+.canvasSubtitle {
+    font-size: var(--text-sm);
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+}
+
+/* ── Resize handles ─────────────────────────────────────────────── */
+.handleVertical {
+    width: 4px;
+    background: transparent;
+    transition: background var(--transition-fast);
+    cursor: col-resize;
+    position: relative;
+}
+
+.handleVertical::before {
+    content: "";
+    position: absolute;
+    inset: 0 1px;
+    background: var(--bg-ink);
+    transition: background var(--transition-fast);
+}
+
+.handleVertical:hover::before,
+.handleVertical[data-resize-handle-active]::before {
+    background: var(--accent);
+}
+
+.handleHorizontal {
+    height: 4px;
+    background: transparent;
+    transition: background var(--transition-fast);
+    cursor: row-resize;
+    position: relative;
+}
+
+.handleHorizontal::before {
+    content: "";
+    position: absolute;
+    inset: 1px 0;
+    background: var(--bg-ink);
+    transition: background var(--transition-fast);
+}
+
+.handleHorizontal:hover::before,
+.handleHorizontal[data-resize-handle-active]::before {
+    background: var(--accent);
+}
+
+/* ── Bottom dock specifics ──────────────────────────────────────── */
+.dockInner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+.dockTabBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding-right: var(--space-sm);
+    flex-shrink: 0;
+    background: var(--surface);
+}
+
+.dockTabs {
+    display: flex;
+    gap: 0;
+}
+
+.dockTab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: -1px;
+}
+
+.dockTab:hover {
+    color: var(--text-main);
+}
+
+.dockTabActive {
+    color: var(--text-main);
+    border-bottom-color: var(--accent);
+}
+
+.dockTabCount {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    background: var(--tag-neutral-bg);
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    min-width: 18px;
+    text-align: center;
+}
+
+.dockTabActive .dockTabCount {
+    color: var(--text-main);
+}
+
+.dockContent {
+    flex: 1;
+    overflow: auto;
+    padding: var(--space-md);
+}
+
+/* ── Right panel: detail tabs ───────────────────────────────────── */
+.detailTabs {
+    display: flex;
+    gap: 0;
+    margin: var(--space-sm) 0 var(--space-md);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.detailTab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    margin-bottom: -1px;
+    flex: 1;
+    text-align: center;
+}
+
+.detailTab:hover {
+    color: var(--text-main);
+}
+
+.detailTabActive {
+    color: var(--text-main);
+    border-bottom-color: var(--accent);
+}
+
+/* ── Collapse buttons ───────────────────────────────────────────── */
+.collapseButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.collapseButton:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+/* ── Collapsed-state stubs ──────────────────────────────────────── */
+.collapsedRailStub {
+    height: 100%;
+    width: 100%;
+    background: var(--bg-deep);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-soft);
+    transition: var(--transition-fast);
+}
+
+.collapsedRailStub:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+.collapsedDockStub {
+    height: 100%;
+    width: 100%;
+    background: var(--surface);
+    border: none;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-md);
+    padding: 0 var(--space-md);
+    cursor: pointer;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-family: var(--font-sans);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    transition: var(--transition-fast);
+}
+
+.collapsedDockStub:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}

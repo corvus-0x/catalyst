@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layouts/AppShell";
+import { CaseWorkspace } from "./layouts/CaseWorkspace";
 import { ShellContextProvider } from "./contexts/ShellContext";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { useTheme } from "./hooks/useTheme";
@@ -49,7 +50,13 @@ export default function App() {
                                 {/* Cases list */}
                                 <Route path="cases" element={<CasesListView />} />
 
-                                {/* Case detail with tabbed sub-routes */}
+                                {/* New five-zone case workspace
+                                    (docs/architecture/frontend-design-spec.md). Lives at
+                                    /cases/:caseId/workspace until feature-complete; will be
+                                    promoted to the canonical case route at end of build sequence. */}
+                                <Route path="cases/:caseId/workspace" element={<CaseWorkspace />} />
+
+                                {/* Case detail with tabbed sub-routes (legacy — being phased out) */}
                                 <Route path="cases/:caseId" element={<CaseDetailView />}>
                                     <Route index element={<Navigate to="overview" replace />} />
                                     <Route path="overview" element={<OverviewTab />} />
