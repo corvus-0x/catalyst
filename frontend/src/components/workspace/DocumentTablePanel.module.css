@@ -66,6 +66,21 @@
     cursor: not-allowed;
 }
 
+.processBtn {
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    background: var(--control-bg);
+    color: var(--text-main);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition-fast);
+}
+.processBtn:hover:not(:disabled) { background: var(--sidebar-hover); }
+.processBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .hiddenInput {
     position: absolute;
     width: 1px;

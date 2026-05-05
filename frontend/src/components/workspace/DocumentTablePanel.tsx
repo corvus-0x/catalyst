@@ -25,7 +25,7 @@ import {
     useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDownIcon, ChevronUpIcon, ChevronsUpDownIcon, RefreshCwIcon, CopyIcon, UploadIcon } from "lucide-react";
-import { fetchCaseDetail } from "../../api";
+import { fetchCaseDetail, processPendingOcr } from "../../api";
 import { DocumentItem } from "../../types";
 import { Tooltip } from "../ui/Tooltip";
 import { toast } from "../ui/Toaster";
@@ -60,6 +60,24 @@ export function DocumentTablePanel({ caseId, onFocusDocument, onLoaded }: Props)
     const [sorting, setSorting] = useState<SortingState>([
         { id: "uploaded_at", desc: true },
     ]);
+    const [processing, setProcessing] = useState(false);
+    const [processedCount, setProcessedCount] = useState<number | null>(null);
+
+    async function handleProcessPending() {
+        if (!caseId) return;
+        setProcessing(true);
+        setProcessedCount(null);
+        try {
+            const res = await processPendingOcr(caseId);
+            const count = (res as unknown as { requested?: number }).requested ?? 0;
+            setProcessedCount(count);
+            await load();
+        } catch {
+            // silent — documents will show updated status on reload
+        } finally {
+            setProcessing(false);
+        }
+    }
 
     async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const files = Array.from(e.target.files ?? []);
@@ -206,7 +224,7 @@ export function DocumentTablePanel({ caseId, onFocusDocument, onLoaded }: Props)
     if (docs === null && !error) {
         return (
             <div className={styles.panel}>
-                <Header count={null} refreshing={refreshing} uploading={uploading} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} />
+                <Header count={null} refreshing={refreshing} uploading={uploading} processing={processing} processedCount={processedCount} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} onProcessPending={handleProcessPending} caseId={caseId} />
                 <SkeletonTable rows={6} />
             </div>
         );
@@ -215,7 +233,7 @@ export function DocumentTablePanel({ caseId, onFocusDocument, onLoaded }: Props)
     if (error) {
         return (
             <div className={styles.panel}>
-                <Header count={null} refreshing={refreshing} uploading={uploading} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} />
+                <Header count={null} refreshing={refreshing} uploading={uploading} processing={processing} processedCount={processedCount} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} onProcessPending={handleProcessPending} caseId={caseId} />
                 <div className={styles.error}>
                     <span>Couldn't load documents: {error}</span>
                     <button type="button" className={styles.retry} onClick={load}>
@@ -231,7 +249,7 @@ export function DocumentTablePanel({ caseId, onFocusDocument, onLoaded }: Props)
     if (rows.length === 0) {
         return (
             <div className={styles.panel}>
-                <Header count={0} refreshing={refreshing} uploading={uploading} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} />
+                <Header count={0} refreshing={refreshing} uploading={uploading} processing={processing} processedCount={processedCount} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} onProcessPending={handleProcessPending} caseId={caseId} />
                 <div className={styles.empty}>
                     No documents uploaded yet — drag a file or run a transform to populate the case.
                 </div>
@@ -251,7 +269,7 @@ export function DocumentTablePanel({ caseId, onFocusDocument, onLoaded }: Props)
                 onChange={handleUpload}
                 aria-hidden="true"
             />
-            <Header count={rows.length} refreshing={refreshing} uploading={uploading} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} />
+            <Header count={rows.length} refreshing={refreshing} uploading={uploading} processing={processing} processedCount={processedCount} onRefresh={load} onUploadClick={() => fileInputRef.current?.click()} onProcessPending={handleProcessPending} caseId={caseId} />
             <div className={styles.scroller}>
                 <table className={styles.table}>
                     <ColGroup />
@@ -342,14 +360,22 @@ function Header({
     count,
     refreshing,
     uploading,
+    processing,
+    processedCount,
     onRefresh,
     onUploadClick,
+    onProcessPending,
+    caseId,
 }: {
     count: number | null;
     refreshing: boolean;
     uploading: boolean;
+    processing: boolean;
+    processedCount: number | null;
     onRefresh: () => void;
     onUploadClick: () => void;
+    onProcessPending: () => void;
+    caseId?: string;
 }) {
     return (
         <div className={styles.header}>
@@ -359,6 +385,15 @@ function Header({
                 <span className={styles.headerSub}>· SHA-256 chain of custody on every upload</span>
             </div>
             <div className={styles.headerActions}>
+                <button
+                    type="button"
+                    className={styles.processBtn}
+                    onClick={onProcessPending}
+                    disabled={processing || !caseId}
+                    title="Run OCR + extraction on all pending documents"
+                >
+                    {processing ? "Processing…" : processedCount !== null ? `Processed ${processedCount}` : "Process pending"}
+                </button>
                 <Tooltip content="Upload documents">
                     <button
                         type="button"
