@@ -28,12 +28,16 @@ import {
 import { Tabs } from "../ui/Tabs";
 import { toast } from "../ui/Toaster";
 import {
+    aiAsk,
+    aiConnections,
+    aiSummarize,
     fetch990Data,
     fetchEntityDetail,
     fetchNotes,
     createNote,
     deleteNote,
     isAbortError,
+    runAiPatternAnalysis,
     searchOhioAOS,
     searchOhioSOS,
 } from "../../api";
@@ -521,6 +525,9 @@ function NotesTab({
 
 function ActionsTab({ caseId, node }: { caseId: string; node: GraphNode }) {
     const [busy, setBusy] = useState<string | null>(null);
+    const [aiResponse, setAiResponse] = useState<{ label: string; text: string } | null>(null);
+    const [aiBusy, setAiBusy] = useState<string | null>(null);
+    const [askText, setAskText] = useState("");
     const ein = node.metadata.ein ?? null;
 
     async function pull990s() {
@@ -561,6 +568,84 @@ function ActionsTab({ caseId, node }: { caseId: string; node: GraphNode }) {
             toast.error(err instanceof Error ? err.message : "AOS search failed");
         } finally {
             setBusy(null);
+        }
+    }
+
+    async function runPatternAnalysis() {
+        setAiBusy("patterns");
+        setAiResponse(null);
+        try {
+            await runAiPatternAnalysis(caseId);
+            setAiResponse({
+                label: "AI Pattern Analysis",
+                text: "Job queued — check the Transforms tab for results when complete.",
+            });
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : "Failed";
+            if (msg.includes("ANTHROPIC_API_KEY")) {
+                setAiResponse({
+                    label: "AI unavailable",
+                    text: "AI features require ANTHROPIC_API_KEY to be set in Railway environment variables.",
+                });
+            } else {
+                setAiResponse({ label: "Error", text: msg });
+            }
+        } finally {
+            setAiBusy(null);
+        }
+    }
+
+    async function runSummarize() {
+        setAiBusy("summarize");
+        setAiResponse(null);
+        try {
+            const res = await aiSummarize(caseId, "case", caseId);
+            const summary =
+                (res as unknown as { summary?: string; narrative?: string }).summary ??
+                (res as unknown as { narrative?: string }).narrative ??
+                JSON.stringify(res);
+            setAiResponse({ label: "Case Summary", text: summary });
+        } catch (e) {
+            setAiResponse({ label: "Error", text: e instanceof Error ? e.message : "Failed" });
+        } finally {
+            setAiBusy(null);
+        }
+    }
+
+    async function runConnections() {
+        setAiBusy("connections");
+        setAiResponse(null);
+        try {
+            const res = await aiConnections(caseId, node.id);
+            const analysis =
+                (res as unknown as { analysis?: string; connections?: string }).analysis ??
+                (res as unknown as { connections?: string }).connections ??
+                JSON.stringify(res);
+            setAiResponse({ label: "Connection Analysis", text: analysis });
+        } catch (e) {
+            setAiResponse({ label: "Error", text: e instanceof Error ? e.message : "Failed" });
+        } finally {
+            setAiBusy(null);
+        }
+    }
+
+    async function handleAskSubmit() {
+        if (!askText.trim()) return;
+        setAiBusy("ask");
+        setAiResponse(null);
+        try {
+            const res = await aiAsk(caseId, askText.trim(), []);
+            const answer =
+                (res as unknown as { answer?: string; response?: string; message?: string }).answer ??
+                (res as unknown as { response?: string }).response ??
+                (res as unknown as { message?: string }).message ??
+                JSON.stringify(res);
+            setAiResponse({ label: "AI Answer", text: answer });
+            setAskText("");
+        } catch (e) {
+            setAiResponse({ label: "Error", text: e instanceof Error ? e.message : "Failed" });
+        } finally {
+            setAiBusy(null);
         }
     }
 
@@ -619,6 +704,66 @@ function ActionsTab({ caseId, node }: { caseId: string; node: GraphNode }) {
                     {a.hint && <span className={styles.actionHint}>{a.hint}</span>}
                 </button>
             ))}
+
+            <div className={styles.aiSection}>
+                <div className={styles.aiSectionHeader}>AI Analysis</div>
+
+                <button
+                    type="button"
+                    className={styles.actionBtn}
+                    onClick={() => void runPatternAnalysis()}
+                    disabled={aiBusy !== null}
+                >
+                    {aiBusy === "patterns" ? "Queuing…" : "Run AI Pattern Analysis"}
+                </button>
+
+                <button
+                    type="button"
+                    className={styles.actionBtn}
+                    onClick={() => void runSummarize()}
+                    disabled={aiBusy !== null}
+                >
+                    {aiBusy === "summarize" ? "Summarizing…" : "Generate case summary"}
+                </button>
+
+                {node.type === "organization" && (
+                    <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => void runConnections()}
+                        disabled={aiBusy !== null}
+                    >
+                        {aiBusy === "connections" ? "Analyzing…" : "Analyze entity connections"}
+                    </button>
+                )}
+
+                <div className={styles.askRow}>
+                    <input
+                        type="text"
+                        className={styles.askInput}
+                        placeholder="Ask AI a question…"
+                        value={askText}
+                        onChange={(e) => setAskText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !aiBusy) void handleAskSubmit(); }}
+                        disabled={aiBusy !== null}
+                    />
+                    <button
+                        type="button"
+                        className={styles.askBtn}
+                        onClick={() => void handleAskSubmit()}
+                        disabled={aiBusy !== null || !askText.trim()}
+                    >
+                        {aiBusy === "ask" ? "…" : "Ask"}
+                    </button>
+                </div>
+
+                {aiResponse && (
+                    <div className={styles.aiResult}>
+                        <div className={styles.aiResultLabel}>{aiResponse.label}</div>
+                        <div className={styles.aiResultText}>{aiResponse.text}</div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
