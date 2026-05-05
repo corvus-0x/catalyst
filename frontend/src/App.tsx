@@ -4,6 +4,8 @@ import { AppShell } from "./layouts/AppShell";
 import { CaseWorkspace } from "./layouts/CaseWorkspace";
 import { ShellContextProvider } from "./contexts/ShellContext";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
+import { TooltipProvider } from "./components/ui/Tooltip";
+import { Toaster } from "./components/ui/Toaster";
 import { useTheme } from "./hooks/useTheme";
 import { initCSRF } from "./api";
 import { RequireLogin } from "./components/auth/RequireLogin";
@@ -11,7 +13,6 @@ import { RequireLogin } from "./components/auth/RequireLogin";
 // Views
 import { DashboardView } from "./views/DashboardView";
 import { CasesListView } from "./views/CasesListView";
-import { CaseDetailView } from "./views/CaseDetailView";
 import { EntityBrowserView } from "./views/EntityBrowserView";
 import { EntityDetailView } from "./views/EntityDetailView";
 import { TriageView } from "./views/TriageView";
@@ -20,72 +21,44 @@ import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
 import { LoginView } from "./views/LoginView";
 
-// Case detail tabs
-import { DocumentsTab } from "./components/cases/DocumentsTab";
-import { ReferralsTab } from "./components/cases/ReferralsTab";
-import { FinancialsTab } from "./components/cases/FinancialsTab";
-import { MatchReviewTab } from "./components/cases/MatchReviewTab";
-import { OverviewTab } from "./components/cases/OverviewTab";
-import { PipelineTab } from "./components/cases/PipelineTab";
-import { ResearchTab } from "./components/cases/ResearchTab";
-
 export default function App() {
-    // Initialize theme on mount (applies data-theme attribute to <html>)
     useTheme();
-
-    // SEC-033: Fetch CSRF cookie from backend on startup
     useEffect(() => { initCSRF(); }, []);
 
     return (
         <ErrorBoundary fallbackTitle="Application Error">
-            <BrowserRouter>
-                <ShellContextProvider>
-                    <Routes>
-                        <Route path="login" element={<LoginView />} />
+            <TooltipProvider>
+                <BrowserRouter>
+                    <ShellContextProvider>
+                        <Toaster />
+                        <Routes>
+                            <Route path="login" element={<LoginView />} />
 
-                        <Route element={<RequireLogin />}>
-                            <Route element={<AppShell />}>
-                                <Route index element={<DashboardView />} />
+                            <Route element={<RequireLogin />}>
+                                <Route element={<AppShell />}>
+                                    <Route index element={<DashboardView />} />
+                                    <Route path="cases" element={<CasesListView />} />
 
-                                {/* Cases list */}
-                                <Route path="cases" element={<CasesListView />} />
+                                    {/* Case workspace — canonical case route */}
+                                    <Route path="cases/:caseId" element={<CaseWorkspace />} />
 
-                                {/* New five-zone case workspace
-                                    (docs/architecture/frontend-design-spec.md). Lives at
-                                    /cases/:caseId/workspace until feature-complete; will be
-                                    promoted to the canonical case route at end of build sequence. */}
-                                <Route path="cases/:caseId/workspace" element={<CaseWorkspace />} />
+                                    {/* Legacy workspace subroute → redirect to canonical */}
+                                    <Route path="cases/:caseId/workspace" element={<Navigate to=".." replace />} />
 
-                                {/* Case detail with tabbed sub-routes (legacy — being phased out) */}
-                                <Route path="cases/:caseId" element={<CaseDetailView />}>
-                                    <Route index element={<Navigate to="overview" replace />} />
-                                    <Route path="overview" element={<OverviewTab />} />
-                                    <Route path="documents" element={<DocumentsTab />} />
-                                    <Route path="research" element={<ResearchTab />} />
-                                    <Route path="pipeline" element={<PipelineTab />} />
-                                    <Route path="financials" element={<FinancialsTab />} />
-                                    <Route path="referrals" element={<ReferralsTab />} />
-                                    <Route path="match-review" element={<MatchReviewTab />} />
-                                    {/* Legacy routes — redirect to pipeline */}
-                                    <Route path="signals" element={<Navigate to="../pipeline" replace />} />
-                                    <Route path="detections" element={<Navigate to="../pipeline" replace />} />
-                                    <Route path="findings" element={<Navigate to="../pipeline" replace />} />
+                                    <Route path="entities" element={<EntityBrowserView />} />
+                                    <Route path="entities/:entityType/:entityId" element={<EntityDetailView />} />
+                                    <Route path="triage" element={<TriageView />} />
+                                    <Route path="referrals" element={<ReferralsView />} />
+                                    <Route path="search" element={<SearchView />} />
+                                    <Route path="settings" element={<SettingsView />} />
+
+                                    <Route path="*" element={<Navigate to="/" replace />} />
                                 </Route>
-
-                                <Route path="entities" element={<EntityBrowserView />} />
-                                <Route path="entities/:entityType/:entityId" element={<EntityDetailView />} />
-                                <Route path="triage" element={<TriageView />} />
-                                <Route path="referrals" element={<ReferralsView />} />
-                                <Route path="search" element={<SearchView />} />
-                                <Route path="settings" element={<SettingsView />} />
-
-                                {/* Catch-all redirect */}
-                                <Route path="*" element={<Navigate to="/" replace />} />
                             </Route>
-                        </Route>
-                    </Routes>
-                </ShellContextProvider>
-            </BrowserRouter>
+                        </Routes>
+                    </ShellContextProvider>
+                </BrowserRouter>
+            </TooltipProvider>
         </ErrorBoundary>
     );
 }

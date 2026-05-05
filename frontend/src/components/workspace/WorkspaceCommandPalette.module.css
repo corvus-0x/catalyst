@@ -1,0 +1,287 @@
+/*
+ * WorkspaceCommandPalette — global Cmd/Ctrl+K command palette.
+ *
+ * The dialog wraps cmdk; cmdk's input + list fill the dialog edge-to-edge
+ * (no padding on the content surface — the input row and list manage their
+ * own padding).
+ */
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 11, 15, 0.62);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    animation: overlayIn var(--transition-fast);
+}
+
+.content {
+    position: fixed;
+    top: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(94vw, 640px);
+    max-height: 70vh;
+    background: var(--surface-strong);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 101;
+    padding: 0;
+    animation: contentIn var(--transition-fast);
+}
+
+.cmd {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    background: transparent;
+    color: inherit;
+    font-family: var(--font-sans);
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ── Input row ────────────────────────────────────────────── */
+
+.inputRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-haze);
+    flex-shrink: 0;
+}
+
+.inputIcon {
+    color: var(--text-soft);
+    flex-shrink: 0;
+}
+
+.input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    padding: 0.25rem 0;
+}
+
+.input::placeholder {
+    color: var(--text-soft);
+}
+
+/* ── List + groups ──────────────────────────────────────── */
+
+.list {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 60vh;
+    padding: var(--space-xs) 0 var(--space-sm);
+    flex: 1;
+    min-height: 0;
+}
+
+.group {
+    padding: 0;
+}
+
+.group [cmdk-group-heading] {
+    padding: var(--space-sm) var(--space-lg) var(--space-xs);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* ── Items ──────────────────────────────────────────────── */
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 0.55rem var(--space-lg);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    transition: background var(--transition-fast);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.item[data-selected="true"] {
+    background: var(--sidebar-active);
+}
+
+.item:hover {
+    background: var(--sidebar-hover);
+}
+
+.itemIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    background: var(--card-bg-alt);
+    color: var(--text-soft);
+    flex-shrink: 0;
+}
+
+.itemBody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.itemTitle {
+    color: var(--text-main);
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.itemMeta {
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    background: var(--tag-neutral-bg);
+    color: var(--tag-neutral-color);
+    flex-shrink: 0;
+}
+
+.ruleId {
+    font-family: var(--font-mono);
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+}
+
+/* ── Severity chips on findings ─────────────────────────── */
+
+.sevChip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius-full);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: var(--tag-neutral-bg);
+    color: var(--tag-neutral-color);
+}
+
+.sev_critical {
+    background: var(--tag-critical-bg);
+    color: var(--tag-critical-color);
+}
+
+.sev_high {
+    background: var(--tag-high-bg);
+    color: var(--tag-high-color);
+}
+
+.sev_med {
+    background: var(--tag-med-bg);
+    color: var(--tag-med-color);
+}
+
+.sev_low {
+    background: var(--tag-low-bg);
+    color: var(--tag-low-color);
+}
+
+.sev_neutral {
+    background: var(--tag-neutral-bg);
+    color: var(--tag-neutral-color);
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+
+.empty {
+    padding: var(--space-xl) var(--space-lg);
+    text-align: center;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+}
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+.emptyHint {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.kbd {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-main);
+    line-height: 1.4;
+}
+
+/* ── Animations ─────────────────────────────────────────── */
+
+@keyframes overlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes contentIn {
+    from { opacity: 0; transform: translate(-50%, -4px) scale(0.985); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}

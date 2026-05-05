@@ -1,0 +1,93 @@
+/*
+ * WorkspaceTour — first-time-user 5-step guided tour styling.
+ *
+ * driver.js ships its own CSS (driver.css). We override its CSS variables
+ * inside `.tourTheme` so the popover blends with Catalyst design tokens.
+ * The class is passed to driver.js via the `popoverClass` config option,
+ * which means these overrides apply ONLY to the workspace tour and don't
+ * leak into any other dialog/tooltip surface.
+ */
+
+.tourTheme {
+    /* Surface */
+    --driver-popover-background-color: var(--surface-strong);
+    --driver-popover-color: var(--text-main);
+    --driver-popover-border-color: var(--border);
+
+    /* Arrow */
+    --driver-popover-arrow-color: var(--surface-strong);
+
+    background-color: var(--surface-strong);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 6px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    font-family: var(--font-sans);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.tourTheme .driver-popover-title {
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: var(--text-md, 0.95rem);
+}
+
+.tourTheme .driver-popover-description {
+    color: var(--text-soft);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm, 0.85rem);
+    line-height: 1.45;
+}
+
+.tourTheme .driver-popover-progress-text {
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs, 0.75rem);
+}
+
+.tourTheme .driver-popover-next-btn,
+.tourTheme .driver-popover-prev-btn,
+.tourTheme .driver-popover-close-btn {
+    background: var(--control-bg);
+    color: var(--text-main);
+    border: 1px solid var(--control-border);
+    text-shadow: none;
+    font-family: var(--font-sans);
+}
+
+.tourTheme .driver-popover-next-btn:hover,
+.tourTheme .driver-popover-prev-btn:hover,
+.tourTheme .driver-popover-close-btn:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+.tourTheme .driver-popover-next-btn {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+}
+
+.tourTheme .driver-popover-next-btn:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #ffffff;
+}
+
+.tourTheme .driver-popover-arrow-side-top.driver-popover-arrow {
+    border-top-color: var(--surface-strong);
+}
+
+.tourTheme .driver-popover-arrow-side-bottom.driver-popover-arrow {
+    border-bottom-color: var(--surface-strong);
+}
+
+.tourTheme .driver-popover-arrow-side-left.driver-popover-arrow {
+    border-left-color: var(--surface-strong);
+}
+
+.tourTheme .driver-popover-arrow-side-right.driver-popover-arrow {
+    border-right-color: var(--surface-strong);
+}

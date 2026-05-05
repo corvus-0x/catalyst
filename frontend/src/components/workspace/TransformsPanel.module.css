@@ -1,0 +1,305 @@
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: var(--surface);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-haze);
+    flex-shrink: 0;
+}
+
+.headerLabel {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: var(--text-xs);
+}
+
+.headerTitle {
+    color: var(--text-main);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.headerCount {
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+
+.headerSub {
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-style: italic;
+}
+
+.refreshBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--text-soft);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.refreshBtn:hover:not(:disabled) {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+.refreshBtn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.spinning {
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── List ────────────────────────────────────────────────── */
+
+.list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.row {
+    display: grid;
+    /* time | chip | type | query (flex) | result/error | retry */
+    grid-template-columns: 72px 96px 168px 1fr auto auto;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    transition: background var(--transition-fast);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.rowClickable {
+    cursor: pointer;
+}
+
+.rowClickable:hover {
+    background: var(--sidebar-hover);
+}
+
+.rowClickable:focus-within {
+    background: var(--sidebar-active);
+    outline: none;
+}
+
+.rowRunning {
+    background: rgba(69, 137, 255, 0.04);
+}
+
+.rowFailed {
+    background: rgba(239, 68, 68, 0.04);
+}
+
+/* ── Cells ──────────────────────────────────────────────── */
+
+.time {
+    font-family: var(--font-mono);
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    cursor: help;
+    white-space: nowrap;
+}
+
+.jobType {
+    color: var(--text-main);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.query {
+    color: var(--text-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+}
+
+.resultSummary {
+    color: var(--tag-low-color);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+}
+
+.errorMessage {
+    color: var(--tag-high-color);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 28ch;
+}
+
+.retryRowBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
+    color: var(--text-soft);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.retryRowBtn:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-main);
+}
+
+/* ── Status chips ────────────────────────────────────────── */
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+    white-space: nowrap;
+    background: var(--tag-neutral-bg);
+    color: var(--tag-neutral-color);
+    justify-self: start;
+}
+
+.chipIcon {
+    flex-shrink: 0;
+}
+
+.chip_queued {
+    background: var(--tag-neutral-bg);
+    color: var(--tag-neutral-color);
+}
+
+.chip_running {
+    background: rgba(69, 137, 255, 0.16);
+    color: var(--info);
+}
+
+.chip_success {
+    background: var(--tag-low-bg);
+    color: var(--tag-low-color);
+}
+
+.chip_failed {
+    background: var(--tag-high-bg);
+    color: var(--tag-high-color);
+}
+
+/* Animated indicator on RUNNING rows */
+.runningDot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50%      { opacity: 1;    transform: scale(1.15); }
+}
+
+/* ── Empty / error / skeleton ───────────────────────────── */
+
+.empty,
+.error {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 2rem;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    text-align: center;
+}
+
+.error {
+    color: var(--tag-high-color);
+    flex-direction: column;
+}
+
+.retryBtn {
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
+    color: var(--text-main);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.retryBtn:hover {
+    background: var(--sidebar-hover);
+}
+
+.skeleton {
+    height: 10px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--line), var(--sidebar-hover), var(--line));
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    width: 100%;
+}
+
+.skeletonShort {
+    width: 60%;
+}
+
+.skeletonChip {
+    width: 80px;
+    height: 16px;
+    border-radius: var(--radius-full);
+}
+
+@keyframes shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}

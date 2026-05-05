@@ -1,0 +1,13 @@
+/* GraphContextMenu — virtual-trigger styles. The menu chrome itself is
+ * styled by the shared Menu.module.css via the ContextMenu wrapper. */
+
+.virtualTrigger {
+    /* Zero-size pinpoint anchor positioned in viewport coords by inline style.
+     * We need pointer-events: none so the trigger itself never swallows real
+     * cytoscape clicks on the canvas behind it. */
+    position: fixed;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 90;
+}

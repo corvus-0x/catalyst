@@ -11,7 +11,7 @@
  * v1 (this commit): layout shell only. All zones are placeholders. Resize/collapse
  * mechanics work via react-resizable-panels. Tested against §5.1 baseline (1366×768).
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
     ImperativePanelHandle,
@@ -28,7 +28,45 @@ import {
     LayoutPanelLeftIcon,
     MoreVerticalIcon,
 } from "lucide-react";
+import { Tabs } from "../components/ui/Tabs";
+import { toast } from "../components/ui/Toaster";
+import { AuditLogPanel } from "../components/workspace/AuditLogPanel";
+import { ColdStartCanvas } from "../components/workspace/ColdStartCanvas";
+import { DocumentTablePanel } from "../components/workspace/DocumentTablePanel";
+import { EntityPalette } from "../components/workspace/EntityPalette";
+import { FinancialsPane } from "../components/workspace/FinancialsPane";
+import { IRS990Viewer } from "../components/workspace/IRS990Viewer";
+import { KeyboardHelpOverlay } from "../components/workspace/KeyboardHelpOverlay";
+import { PackagePane } from "../components/workspace/PackagePane";
+import { PhaseNavigator } from "../components/workspace/PhaseNavigator";
+import { RecentlyAdded } from "../components/workspace/RecentlyAdded";
+import { RightDetailPanel } from "../components/workspace/RightDetailPanel";
+import { TransformsPanel } from "../components/workspace/TransformsPanel";
+import { TriagePanel } from "../components/workspace/TriagePanel";
+import { WorkspaceCommandPalette } from "../components/workspace/WorkspaceCommandPalette";
+import { WorkspaceGraph } from "../components/workspace/WorkspaceGraph";
+import { WorkspaceTour, WorkspaceTourHandle } from "../components/workspace/WorkspaceTour";
+import { useWorkspaceShortcuts } from "../components/workspace/useWorkspaceShortcuts";
+import { fetchCaseDetail } from "../api";
+import { CaseDetail, FindingItem, GraphNode } from "../types";
 import styles from "./CaseWorkspace.module.css";
+
+type DockTab = "audit" | "triage" | "transforms" | "documents";
+
+const DOCK_TAB_STORAGE_KEY = "catalyst.workspace.dockTab";
+
+function getStoredDockTab(caseId: string | undefined): DockTab {
+    if (!caseId) return "audit";
+    try {
+        const raw = localStorage.getItem(`${DOCK_TAB_STORAGE_KEY}:${caseId}`);
+        if (raw === "audit" || raw === "triage" || raw === "transforms" || raw === "documents") {
+            return raw;
+        }
+    } catch {
+        /* localStorage unavailable */
+    }
+    return "audit";
+}
 
 type ViewToggle = "graph" | "990" | "financials" | "package";
 
@@ -43,6 +81,57 @@ export function CaseWorkspace() {
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [rightCollapsed, setRightCollapsed] = useState(false);
     const [bottomCollapsed, setBottomCollapsed] = useState(false);
+
+    // Case-level state — drives top bar identity (§6) and the cold-start gate (§8.6).
+    // Workspace re-fetches when ColdStartCanvas reports a successful confirm.
+    const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
+    const [caseDetailVersion, setCaseDetailVersion] = useState(0);
+
+    // Selection — owned at workspace level so graph (§8) and right detail panel (§9)
+    // stay in sync. Will eventually feed bottom-dock Selection tab too (§10.5).
+    const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+
+    // Bottom dock active tab — lifted from CaseBottomDock so Cmd+1..4 keyboard
+    // shortcuts can drive it from the workspace level.
+    const [dockTab, setDockTab] = useState<"audit" | "triage" | "transforms" | "documents">(
+        "audit",
+    );
+
+    // Hide the left rail entirely during cold start (no documents).
+    // Derive directly from caseDetail so it's always in sync with the canvas.
+    const showLeftRail = caseDetail !== null && caseDetail.documents.length > 0;
+
+    // Command palette + keyboard help overlay open state.
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    const [helpOpen, setHelpOpen] = useState(false);
+    const tourRef = useRef<WorkspaceTourHandle>(null);
+
+    useWorkspaceShortcuts({
+        onToggleBottomDock: toggleBottomDock,
+        onSelectDockTab: setDockTab,
+        onToggleViewPane: (v) => toggleView(v),
+        onToggleLayoutLock: () => toast.message("Lock layout shortcut — wiring deferred"),
+        onShowHelp: () => setHelpOpen(true),
+        onEscape: () => setSelectedNode(null),
+    });
+
+    useEffect(() => {
+        if (!caseId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const detail = await fetchCaseDetail(caseId);
+                if (!cancelled) setCaseDetail(detail);
+            } catch {
+                /* leave caseDetail null — placeholder UI handles it */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [caseId, caseDetailVersion]);
+
+    const refreshCaseDetail = () => setCaseDetailVersion((v) => v + 1);
 
     function toggleView(v: ViewToggle) {
         if (v === "graph") return; // Graph cannot be closed (§6)
@@ -77,43 +166,63 @@ export function CaseWorkspace() {
         <div className={styles.workspace}>
             <CaseTopBar
                 caseId={caseId}
+                caseDetail={caseDetail}
                 activeViews={activeViews}
                 onToggleView={toggleView}
+                onOpenPalette={() => setPaletteOpen(true)}
             />
 
             <PanelGroup direction="horizontal" className={styles.horizontalGroup}>
-                {/* Zone 2 — Left rail */}
-                <Panel
-                    ref={leftRailRef}
-                    defaultSize={16}
-                    minSize={12}
-                    collapsible
-                    collapsedSize={3.5}
-                    onCollapse={() => setLeftCollapsed(true)}
-                    onExpand={() => setLeftCollapsed(false)}
-                    className={`${styles.panel} ${styles.leftRail} ${
-                        leftCollapsed ? styles.panelCollapsed : ""
-                    }`}
-                >
-                    {leftCollapsed ? (
-                        <CollapsedRailStub
-                            side="left"
-                            onClick={toggleLeftRail}
-                            label="Expand left rail"
-                        />
-                    ) : (
-                        <CaseLeftRail onCollapse={toggleLeftRail} />
-                    )}
-                </Panel>
-
-                <PanelResizeHandle className={styles.handleVertical} />
+                {/* Zone 2 — Left rail (hidden during cold start: no docs yet) */}
+                {showLeftRail && (
+                    <>
+                        <Panel
+                            ref={leftRailRef}
+                            defaultSize={16}
+                            minSize={12}
+                            collapsible
+                            collapsedSize={3.5}
+                            onCollapse={() => setLeftCollapsed(true)}
+                            onExpand={() => setLeftCollapsed(false)}
+                            className={`${styles.panel} ${styles.leftRail} ${
+                                leftCollapsed ? styles.panelCollapsed : ""
+                            }`}
+                        >
+                            {leftCollapsed ? (
+                                <CollapsedRailStub
+                                    side="left"
+                                    onClick={toggleLeftRail}
+                                    label="Expand left rail"
+                                />
+                            ) : (
+                                <CaseLeftRail
+                                    caseId={caseId}
+                                    onCollapse={toggleLeftRail}
+                                    onSubsetSelected={(_sel) => {
+                                        // Bottom-dock filter integration is pending.
+                                    }}
+                                    onEntityCreated={refreshCaseDetail}
+                                />
+                            )}
+                        </Panel>
+                        <PanelResizeHandle className={styles.handleVertical} />
+                    </>
+                )}
 
                 {/* Zones 3 + 5 — Center column (canvas + bottom dock) */}
                 <Panel defaultSize={64} minSize={40}>
                     <PanelGroup direction="vertical" className={styles.verticalGroup}>
                         {/* Zone 3 — Center canvas */}
-                        <Panel defaultSize={72} minSize={30}>
-                            <CaseCenterCanvas activeViews={activeViews} />
+                        <Panel defaultSize={72} minSize={40}>
+                            <CaseCenterCanvas
+                                caseId={caseId}
+                                caseDetail={caseDetail}
+                                activeViews={activeViews}
+                                onConfirmedSubject={refreshCaseDetail}
+                                selectedNode={selectedNode}
+                                onSelectNode={setSelectedNode}
+                                onCloseView={(v) => toggleView(v)}
+                            />
                         </Panel>
 
                         <PanelResizeHandle className={styles.handleHorizontal} />
@@ -123,6 +232,7 @@ export function CaseWorkspace() {
                             ref={bottomDockRef}
                             defaultSize={28}
                             minSize={12}
+                            maxSize={55}
                             collapsible
                             collapsedSize={4}
                             onCollapse={() => setBottomCollapsed(true)}
@@ -134,7 +244,17 @@ export function CaseWorkspace() {
                             {bottomCollapsed ? (
                                 <CollapsedDockStub onClick={toggleBottomDock} />
                             ) : (
-                                <CaseBottomDock onCollapse={toggleBottomDock} />
+                                <CaseBottomDock
+                                    caseId={caseId}
+                                    onCollapse={toggleBottomDock}
+                                    activeTab={dockTab}
+                                    onActiveTabChange={setDockTab}
+                                    onSelectFinding={(f) => {
+                                        // Cross-zone graph highlight needs lifted graph data
+                                        // (deferred). For now, surface what was clicked.
+                                        toast.message(`Selected: ${f.title}`);
+                                    }}
+                                />
                             )}
                         </Panel>
                     </PanelGroup>
@@ -162,10 +282,32 @@ export function CaseWorkspace() {
                             label="Expand detail panel"
                         />
                     ) : (
-                        <CaseRightPanel onCollapse={toggleRightPanel} />
+                        <RightDetailPanel
+                            caseDetail={caseDetail}
+                            selectedNode={selectedNode}
+                            onCollapse={toggleRightPanel}
+                            onClearSelection={() => setSelectedNode(null)}
+                        />
                     )}
                 </Panel>
             </PanelGroup>
+
+            {/* Global overlays — palette, keyboard help, first-time tour */}
+            {caseId && (
+                <>
+                    <WorkspaceCommandPalette
+                        caseId={caseId}
+                        open={paletteOpen}
+                        onOpenChange={setPaletteOpen}
+                        onSelect={(r) => {
+                            if (r.type === "entity") setSelectedNode(r.node);
+                            else toast.message(`Open ${r.type}`);
+                        }}
+                    />
+                    <WorkspaceTour caseId={caseId} ref={tourRef} />
+                </>
+            )}
+            <KeyboardHelpOverlay open={helpOpen} onOpenChange={setHelpOpen} />
         </div>
     );
 }
@@ -175,12 +317,16 @@ export function CaseWorkspace() {
 /* ------------------------------------------------------------------ */
 function CaseTopBar({
     caseId,
+    caseDetail,
     activeViews,
     onToggleView,
+    onOpenPalette,
 }: {
     caseId?: string;
+    caseDetail: CaseDetail | null;
     activeViews: Set<ViewToggle>;
     onToggleView: (v: ViewToggle) => void;
+    onOpenPalette: () => void;
 }) {
     const viewToggles: { id: ViewToggle; label: string; locked?: boolean }[] = [
         { id: "graph", label: "Graph", locked: true },
@@ -193,7 +339,16 @@ function CaseTopBar({
         <div className={styles.topBar}>
             <div className={styles.topBarLeft}>
                 <span className={styles.caseLabel}>
-                    Case <span className={styles.caseLabelMuted}>· {caseId ?? "loading…"}</span>
+                    {caseDetail?.name ?? "Case"}
+                    {caseDetail && (
+                        <>
+                            <span className={styles.caseLabelDot}>·</span>
+                            <span className={styles.caseLabelStatus}>{caseDetail.status}</span>
+                        </>
+                    )}
+                    {!caseDetail && (
+                        <span className={styles.caseLabelMuted}>· {caseId ?? "loading…"}</span>
+                    )}
                 </span>
             </div>
 
@@ -211,6 +366,7 @@ function CaseTopBar({
                             aria-pressed={isActive}
                             disabled={v.locked && isActive}
                             title={v.locked ? "Graph is the home pane and cannot be closed" : undefined}
+                            data-tour={v.id === "package" ? "package-toggle" : undefined}
                         >
                             {v.label}
                         </button>
@@ -219,13 +375,19 @@ function CaseTopBar({
             </div>
 
             <div className={styles.topBarRight}>
-                <button className={styles.iconButton} aria-label="Find within case" title="Find within case (⌘K)">
+                <button
+                    type="button"
+                    className={styles.iconButton}
+                    aria-label="Find within case"
+                    title="Find within case (⌘K)"
+                    onClick={onOpenPalette}
+                >
                     <SearchIcon size={15} strokeWidth={1.6} />
                 </button>
-                <button className={styles.iconButton} aria-label="Layout presets" title="Layout presets">
+                <button type="button" className={styles.iconButton} aria-label="Layout presets" title="Layout presets">
                     <LayoutPanelLeftIcon size={15} strokeWidth={1.6} />
                 </button>
-                <button className={styles.iconButton} aria-label="More" title="More options">
+                <button type="button" className={styles.iconButton} aria-label="More" title="More options">
                     <MoreVerticalIcon size={15} strokeWidth={1.6} />
                 </button>
             </div>
@@ -234,14 +396,27 @@ function CaseTopBar({
 }
 
 /* ------------------------------------------------------------------ */
-/* Zone 2 — Left rail (placeholder)                                    */
+/* Zone 2 — Left rail                                                  */
+/* §7.1 Phase navigator — live. §7.2 entity palette + §7.3 recently   */
+/* added still pending (steps 14 + 19 of build sequence).              */
 /* ------------------------------------------------------------------ */
-function CaseLeftRail({ onCollapse }: { onCollapse: () => void }) {
+function CaseLeftRail({
+    caseId,
+    onCollapse,
+    onSubsetSelected,
+    onEntityCreated,
+}: {
+    caseId?: string;
+    onCollapse: () => void;
+    onSubsetSelected: (sel: { phase: string; subset: string }) => void;
+    onEntityCreated: () => void;
+}) {
     return (
         <div className={styles.zoneInner}>
             <div className={styles.zoneHeader}>
                 <span>Phases</span>
                 <button
+                    type="button"
                     className={styles.collapseButton}
                     onClick={onCollapse}
                     aria-label="Collapse left rail"
@@ -251,46 +426,132 @@ function CaseLeftRail({ onCollapse }: { onCollapse: () => void }) {
                 </button>
             </div>
 
-            <div className={styles.zoneSection}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Phase navigator</div>
-                    <div className={styles.placeholderRef}>§7.1</div>
-                </div>
+            <div className={styles.zoneSectionFlush} data-tour="phase-navigator">
+                {caseId ? (
+                    <PhaseNavigator caseId={caseId} onSubsetSelected={onSubsetSelected} />
+                ) : (
+                    <div className={styles.placeholder}>
+                        <div className={styles.placeholderTitle}>Phase navigator</div>
+                        <div className={styles.placeholderRef}>§7.1 — case loading…</div>
+                    </div>
+                )}
             </div>
 
             <div className={styles.zoneSectionHeader}>Entity palette</div>
-            <div className={styles.zoneSection}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Drag-to-create</div>
-                    <div className={styles.placeholderRef}>§7.2</div>
-                </div>
+            <div className={styles.zoneSectionFlush}>
+                {caseId ? (
+                    <EntityPalette caseId={caseId} onCreated={onEntityCreated} />
+                ) : (
+                    <div className={styles.placeholder}>
+                        <div className={styles.placeholderTitle}>Entity palette</div>
+                        <div className={styles.placeholderRef}>§7.2 — case loading…</div>
+                    </div>
+                )}
             </div>
 
             <div className={styles.zoneSectionHeader}>Recently added</div>
-            <div className={styles.zoneSection}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Last 5 items</div>
-                    <div className={styles.placeholderRef}>§7.3</div>
-                </div>
+            <div className={styles.zoneSectionFlush}>
+                {caseId ? (
+                    <RecentlyAdded
+                        caseId={caseId}
+                        onItemSelected={(entry) => toast.message(`Open ${entry.action}`)}
+                    />
+                ) : (
+                    <div className={styles.placeholder}>
+                        <div className={styles.placeholderTitle}>Last 5 items</div>
+                        <div className={styles.placeholderRef}>§7.3 — case loading…</div>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
 /* ------------------------------------------------------------------ */
-/* Zone 3 — Center canvas (placeholder)                                */
+/* Zone 3 — Center canvas                                              */
+/* §8.6 cold start fires only when graph pane is sole active pane and  */
+/* the case has zero documents — confirming an entity flips it back.   */
 /* ------------------------------------------------------------------ */
-function CaseCenterCanvas({ activeViews }: { activeViews: Set<ViewToggle> }) {
+function CaseCenterCanvas({
+    caseId,
+    caseDetail,
+    activeViews,
+    onConfirmedSubject,
+    selectedNode,
+    onSelectNode,
+    onCloseView,
+}: {
+    caseId?: string;
+    caseDetail: CaseDetail | null;
+    activeViews: Set<ViewToggle>;
+    onConfirmedSubject: () => void;
+    selectedNode: GraphNode | null;
+    onSelectNode: (node: GraphNode | null) => void;
+    onCloseView: (v: ViewToggle) => void;
+}) {
     const panes: { id: ViewToggle; title: string; ref: string }[] = [];
     if (activeViews.has("graph")) panes.push({ id: "graph", title: "Graph canvas", ref: "§8 — Cytoscape.js" });
     if (activeViews.has("990")) panes.push({ id: "990", title: "990 Viewer", ref: "§11" });
     if (activeViews.has("financials")) panes.push({ id: "financials", title: "Financials", ref: "§12" });
     if (activeViews.has("package")) panes.push({ id: "package", title: "Package", ref: "§13" });
 
+    // Cold start state: graph is the only pane open AND the case has no docs yet.
+    const inColdStart =
+        panes.length === 1 &&
+        panes[0].id === "graph" &&
+        caseDetail !== null &&
+        caseDetail.documents.length === 0;
+
+    if (inColdStart && caseId) {
+        return (
+            <div className={styles.canvas} data-tour="cold-start">
+                <ColdStartCanvas caseId={caseId} onConfirmed={onConfirmedSubject} />
+            </div>
+        );
+    }
+
+    function renderPane(id: ViewToggle, title: string, ref: string) {
+        if (!caseId) return <CanvasPlaceholder title={title} ref_={ref} />;
+        if (id === "graph") {
+            return (
+                <WorkspaceGraph
+                    caseId={caseId}
+                    selectedNodeId={selectedNode?.id ?? null}
+                    onSelectNode={onSelectNode}
+                />
+            );
+        }
+        if (id === "990") {
+            return (
+                <IRS990Viewer
+                    caseId={caseId}
+                    onClose={() => onCloseView("990")}
+                    onOpenEntity={(personId) => toast.message(`Open entity ${personId.slice(0, 8)}…`)}
+                    onOpenFinding={(findingId) => toast.message(`Open finding ${findingId.slice(0, 8)}…`)}
+                />
+            );
+        }
+        if (id === "financials") {
+            return (
+                <FinancialsPane
+                    caseId={caseId}
+                    onSelectYear={(year) => toast.message(`Year ${year} selected`)}
+                />
+            );
+        }
+        if (id === "package") {
+            // graphLocked is undefined for now — graph lock state lives inside
+            // EntityGraphCytoscape and isn't lifted yet. PackagePane shows the
+            // "graph is locked" preflight as a passing-with-caveat row.
+            return <PackagePane caseId={caseId} />;
+        }
+        return <CanvasPlaceholder title={title} ref_={ref} />;
+    }
+
     if (panes.length === 1) {
         return (
             <div className={styles.canvas}>
-                <CanvasPlaceholder title={panes[0].title} ref_={panes[0].ref} />
+                {renderPane(panes[0].id, panes[0].title, panes[0].ref)}
             </div>
         );
     }
@@ -301,7 +562,7 @@ function CaseCenterCanvas({ activeViews }: { activeViews: Set<ViewToggle> }) {
                 <>
                     <Panel key={p.id} defaultSize={100 / panes.length} minSize={20}>
                         <div className={styles.canvas}>
-                            <CanvasPlaceholder title={p.title} ref_={p.ref} />
+                            {renderPane(p.id, p.title, p.ref)}
                         </div>
                     </Panel>
                     {idx < panes.length - 1 && <PanelResizeHandle key={`h-${p.id}`} className={styles.handleVertical} />}
@@ -323,91 +584,111 @@ function CanvasPlaceholder({ title, ref_ }: { title: string; ref_: string }) {
 /* ------------------------------------------------------------------ */
 /* Zone 4 — Right detail (placeholder)                                 */
 /* ------------------------------------------------------------------ */
-function CaseRightPanel({ onCollapse }: { onCollapse: () => void }) {
-    return (
-        <div className={styles.zoneInner}>
-            <div className={styles.zoneHeader}>
-                <button
-                    className={styles.collapseButton}
-                    onClick={onCollapse}
-                    aria-label="Collapse detail panel"
-                    title="Collapse"
-                >
-                    <ChevronRightIcon size={14} strokeWidth={1.8} />
-                </button>
-                <span>Detail</span>
-            </div>
-
-            <div className={styles.zoneSection}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Case subject</div>
-                    <div className={styles.placeholderRef}>Default state · §9</div>
-                </div>
-            </div>
-
-            <div className={styles.detailTabs}>
-                <button className={`${styles.detailTab} ${styles.detailTabActive}`}>Properties</button>
-                <button className={styles.detailTab}>Sources</button>
-                <button className={styles.detailTab}>Flags</button>
-                <button className={styles.detailTab}>Actions</button>
-            </div>
-
-            <div className={styles.zoneSection}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Tab content</div>
-                    <div className={styles.placeholderRef}>§9 tabs</div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 /* ------------------------------------------------------------------ */
-/* Zone 5 — Bottom dock (placeholder)                                  */
+/* Zone 5 — Bottom dock                                                */
+/* §10. Audit (live). Triage / Transforms / Documents land in steps   */
+/* 9 / 15 / 4 respectively per spec §18 build sequence.                */
 /* ------------------------------------------------------------------ */
-function CaseBottomDock({ onCollapse }: { onCollapse: () => void }) {
-    const tabs = [
-        { id: "audit", label: "Audit log", count: 0, active: true },
-        { id: "triage", label: "Triage", count: 0, active: false },
-        { id: "transforms", label: "Transforms", count: 0, active: false },
-        { id: "documents", label: "Documents", count: 0, active: false },
-    ];
+function CaseBottomDock({
+    caseId,
+    onCollapse,
+    activeTab,
+    onActiveTabChange,
+    onSelectFinding,
+}: {
+    caseId?: string;
+    onCollapse: () => void;
+    activeTab: DockTab;
+    onActiveTabChange: (tab: DockTab) => void;
+    onSelectFinding: (f: FindingItem) => void;
+}) {
+    const [auditCount, setAuditCount] = useState<number | null>(null);
+    const [documentsCount, setDocumentsCount] = useState<number | null>(null);
+    const [triageCount, setTriageCount] = useState<number | null>(null);
+    const [transformsCount, setTransformsCount] = useState<number | null>(null);
+
+    // Spec §10: tab persistence per-case in localStorage. Re-hydrates the
+    // workspace-level state when caseId changes.
+    useEffect(() => {
+        if (caseId) onActiveTabChange(getStoredDockTab(caseId));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [caseId]);
+
+    function selectTab(t: string) {
+        const next = t as DockTab;
+        onActiveTabChange(next);
+        if (caseId) {
+            try {
+                localStorage.setItem(`${DOCK_TAB_STORAGE_KEY}:${caseId}`, next);
+            } catch {
+                /* localStorage unavailable */
+            }
+        }
+    }
 
     return (
         <div className={styles.dockInner}>
-            <div className={styles.dockTabBar}>
-                <div className={styles.dockTabs} role="tablist">
-                    {tabs.map((t) => (
-                        <button
-                            key={t.id}
-                            role="tab"
-                            aria-selected={t.active}
-                            className={`${styles.dockTab} ${t.active ? styles.dockTabActive : ""}`}
+            <Tabs.Root value={activeTab} onValueChange={selectTab} className={styles.dockTabsRoot}>
+                <div className={styles.dockTabBar}>
+                    <Tabs.List variant="line" aria-label="Bottom dock" className={styles.dockTabsList}>
+                        <Tabs.Trigger
+                            value="audit"
+                            badge={auditCount ?? undefined}
+                            data-tour="audit-log"
                         >
-                            <span>{t.label}</span>
-                            <span className={styles.dockTabCount}>{t.count}</span>
-                        </button>
-                    ))}
+                            Audit log
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                            value="triage"
+                            badge={triageCount ?? undefined}
+                            data-tour="triage-tab"
+                        >
+                            Triage
+                        </Tabs.Trigger>
+                        <Tabs.Trigger value="transforms" badge={transformsCount ?? undefined}>
+                            Transforms
+                        </Tabs.Trigger>
+                        <Tabs.Trigger value="documents" badge={documentsCount ?? undefined}>
+                            Documents
+                        </Tabs.Trigger>
+                    </Tabs.List>
+                    <button
+                        type="button"
+                        className={styles.collapseButton}
+                        onClick={onCollapse}
+                        aria-label="Collapse bottom dock"
+                        title="Collapse"
+                    >
+                        <ChevronDownIcon size={14} strokeWidth={1.8} />
+                    </button>
                 </div>
-                <button
-                    className={styles.collapseButton}
-                    onClick={onCollapse}
-                    aria-label="Collapse bottom dock"
-                    title="Collapse"
-                >
-                    <ChevronDownIcon size={14} strokeWidth={1.8} />
-                </button>
-            </div>
 
-            <div className={styles.dockContent}>
-                <div className={styles.placeholder}>
-                    <div className={styles.placeholderTitle}>Audit log</div>
-                    <div className={styles.placeholderRef}>§10.1 — chain of custody, default tab</div>
-                </div>
-            </div>
+                <Tabs.Content value="audit" className={styles.dockPaneFlush}>
+                    <AuditLogPanel caseId={caseId} onLoaded={setAuditCount} />
+                </Tabs.Content>
+                <Tabs.Content value="triage" className={styles.dockPaneFlush}>
+                    <TriagePanel
+                        caseId={caseId}
+                        onSelectFinding={onSelectFinding}
+                        onLoaded={setTriageCount}
+                    />
+                </Tabs.Content>
+                <Tabs.Content value="transforms" className={styles.dockPaneFlush}>
+                    <TransformsPanel
+                        caseId={caseId}
+                        onLoaded={setTransformsCount}
+                        onOpenResult={(j) => toast.message(`Open ${j.job_type} result`)}
+                        onRetry={(j) => toast.message(`Retry ${j.job_type} (wiring pending)`)}
+                    />
+                </Tabs.Content>
+                <Tabs.Content value="documents" className={styles.dockPaneFlush}>
+                    <DocumentTablePanel caseId={caseId} onLoaded={setDocumentsCount} />
+                </Tabs.Content>
+            </Tabs.Root>
         </div>
     );
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Collapsed-state stubs                                               */
@@ -423,6 +704,7 @@ function CollapsedRailStub({
 }) {
     return (
         <button
+            type="button"
             className={styles.collapsedRailStub}
             onClick={onClick}
             aria-label={label}
@@ -440,6 +722,7 @@ function CollapsedRailStub({
 function CollapsedDockStub({ onClick }: { onClick: () => void }) {
     return (
         <button
+            type="button"
             className={styles.collapsedDockStub}
             onClick={onClick}
             aria-label="Expand bottom dock"

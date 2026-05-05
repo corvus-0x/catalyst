@@ -48,6 +48,19 @@
     letter-spacing: 0.01em;
 }
 
+.caseLabelDot {
+    color: var(--text-soft);
+    margin: 0 var(--space-xs);
+}
+
+.caseLabelStatus {
+    color: var(--text-soft);
+    font-weight: 500;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
 .caseLabelMuted {
     color: var(--text-soft);
     font-weight: 400;
@@ -193,6 +206,11 @@
 
 .zoneSection {
     flex-shrink: 0;
+}
+
+.zoneSectionFlush {
+    flex-shrink: 0;
+    /* Lets the embedded panel manage its own padding edge-to-edge. */
 }
 
 /* ── Placeholder cards ──────────────────────────────────────────── */
@@ -357,6 +375,32 @@
 
 .dockContent {
     flex: 1;
+    overflow: auto;
+    padding: var(--space-md);
+}
+
+.dockTabsRoot {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.dockTabsList {
+    border-bottom: none;
+}
+
+.dockPaneFlush {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dockPanePadded {
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     padding: var(--space-md);
 }

@@ -453,9 +453,22 @@ export async function fetchEntityDetail(
 
 export async function fetchActivityFeed(
     limit = 20,
+    caseIdOrOptions?: string | ApiRequestOptions,
     options?: ApiRequestOptions
 ): Promise<{ results: ActivityEntry[] }> {
-    return request<{ results: ActivityEntry[] }>(`/api/activity-feed/?limit=${limit}`, {}, options);
+    // Backward-compatible: accepts (limit), (limit, caseId), (limit, caseId, options),
+    // or (limit, options). Existing callers passing options as 2nd arg keep working.
+    let caseId: string | undefined;
+    let opts: ApiRequestOptions | undefined;
+    if (typeof caseIdOrOptions === "string") {
+        caseId = caseIdOrOptions;
+        opts = options;
+    } else {
+        opts = caseIdOrOptions;
+    }
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (caseId) params.set("case_id", caseId);
+    return request<{ results: ActivityEntry[] }>(`/api/activity-feed/?${params}`, {}, opts);
 }
 
 /* ═══════════════════════════════════════════════════════════════

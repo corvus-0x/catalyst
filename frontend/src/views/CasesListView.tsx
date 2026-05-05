@@ -57,7 +57,6 @@ export function CasesListView() {
     // New case modal
     const [showModal, setShowModal] = useState(false);
     const [newName, setNewName] = useState("");
-    const [newRef, setNewRef] = useState("");
     const [newNotes, setNewNotes] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState("");
@@ -129,12 +128,11 @@ export function CasesListView() {
         setSubmitting(true);
         setFormError("");
         try {
-            const payload: NewCasePayload = { name, referral_ref: newRef.trim() || undefined, notes: newNotes.trim() || undefined };
+            const payload: NewCasePayload = { name, notes: newNotes.trim() || undefined };
             const created = await createCase(payload);
             setCases((prev) => [created, ...prev]);
             setShowModal(false);
-            setNewName(""); setNewRef(""); setNewNotes("");
-            pushToast("success", `Case created: ${created.name}`);
+            setNewName(""); setNewNotes("");
             navigate(`/cases/${created.id}`);
         } catch (err) {
             pushToast("error", (err as Error).message);
@@ -282,8 +280,6 @@ export function CasesListView() {
                                 <label className={styles.formLabel}>Case Name *</label>
                                 <FormInput value={newName} onChange={(e) => { setNewName(e.target.value); setFormError(""); }} placeholder="Investigation name" autoFocus />
                                 {formError && <p className={styles.fieldError}>{formError}</p>}
-                                <label className={styles.formLabel}>Referral Reference</label>
-                                <FormInput value={newRef} onChange={(e) => setNewRef(e.target.value)} placeholder="e.g. OAG-2026-0042" />
                                 <label className={styles.formLabel}>Notes</label>
                                 <FormTextarea value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Initial case notes" rows={3} />
                             </div>

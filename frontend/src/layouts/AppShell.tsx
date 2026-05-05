@@ -34,6 +34,8 @@ export function AppShell() {
     const searchRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
     const location = useLocation();
+    // True when viewing a specific case — workspace has its own top bar.
+    const isCaseWorkspace = /^\/cases\/[0-9a-f-]{36}$/.test(location.pathname);
 
     // Command palette
     const [paletteOpen, setPaletteOpen] = useState(false);
@@ -147,7 +149,7 @@ export function AppShell() {
             <Sidebar triageCount={triageCount} />
 
             <div className={styles.shellMain}>
-                <header className={styles.topbar} role="banner">
+                {!isCaseWorkspace && <header className={styles.topbar} role="banner">
                     <div className={styles.topbarRow}>
                         <div className={styles.topbarSearch}>
                             <span className={styles.searchIcon} aria-hidden="true">{"\uD83D\uDD0D"}</span>
@@ -200,13 +202,11 @@ export function AppShell() {
                         </div>
                     </div>
                     <Breadcrumb caseName={caseName ?? undefined} />
-                </header>
+                </header>}
 
                 <main
                     id="main-content"
-                    className={`${styles.viewContent} ${
-                        location.pathname.includes("/workspace") ? styles.viewContentFullbleed : ""
-                    }`}
+                    className={`${styles.viewContent} ${isCaseWorkspace ? styles.viewContentFullbleed : ""}`}
                     role="main"
                 >
                     <Outlet context={{ pushToast }} />

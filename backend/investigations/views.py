@@ -3858,8 +3858,10 @@ def api_case_fetch_990s(request, pk):
         from . import irs_connector
         from .models import FinancialSnapshot, Organization
 
-        # Search the IRS index for this EIN
-        search_years = requested_years or irs_connector.INDEX_YEARS[:3]
+        # Search the IRS index for this EIN — use all available years so the
+        # full filing history loads in a single click. [:3] was a speed cap that
+        # left 4 years of data inaccessible.
+        search_years = requested_years or irs_connector.INDEX_YEARS
         search_result = irs_connector.search_990_by_ein(ein, years=search_years)
 
         if search_result.total_found == 0:
@@ -3883,12 +3885,20 @@ def api_case_fetch_990s(request, pk):
                 status=200,
             )
 
-        # Try to find the matching organization in this case
+        # Try to find the matching organization in this case; create it if absent.
         normalized_ein = irs_connector._normalize_ein(ein)
         formatted_ein = f"{normalized_ein[:2]}-{normalized_ein[2:]}"
         org = Organization.objects.filter(
             case=case, ein__in=[normalized_ein, formatted_ein, ein]
         ).first()
+        if org is None and search_result.filings:
+            taxpayer_name = search_result.filings[0].taxpayer_name or ein
+            org = Organization.objects.create(
+                case=case,
+                name=taxpayer_name,
+                ein=formatted_ein,
+                org_type="NONPROFIT",
+            )
 
         fetched_count = 0
         skipped_count = 0
@@ -3896,6 +3906,14 @@ def api_case_fetch_990s(request, pk):
         filing_results = []
 
         for filing in search_result.filings:
+            # 990T is "Exempt Organization Business Income Tax Return" — a completely
+            # different form from the annual information return 990/990EZ/990PF.
+            # The IRS connector can't parse it and it's not what we want for the
+            # financial pipeline. Skip it silently.
+            if filing.return_type and filing.return_type.upper() in ("990T", "990-T"):
+                skipped_count += 1
+                continue
+
             # Check if we already have a FinancialSnapshot for this tax year + EIN
             existing = FinancialSnapshot.objects.filter(
                 case=case,
@@ -3923,7 +3941,8 @@ def api_case_fetch_990s(request, pk):
                 parsed = irs_connector.parse_990_xml(
                     xml_text, filing.object_id, filing.xml_batch_id
                 )
-            except (irs_connector.IRSNetworkError, irs_connector.IRSParseError) as e:
+            except irs_connector.IRSError as e:
+                # Covers IRSNetworkError, IRSParseError, IRSNotFoundError, etc.
                 errors.append(
                     {
                         "filing": f"{filing.return_type} {filing.tax_year}",
@@ -3932,12 +3951,34 @@ def api_case_fetch_990s(request, pk):
                 )
                 continue
 
+            # Create a Document record representing the IRS XML source so that
+            # the FinancialSnapshot FK is satisfied even on a fresh case with no
+            # prior uploads.  The document stores the raw XML text for audit trail.
+            import hashlib as _hashlib
+            _xml_hash = _hashlib.sha256(xml_text.encode()).hexdigest()
+            _xml_doc, _ = Document.objects.get_or_create(
+                case=case,
+                sha256_hash=_xml_hash,
+                defaults={
+                    "filename": f"{formatted_ein}_{filing.tax_year}_{filing.return_type}_990.xml",
+                    "display_name": (
+                        f"IRS {filing.return_type} {filing.tax_year}"
+                        f" — {filing.taxpayer_name}"
+                    ),
+                    "doc_type": "IRS_990",
+                    "ocr_status": "COMPLETE",
+                    "extraction_status": "COMPLETE",
+                    "extracted_text": xml_text,
+                    "file_size": len(xml_text.encode()),
+                    "file_path": "",
+                    "is_generated": True,
+                },
+            )
+
             # Create FinancialSnapshot
-            # We create a placeholder Document for the XML source
-            # (no actual file upload — the data came from structured XML)
             snapshot = FinancialSnapshot.objects.create(
                 case=case,
-                document_id=case.documents.first().pk if case.documents.exists() else None,
+                document=_xml_doc,
                 organization=org,
                 ein=formatted_ein,
                 tax_year=parsed.tax_year or filing.tax_year,
