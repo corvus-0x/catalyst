@@ -47,8 +47,9 @@ import { WorkspaceCommandPalette } from "../components/workspace/WorkspaceComman
 import { WorkspaceGraph } from "../components/workspace/WorkspaceGraph";
 import { WorkspaceTour, WorkspaceTourHandle } from "../components/workspace/WorkspaceTour";
 import { useWorkspaceShortcuts } from "../components/workspace/useWorkspaceShortcuts";
-import { fetchCaseDetail } from "../api";
+import { fetchCaseDetail, patchCase, exportCaseReport, reevaluateFindings } from "../api";
 import { CaseDetail, FindingItem, GraphNode } from "../types";
+import { DropdownMenu } from "../components/ui/DropdownMenu";
 import styles from "./CaseWorkspace.module.css";
 
 type DockTab = "audit" | "triage" | "transforms" | "documents";
@@ -162,6 +163,19 @@ export function CaseWorkspace() {
         else panel.collapse();
     }
 
+    function applyLayout(preset: "default" | "focus" | "research") {
+        if (preset === "focus") {
+            bottomDockRef.current?.collapse();
+            setActiveViews(new Set(["graph"]));
+        } else if (preset === "research") {
+            bottomDockRef.current?.expand();
+            setActiveViews(new Set(["graph", "research"] as ViewToggle[]));
+        } else {
+            bottomDockRef.current?.expand();
+            setActiveViews(new Set(["graph"]));
+        }
+    }
+
     return (
         <div className={styles.workspace}>
             <CaseTopBar
@@ -170,6 +184,8 @@ export function CaseWorkspace() {
                 activeViews={activeViews}
                 onToggleView={toggleView}
                 onOpenPalette={() => setPaletteOpen(true)}
+                onCasePatched={refreshCaseDetail}
+                onApplyLayout={applyLayout}
             />
 
             <PanelGroup direction="horizontal" className={styles.horizontalGroup}>
@@ -321,12 +337,16 @@ function CaseTopBar({
     activeViews,
     onToggleView,
     onOpenPalette,
+    onCasePatched,
+    onApplyLayout,
 }: {
     caseId?: string;
     caseDetail: CaseDetail | null;
     activeViews: Set<ViewToggle>;
     onToggleView: (v: ViewToggle) => void;
     onOpenPalette: () => void;
+    onCasePatched: () => void;
+    onApplyLayout: (preset: "default" | "focus" | "research") => void;
 }) {
     const viewToggles: { id: ViewToggle; label: string; locked?: boolean }[] = [
         { id: "graph", label: "Graph", locked: true },
@@ -384,12 +404,74 @@ function CaseTopBar({
                 >
                     <SearchIcon size={15} strokeWidth={1.6} />
                 </button>
-                <button type="button" className={styles.iconButton} aria-label="Layout presets" title="Layout presets">
-                    <LayoutPanelLeftIcon size={15} strokeWidth={1.6} />
-                </button>
-                <button type="button" className={styles.iconButton} aria-label="More" title="More options">
-                    <MoreVerticalIcon size={15} strokeWidth={1.6} />
-                </button>
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger asChild>
+                        <button type="button" className={styles.iconButton} aria-label="Layout presets" title="Layout presets">
+                            <LayoutPanelLeftIcon size={15} strokeWidth={1.6} />
+                        </button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="end">
+                        <DropdownMenu.Label>Layout presets</DropdownMenu.Label>
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item onSelect={() => onApplyLayout("default")}>
+                            Default — graph + dock
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item onSelect={() => onApplyLayout("focus")}>
+                            Focus — graph only, dock collapsed
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item onSelect={() => onApplyLayout("research")}>
+                            Research — research pane open
+                        </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger asChild>
+                        <button type="button" className={styles.iconButton} aria-label="More options" title="More options">
+                            <MoreVerticalIcon size={15} strokeWidth={1.6} />
+                        </button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="end">
+                        <DropdownMenu.Item onSelect={() => {
+                            if (!caseId) return;
+                            exportCaseReport(caseId, "json").then(result => {
+                                const a = document.createElement("a");
+                                a.href = result.download_url;
+                                a.download = result.filename || `case-${caseId}.json`;
+                                a.click();
+                            }).catch(() => toast.error("Export failed"));
+                        }}>Export JSON</DropdownMenu.Item>
+                        <DropdownMenu.Item onSelect={() => {
+                            if (!caseId) return;
+                            exportCaseReport(caseId, "csv").then(result => {
+                                const a = document.createElement("a");
+                                a.href = result.download_url;
+                                a.download = result.filename || `case-${caseId}.csv`;
+                                a.click();
+                            }).catch(() => toast.error("Export failed"));
+                        }}>Export CSV</DropdownMenu.Item>
+                        <DropdownMenu.Separator />
+                        {(["ACTIVE", "PAUSED", "REFERRED", "CLOSED"] as const).map(s => (
+                            <DropdownMenu.Item
+                                key={s}
+                                onSelect={() => {
+                                    if (!caseId) return;
+                                    patchCase(caseId, { status: s })
+                                        .then(onCasePatched)
+                                        .catch(() => toast.error("Status update failed"));
+                                }}
+                            >
+                                Mark as {s.charAt(0) + s.slice(1).toLowerCase()}
+                            </DropdownMenu.Item>
+                        ))}
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item onSelect={() => {
+                            if (!caseId) return;
+                            reevaluateFindings(caseId)
+                                .then(() => toast.success("Signals re-evaluated"))
+                                .catch(() => toast.error("Re-evaluation failed"));
+                        }}>Reevaluate all signals</DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
             </div>
         </div>
     );
