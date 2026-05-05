@@ -17,6 +17,7 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
+        "skipLibCheck": true,
         "types": [
             "vite/client"
         ]
