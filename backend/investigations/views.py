@@ -4014,6 +4014,48 @@ def api_case_fetch_990s(request, pk):
                 raw_extraction=irs_connector.parsed_990_to_dict(parsed),
             )
 
+            # Create Person records from Part VII officer/compensation data.
+            # Without this step the graph stays empty after an IRS TEOS fetch
+            # because entity extraction never runs on server-generated XML docs.
+            if parsed.officers and org:
+                from .entity_resolution import resolve_person
+                from .models import PersonDocument, PersonOrganization
+
+                def _role_type_from_title(title: str) -> str:
+                    t = (title or "").lower()
+                    for kw in ("president", "vice pres", "treasurer", "secretary",
+                               "ceo", "cfo", "executive director", "principal officer"):
+                        if kw in t:
+                            return "OFFICER"
+                    for kw in ("director", "chairman", "board", "trustee", "member"):
+                        if kw in t:
+                            return "BOARD_MEMBER"
+                    return "OFFICER"
+
+                for officer in parsed.officers:
+                    if not officer.name:
+                        continue
+                    try:
+                        person = resolve_person(officer.name, case, document=_xml_doc)
+                        role_type = _role_type_from_title(officer.title)
+                        PersonOrganization.objects.get_or_create(
+                            person=person,
+                            org=org,
+                            defaults={
+                                "role": officer.title or "Officer",
+                                "role_type": role_type,
+                            },
+                        )
+                        PersonDocument.objects.get_or_create(
+                            person=person,
+                            document=_xml_doc,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "fetch_990s_officer_person_failed",
+                            extra={"name": officer.name, "case_id": str(case.pk)},
+                        )
+
             fetched_count += 1
             filing_results.append(
                 {

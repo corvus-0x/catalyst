@@ -33,6 +33,7 @@ import {
     XIcon,
 } from "lucide-react";
 import {
+    fetch990Data,
     fetchCaseFindings,
     fetchCaseFinancials,
     fetchDocumentDetail,
@@ -180,8 +181,14 @@ export function IRS990Viewer({ caseId, onOpenEntity, onOpenFinding, onClose }: P
     const [selectedYear, setSelectedYear] = useState<number | null>(null);
     const [parsed, setParsed] = useState<Parsed990 | null>(null);
     const [parsedLoading, setParsedLoading] = useState(false);
+    const [fetchEin, setFetchEin] = useState("");
+    const [fetchLoading, setFetchLoading] = useState(false);
+    const [fetchMsg, setFetchMsg] = useState<{ ok: boolean; text: string } | null>(null);
+    const [loadVersion, setLoadVersion] = useState(0);
 
-    // Initial load: financials + findings in parallel.
+    // Initial load: financials + findings in parallel. Re-runs when loadVersion
+    // increments (after a successful TEOS fetch adds new snapshots).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         const ctrl = new AbortController();
         setSnapshots(null);
@@ -205,7 +212,24 @@ export function IRS990Viewer({ caseId, onOpenEntity, onOpenFinding, onClose }: P
             }
         })();
         return () => ctrl.abort();
-    }, [caseId]);
+    }, [caseId, loadVersion]); // loadVersion bump triggers refresh after TEOS fetch
+
+    async function handleFetchFromTeos() {
+        const ein = fetchEin.trim();
+        if (!ein) return;
+        setFetchLoading(true);
+        setFetchMsg(null);
+        try {
+            const res = await fetch990Data(caseId, ein);
+            const fetched = (res as unknown as { fetched?: number }).fetched ?? 0;
+            setFetchMsg({ ok: true, text: `Fetched ${fetched} filing${fetched === 1 ? "" : "s"} — refreshing…` });
+            setLoadVersion((v) => v + 1);
+        } catch (e) {
+            setFetchMsg({ ok: false, text: e instanceof Error ? e.message : "Fetch failed" });
+        } finally {
+            setFetchLoading(false);
+        }
+    }
 
     const currentSnapshot = useMemo<FinancialSnapshotItem | null>(() => {
         if (!snapshots || selectedYear === null) return null;
@@ -287,12 +311,19 @@ export function IRS990Viewer({ caseId, onOpenEntity, onOpenFinding, onClose }: P
         return (
             <div className={styles.panel}>
                 <Header onClose={onClose} years={[]} selectedYear={null} onYearChange={() => undefined} />
+                <FetchTeosBar
+                    ein={fetchEin}
+                    onEinChange={setFetchEin}
+                    onFetch={handleFetchFromTeos}
+                    loading={fetchLoading}
+                    message={fetchMsg}
+                />
                 <div className={styles.empty}>
                     <FileWarningIcon size={20} aria-hidden />
                     <div>
-                        <div className={styles.emptyTitle}>No 990 filings ingested</div>
+                        <div className={styles.emptyTitle}>No 990 filings on file</div>
                         <div className={styles.emptyHint}>
-                            Pull 990s from the IRS via an organization&apos;s Actions tab to populate this view.
+                            Enter the org&apos;s EIN above and click Fetch to pull filings from IRS TEOS.
                         </div>
                     </div>
                 </div>
@@ -335,6 +366,13 @@ export function IRS990Viewer({ caseId, onOpenEntity, onOpenFinding, onClose }: P
                 onYearChange={setSelectedYear}
                 snapshot={currentSnapshot}
             />
+            <FetchTeosBar
+                ein={fetchEin}
+                onEinChange={setFetchEin}
+                onFetch={handleFetchFromTeos}
+                loading={fetchLoading}
+                message={fetchMsg}
+            />
             <div className={styles.scroller}>
                 <PartI snapshot={currentSnapshot} findings={findingsByAnchor} onOpenFinding={onOpenFinding} />
                 <PartIV
@@ -369,6 +407,48 @@ export function IRS990Viewer({ caseId, onOpenEntity, onOpenFinding, onClose }: P
 }
 
 /* ───────────────────────────── header ─────────────────────────────────── */
+
+function FetchTeosBar({
+    ein,
+    onEinChange,
+    onFetch,
+    loading,
+    message,
+}: {
+    ein: string;
+    onEinChange: (v: string) => void;
+    onFetch: () => void;
+    loading: boolean;
+    message: { ok: boolean; text: string } | null;
+}) {
+    return (
+        <div className={styles.fetchBar}>
+            <span className={styles.fetchBarLabel}>Fetch from IRS TEOS:</span>
+            <input
+                className={styles.fetchBarInput}
+                type="text"
+                placeholder="EIN  e.g. 82-4458479"
+                value={ein}
+                onChange={(e) => onEinChange(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !loading && onFetch()}
+                aria-label="EIN for IRS TEOS fetch"
+            />
+            <button
+                type="button"
+                className={styles.fetchBarBtn}
+                onClick={onFetch}
+                disabled={loading || !ein.trim()}
+            >
+                {loading ? "Fetching…" : "Fetch all years"}
+            </button>
+            {message && (
+                <span className={message.ok ? styles.fetchMsgOk : styles.fetchMsgErr}>
+                    {message.text}
+                </span>
+            )}
+        </div>
+    );
+}
 
 function Header({
     onClose,
