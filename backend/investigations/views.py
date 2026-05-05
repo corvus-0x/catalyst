@@ -3955,6 +3955,7 @@ def api_case_fetch_990s(request, pk):
             # the FinancialSnapshot FK is satisfied even on a fresh case with no
             # prior uploads.  The document stores the raw XML text for audit trail.
             import hashlib as _hashlib
+
             _xml_hash = _hashlib.sha256(xml_text.encode()).hexdigest()
             _xml_doc, _ = Document.objects.get_or_create(
                 case=case,
@@ -3962,8 +3963,7 @@ def api_case_fetch_990s(request, pk):
                 defaults={
                     "filename": f"{formatted_ein}_{filing.tax_year}_{filing.return_type}_990.xml",
                     "display_name": (
-                        f"IRS {filing.return_type} {filing.tax_year}"
-                        f" — {filing.taxpayer_name}"
+                        f"IRS {filing.return_type} {filing.tax_year} — {filing.taxpayer_name}"
                     ),
                     "doc_type": "IRS_990",
                     "ocr_status": "COMPLETE",
@@ -4023,8 +4023,16 @@ def api_case_fetch_990s(request, pk):
 
                 def _role_type_from_title(title: str) -> str:
                     t = (title or "").lower()
-                    for kw in ("president", "vice pres", "treasurer", "secretary",
-                               "ceo", "cfo", "executive director", "principal officer"):
+                    for kw in (
+                        "president",
+                        "vice pres",
+                        "treasurer",
+                        "secretary",
+                        "ceo",
+                        "cfo",
+                        "executive director",
+                        "principal officer",
+                    ):
                         if kw in t:
                             return "OFFICER"
                     for kw in ("director", "chairman", "board", "trustee", "member"):

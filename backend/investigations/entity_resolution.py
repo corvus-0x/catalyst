@@ -331,10 +331,11 @@ def _validate_and_log(entity_kind: str, data: dict) -> tuple[bool, str]:
             # validated separately if present and its normalized form is
             # written back into `data`.
             from .data_quality import (
+                _NAME_JUNK_PATTERNS,
                 ValidationIssue,
                 ValidationResult,
-                _NAME_JUNK_PATTERNS,
             )
+
             result = ValidationResult()
             name = (data.get("name") or "").strip()
             for pattern in _NAME_JUNK_PATTERNS:

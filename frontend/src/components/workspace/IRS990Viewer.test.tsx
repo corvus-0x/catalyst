@@ -271,7 +271,7 @@ describe("IRS990Viewer", () => {
         renderWithProviders(<IRS990Viewer caseId="case-1" />);
 
         await waitFor(() => {
-            expect(screen.getByText(/no 990 filings ingested/i)).toBeInTheDocument();
+            expect(screen.getByText(/no 990 filings on file/i)).toBeInTheDocument();
         });
         // No year selector when there are no years.
         expect(screen.queryByLabelText(/select tax year/i)).not.toBeInTheDocument();
