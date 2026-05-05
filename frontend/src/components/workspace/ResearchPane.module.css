@@ -1,0 +1,206 @@
+/* ResearchPane — center canvas research connector pane */
+
+.pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--surface);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+}
+
+.tabStrip {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-haze);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+
+.tab {
+    padding: 0.5rem 0.85rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tab:hover { color: var(--text-main); }
+.tabActive {
+    color: var(--text-main);
+    border-bottom-color: var(--accent);
+}
+
+.body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.searchArea {
+    padding: 0.85rem;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.searchRow {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+    min-width: 120px;
+}
+
+.fieldLabel {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    font-weight: 500;
+}
+
+.input {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    background: var(--control-bg);
+    color: var(--text-main);
+    font-size: var(--text-sm);
+    font-family: inherit;
+}
+.input:focus { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+.select {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    background: var(--control-bg);
+    color: var(--text-main);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.searchBtn {
+    padding: 0.3rem 0.9rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity var(--transition-fast);
+}
+.searchBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.statusLine {
+    font-size: var(--text-xs);
+    color: var(--text-soft);
+    font-style: italic;
+}
+.statusError { color: var(--tag-high-color); font-style: normal; }
+
+.results {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.resultRow {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.resultRow:hover { background: var(--sidebar-hover); }
+.resultRowActive { background: var(--sidebar-active); }
+
+.resultSummary {
+    padding: 0.55rem 0.85rem;
+    font-size: var(--text-sm);
+    color: var(--text-main);
+}
+
+.resultDetail {
+    padding: 0.75rem 0.85rem 0.85rem;
+    background: var(--bg-haze);
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detailGrid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0.2rem 0.5rem;
+    font-size: var(--text-xs);
+}
+.detailKey { color: var(--text-soft); font-weight: 500; }
+.detailVal { color: var(--text-main); word-break: break-word; }
+
+.detailActions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.addBtn {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+.addBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.clearBtn {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    background: var(--control-bg);
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+
+.addedBadge {
+    font-size: var(--text-xs);
+    color: var(--tag-low-color);
+    padding: 0.3rem 0;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    padding: 2rem;
+    text-align: center;
+}
