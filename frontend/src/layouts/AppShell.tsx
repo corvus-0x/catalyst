@@ -148,7 +148,7 @@ export function AppShell() {
             <a href="#main-content" className="skip-to-content">Skip to content</a>
             <Sidebar triageCount={triageCount} />
 
-            <div className={styles.shellMain}>
+            <div className={`${styles.shellMain} ${isCaseWorkspace ? styles.shellMainWorkspace : ""}`}>
                 {!isCaseWorkspace && <header className={styles.topbar} role="banner">
                     <div className={styles.topbarRow}>
                         <div className={styles.topbarSearch}>

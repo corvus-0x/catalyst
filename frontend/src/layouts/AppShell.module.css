@@ -11,6 +11,14 @@
   min-height: 100vh;
 }
 
+/* When the case workspace is active it manages its own height via flex.
+   Give it an exact viewport height so the internal flex chain resolves. */
+.shellMainWorkspace {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .topbar {
   position: sticky;
   top: 0;
