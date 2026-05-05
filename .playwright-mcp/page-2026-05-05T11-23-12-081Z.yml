@@ -1,0 +1,11 @@
+- generic [ref=e2]:
+  - region "Notifications alt+T"
+  - generic [ref=e4]:
+    - paragraph [ref=e5]: Catalyst Investigator Access
+    - heading "Sign In" [level=1] [ref=e6]
+    - paragraph [ref=e7]: Use your API access token to unlock the workspace and make corrections.
+    - generic [ref=e8]:
+      - generic [ref=e9]: Access token
+      - textbox "Access token" [ref=e10]:
+        - /placeholder: Paste bearer token
+      - button "Sign In" [ref=e11] [cursor=pointer]
