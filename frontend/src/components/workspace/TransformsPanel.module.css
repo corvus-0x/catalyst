@@ -187,6 +187,32 @@
     color: var(--text-main);
 }
 
+.resultToggle {
+    font-size: var(--text-xs);
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    margin-left: 0.5rem;
+}
+.resultJson {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-soft);
+    background: var(--bg-haze);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 0.25rem;
+}
+
 /* ── Status chips ────────────────────────────────────────── */
 
 .chip {

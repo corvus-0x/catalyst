@@ -47,7 +47,7 @@ import { WorkspaceCommandPalette } from "../components/workspace/WorkspaceComman
 import { WorkspaceGraph } from "../components/workspace/WorkspaceGraph";
 import { WorkspaceTour, WorkspaceTourHandle } from "../components/workspace/WorkspaceTour";
 import { useWorkspaceShortcuts } from "../components/workspace/useWorkspaceShortcuts";
-import { fetchCaseDetail, patchCase, exportCaseReport, reevaluateFindings } from "../api";
+import { fetchCaseDetail, patchCase, exportCaseReport, reevaluateFindings, searchIRS, searchOhioAOS, searchParcels } from "../api";
 import { CaseDetail, FindingItem, GraphNode } from "../types";
 import { DropdownMenu } from "../components/ui/DropdownMenu";
 import styles from "./CaseWorkspace.module.css";
@@ -759,8 +759,20 @@ function CaseBottomDock({
                     <TransformsPanel
                         caseId={caseId}
                         onLoaded={setTransformsCount}
-                        onOpenResult={(j) => toast.message(`Open ${j.job_type} result`)}
-                        onRetry={(j) => toast.message(`Retry ${j.job_type} (wiring pending)`)}
+                        onOpenResult={() => {}}
+                        onRetry={async (j) => {
+                            if (!caseId) return;
+                            const p = j.query_params as Record<string, string> | null;
+                            if (!p) return;
+                            try {
+                                if (j.job_type === "IRS_NAME_SEARCH") await searchIRS(caseId, p.query ?? "");
+                                else if (j.job_type === "OHIO_AOS") await searchOhioAOS(caseId, p.query ?? "");
+                                else if (j.job_type === "COUNTY_PARCEL") await searchParcels(caseId, p.query ?? "", (p.search_type as "owner" | "parcel") ?? "owner", p.county ?? "");
+                                toast.success("Search re-queued");
+                            } catch (e) {
+                                toast.error(e instanceof Error ? e.message : "Retry failed");
+                            }
+                        }}
                     />
                 </Tabs.Content>
                 <Tabs.Content value="documents" className={styles.dockPaneFlush}>

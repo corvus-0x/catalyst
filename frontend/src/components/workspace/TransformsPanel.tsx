@@ -153,6 +153,7 @@ export function TransformsPanel({
     const [jobs, setJobs] = useState<SearchJobSummary[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         if (!caseId) {
@@ -272,6 +273,8 @@ export function TransformsPanel({
                         job={job}
                         onOpenResult={onOpenResult}
                         onRetry={onRetry}
+                        expandedId={expandedId}
+                        setExpandedId={setExpandedId}
                     />
                 ))}
             </ul>
@@ -287,9 +290,11 @@ interface RowProps {
     job: SearchJobSummary;
     onOpenResult?: (job: SearchJobSummary) => void;
     onRetry?: (job: SearchJobSummary) => void;
+    expandedId: string | null;
+    setExpandedId: (id: string | null) => void;
 }
 
-function TransformRow({ job, onOpenResult, onRetry }: RowProps) {
+function TransformRow({ job, onOpenResult, onRetry, expandedId, setExpandedId }: RowProps) {
     const clickable = job.status === "SUCCESS" && Boolean(onOpenResult);
     const handleClick = clickable ? () => onOpenResult?.(job) : undefined;
     const handleRetry: React.MouseEventHandler<HTMLButtonElement> = (e) => {
@@ -324,7 +329,22 @@ function TransformRow({ job, onOpenResult, onRetry }: RowProps) {
             </span>
 
             {job.status === "SUCCESS" && (
-                <span className={styles.resultSummary}>{resultSummary(job)}</span>
+                <span className={styles.resultSummary}>
+                    {resultSummary(job)}
+                    <button
+                        type="button"
+                        className={styles.resultToggle}
+                        onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === job.id ? null : job.id); }}
+                    >
+                        {expandedId === job.id ? "Hide result" : "View result"}
+                    </button>
+                </span>
+            )}
+
+            {expandedId === job.id && job.result != null && (
+                <pre className={styles.resultJson}>
+                    {JSON.stringify(job.result, null, 2)}
+                </pre>
             )}
 
             {job.status === "FAILED" && (
