@@ -106,6 +106,14 @@
     outline: none;
 }
 
+/* Radix keeps inactive TabsContent divs in the DOM with [hidden].
+   Our display:flex on dockPaneFlush overrides the UA [hidden] rule
+   (equal specificity, user stylesheet wins). Bump specificity here
+   so inactive panes are truly hidden and don't consume flex space. */
+.content[hidden] {
+    display: none;
+}
+
 .content:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
