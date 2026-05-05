@@ -505,6 +505,18 @@ export async function exportCaseReport(
     return request<ReportExportResult>(`/api/cases/${caseId}/export/?format=${format}`, {}, options);
 }
 
+export async function patchCase(
+    caseId: string,
+    payload: { status?: string; notes?: string; referral_ref?: string },
+    options?: ApiRequestOptions
+): Promise<CaseDetail> {
+    return request<CaseDetail>(
+        `/api/cases/${caseId}/`,
+        { method: "PATCH", body: JSON.stringify(payload) },
+        { timeoutMs: DEFAULT_TIMEOUT_MS, ...options }
+    );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Case intelligence dashboard & coverage audit
    ═══════════════════════════════════════════════════════════════ */
