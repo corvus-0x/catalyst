@@ -93,6 +93,10 @@ export function CaseWorkspace() {
     // stay in sync. Will eventually feed bottom-dock Selection tab too (§10.5).
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
+    // Finding selection — lifted so the right panel can reflect which finding is active
+    // from the Triage dock tab (e.g. show entity notes for the finding's trigger entity).
+    const [selectedFinding, setSelectedFinding] = useState<FindingItem | null>(null);
+
     // Graph version — increment to trigger a graph re-fetch (e.g. after Research pane
     // adds an entity to the case via the "Add to Case" flow).
     const [graphVersion, setGraphVersion] = useState(0);
@@ -118,7 +122,7 @@ export function CaseWorkspace() {
         onToggleViewPane: (v) => toggleView(v),
         onToggleLayoutLock: () => toast.message("Lock layout shortcut — wiring deferred"),
         onShowHelp: () => setHelpOpen(true),
-        onEscape: () => setSelectedNode(null),
+        onEscape: () => { setSelectedNode(null); setSelectedFinding(null); },
     });
 
     useEffect(() => {
@@ -273,8 +277,7 @@ export function CaseWorkspace() {
                                     activeTab={dockTab}
                                     onActiveTabChange={setDockTab}
                                     onSelectFinding={(f) => {
-                                        // Cross-zone graph highlight needs lifted graph data
-                                        // (deferred). For now, surface what was clicked.
+                                        setSelectedFinding(f);
                                         toast.message(`Selected: ${f.title}`);
                                     }}
                                 />
@@ -308,8 +311,9 @@ export function CaseWorkspace() {
                         <RightDetailPanel
                             caseDetail={caseDetail}
                             selectedNode={selectedNode}
+                            selectedFinding={selectedFinding}
                             onCollapse={toggleRightPanel}
-                            onClearSelection={() => setSelectedNode(null)}
+                            onClearSelection={() => { setSelectedNode(null); setSelectedFinding(null); }}
                         />
                     )}
                 </Panel>

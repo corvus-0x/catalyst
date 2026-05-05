@@ -130,6 +130,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail({ name: "Bright Future Foundation" })}
                 selectedNode={null}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -150,6 +151,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode()}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -173,6 +175,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode()}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -198,6 +201,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode()}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -215,6 +219,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode()}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -231,6 +236,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode({ metadata: { finding_count: 0, doc_count: 0 } })}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={() => undefined}
             />,
@@ -247,6 +253,7 @@ describe("RightDetailPanel", () => {
             <RightDetailPanel
                 caseDetail={caseDetail()}
                 selectedNode={orgNode()}
+                selectedFinding={null}
                 onCollapse={() => undefined}
                 onClearSelection={onClear}
             />,

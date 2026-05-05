@@ -30,17 +30,21 @@ import { toast } from "../ui/Toaster";
 import {
     fetch990Data,
     fetchEntityDetail,
+    fetchNotes,
+    createNote,
+    deleteNote,
     isAbortError,
     searchOhioAOS,
     searchOhioSOS,
 } from "../../api";
-import type { CaseDetail, GraphNode, GraphNodeType } from "../../types";
+import type { CaseDetail, FindingItem, GraphNode, GraphNodeType, InvestigatorNote } from "../../types";
 import { formatDate } from "../../utils/format";
 import styles from "./RightDetailPanel.module.css";
 
 interface Props {
     caseDetail: CaseDetail | null;
     selectedNode: GraphNode | null;
+    selectedFinding: FindingItem | null;
     onCollapse: () => void;
     onClearSelection: () => void;
 }
@@ -64,6 +68,7 @@ interface RelatedFinding {
 export function RightDetailPanel({
     caseDetail,
     selectedNode,
+    selectedFinding: _selectedFinding,
     onCollapse,
     onClearSelection,
 }: Props) {
@@ -133,6 +138,14 @@ function CaseSubjectView({
                 Click an entity on the graph to see its properties, sources, flags, and the
                 research actions you can run on it.
             </p>
+
+            {caseDetail && (
+                <NotesTab
+                    caseId={caseDetail.id}
+                    targetType="case"
+                    targetId={caseDetail.id}
+                />
+            )}
         </div>
     );
 }
@@ -242,6 +255,7 @@ function EntityDetailView({
                     <Tabs.Trigger value="sources" badge={docCount || undefined}>Sources</Tabs.Trigger>
                     <Tabs.Trigger value="flags" badge={findingCount || undefined}>Flags</Tabs.Trigger>
                     <Tabs.Trigger value="actions">Actions</Tabs.Trigger>
+                    <Tabs.Trigger value="notes">Notes</Tabs.Trigger>
                 </Tabs.List>
 
                 <Tabs.Content value="properties" className={styles.tabContent}>
@@ -255,6 +269,13 @@ function EntityDetailView({
                 </Tabs.Content>
                 <Tabs.Content value="actions" className={styles.tabContent}>
                     <ActionsTab caseId={caseId} node={node} />
+                </Tabs.Content>
+                <Tabs.Content value="notes" className={styles.tabContent}>
+                    <NotesTab
+                        caseId={caseId}
+                        targetType={node.type}
+                        targetId={node.id}
+                    />
                 </Tabs.Content>
             </Tabs.Root>
         </div>
@@ -400,6 +421,100 @@ function severityClass(severity: string): string {
         default:
             return styles.sevNeutral;
     }
+}
+
+/* ───────────────────────────── actions ─────────────────────────────────── */
+
+/* ───────────────────────────── notes ───────────────────────────────────── */
+
+function NotesTab({
+    caseId,
+    targetType,
+    targetId,
+}: {
+    caseId: string;
+    targetType: string;
+    targetId: string;
+}) {
+    const [notes, setNotes] = useState<InvestigatorNote[]>([]);
+    const [content, setContent] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!caseId || !targetId) return;
+        let cancelled = false;
+        fetchNotes(caseId, targetType, targetId)
+            .then((res) => {
+                if (!cancelled) {
+                    const items = (res as unknown as { results?: InvestigatorNote[] }).results ?? [];
+                    setNotes(items);
+                }
+            })
+            .catch(() => { /* silent */ });
+        return () => { cancelled = true; };
+    }, [caseId, targetType, targetId]);
+
+    async function handleAdd() {
+        if (!content.trim()) return;
+        setSaving(true);
+        try {
+            const note = await createNote(caseId, targetType, targetId, content.trim());
+            setNotes((prev) => [note as InvestigatorNote, ...prev]);
+            setContent("");
+        } catch {
+            // silent
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleDelete(noteId: string) {
+        try {
+            await deleteNote(caseId, noteId);
+            setNotes((prev) => prev.filter((n) => n.id !== noteId));
+        } catch {
+            // silent
+        }
+    }
+
+    return (
+        <div className={styles.notesList}>
+            <textarea
+                className={styles.noteInput}
+                placeholder="Add a note…"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={3}
+            />
+            <button
+                type="button"
+                className={styles.noteAddBtn}
+                onClick={() => void handleAdd()}
+                disabled={saving || !content.trim()}
+            >
+                {saving ? "Saving…" : "Add Note"}
+            </button>
+            {notes.map((n) => (
+                <div key={n.id} className={styles.noteItem}>
+                    <div className={styles.noteMeta}>
+                        {new Date(n.created_at).toLocaleString()}
+                    </div>
+                    <div className={styles.noteContent}>{n.content}</div>
+                    <button
+                        type="button"
+                        className={styles.noteDeleteBtn}
+                        onClick={() => void handleDelete(n.id)}
+                        aria-label="Delete note"
+                    >
+                        ×
+                    </button>
+                </div>
+            ))}
+            {notes.length === 0 && (
+                <div className={styles.noteEmpty}>No notes yet.</div>
+            )}
+        </div>
+    );
 }
 
 /* ───────────────────────────── actions ─────────────────────────────────── */
