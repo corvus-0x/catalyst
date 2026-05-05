@@ -38,6 +38,7 @@ import { FinancialsPane } from "../components/workspace/FinancialsPane";
 import { IRS990Viewer } from "../components/workspace/IRS990Viewer";
 import { KeyboardHelpOverlay } from "../components/workspace/KeyboardHelpOverlay";
 import { PackagePane } from "../components/workspace/PackagePane";
+import { ResearchPane } from "../components/workspace/ResearchPane";
 import { PhaseNavigator } from "../components/workspace/PhaseNavigator";
 import { RecentlyAdded } from "../components/workspace/RecentlyAdded";
 import { RightDetailPanel } from "../components/workspace/RightDetailPanel";
@@ -69,7 +70,7 @@ function getStoredDockTab(caseId: string | undefined): DockTab {
     return "audit";
 }
 
-type ViewToggle = "graph" | "990" | "financials" | "package";
+type ViewToggle = "graph" | "990" | "financials" | "package" | "research";
 
 export function CaseWorkspace() {
     const { caseId } = useParams<{ caseId: string }>();
@@ -91,6 +92,10 @@ export function CaseWorkspace() {
     // Selection — owned at workspace level so graph (§8) and right detail panel (§9)
     // stay in sync. Will eventually feed bottom-dock Selection tab too (§10.5).
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+
+    // Graph version — increment to trigger a graph re-fetch (e.g. after Research pane
+    // adds an entity to the case via the "Add to Case" flow).
+    const [graphVersion, setGraphVersion] = useState(0);
 
     // Bottom dock active tab — lifted from CaseBottomDock so Cmd+1..4 keyboard
     // shortcuts can drive it from the workspace level.
@@ -169,7 +174,7 @@ export function CaseWorkspace() {
             setActiveViews(new Set(["graph"]));
         } else if (preset === "research") {
             bottomDockRef.current?.expand();
-            setActiveViews(new Set(["graph", "research"] as ViewToggle[]));
+            setActiveViews(new Set<ViewToggle>(["graph", "research"]));
         } else {
             bottomDockRef.current?.expand();
             setActiveViews(new Set(["graph"]));
@@ -234,10 +239,12 @@ export function CaseWorkspace() {
                                 caseId={caseId}
                                 caseDetail={caseDetail}
                                 activeViews={activeViews}
+                                graphVersion={graphVersion}
                                 onConfirmedSubject={refreshCaseDetail}
                                 selectedNode={selectedNode}
                                 onSelectNode={setSelectedNode}
                                 onCloseView={(v) => toggleView(v)}
+                                onGraphRefresh={() => setGraphVersion((v) => v + 1)}
                             />
                         </Panel>
 
@@ -353,6 +360,7 @@ function CaseTopBar({
         { id: "990", label: "990 Viewer" },
         { id: "financials", label: "Financials" },
         { id: "package", label: "Package" },
+        { id: "research", label: "Research" },
     ];
 
     return (
@@ -558,24 +566,29 @@ function CaseCenterCanvas({
     caseId,
     caseDetail,
     activeViews,
+    graphVersion,
     onConfirmedSubject,
     selectedNode,
     onSelectNode,
     onCloseView,
+    onGraphRefresh,
 }: {
     caseId?: string;
     caseDetail: CaseDetail | null;
     activeViews: Set<ViewToggle>;
+    graphVersion?: number;
     onConfirmedSubject: () => void;
     selectedNode: GraphNode | null;
     onSelectNode: (node: GraphNode | null) => void;
     onCloseView: (v: ViewToggle) => void;
+    onGraphRefresh?: () => void;
 }) {
     const panes: { id: ViewToggle; title: string; ref: string }[] = [];
     if (activeViews.has("graph")) panes.push({ id: "graph", title: "Graph canvas", ref: "§8 — Cytoscape.js" });
     if (activeViews.has("990")) panes.push({ id: "990", title: "990 Viewer", ref: "§11" });
     if (activeViews.has("financials")) panes.push({ id: "financials", title: "Financials", ref: "§12" });
     if (activeViews.has("package")) panes.push({ id: "package", title: "Package", ref: "§13" });
+    if (activeViews.has("research")) panes.push({ id: "research", title: "Research", ref: "§14" });
 
     // Cold start state: graph is the only pane open AND the case has no docs yet.
     const inColdStart =
@@ -600,6 +613,7 @@ function CaseCenterCanvas({
                     caseId={caseId}
                     selectedNodeId={selectedNode?.id ?? null}
                     onSelectNode={onSelectNode}
+                    version={graphVersion}
                 />
             );
         }
@@ -626,6 +640,14 @@ function CaseCenterCanvas({
             // EntityGraphCytoscape and isn't lifted yet. PackagePane shows the
             // "graph is locked" preflight as a passing-with-caveat row.
             return <PackagePane caseId={caseId} />;
+        }
+        if (id === "research") {
+            return (
+                <ResearchPane
+                    caseId={caseId}
+                    onAdded={onGraphRefresh}
+                />
+            );
         }
         return <CanvasPlaceholder title={title} ref_={ref} />;
     }

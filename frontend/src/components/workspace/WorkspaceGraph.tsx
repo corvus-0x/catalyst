@@ -16,9 +16,11 @@ interface Props {
     selectedNodeId?: string | null;
     /** Fires for both selection and deselection (deselect = null). */
     onSelectNode?: (node: GraphNode | null) => void;
+    /** Increment to force a graph re-fetch (e.g. after Research pane adds an entity). */
+    version?: number;
 }
 
-export function WorkspaceGraph({ caseId, selectedNodeId, onSelectNode }: Props) {
+export function WorkspaceGraph({ caseId, selectedNodeId, onSelectNode, version }: Props) {
     const [graph, setGraph] = useState<CaseGraphResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +40,7 @@ export function WorkspaceGraph({ caseId, selectedNodeId, onSelectNode }: Props) 
         return () => {
             cancelled = true;
         };
-    }, [caseId]);
+    }, [caseId, version]);
 
     const handleNodeClick = useCallback(
         (node: GraphNode) => {
