@@ -2,8 +2,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as Tabs from "@radix-ui/react-tabs";
 import { toast } from "sonner";
-import { fetchCase, generateReferralPdf } from "../api";
-import type { CaseDetailResponse } from "../types";
+import { fetchCase, generateReferralPdf, fetchAngle, updateAngle } from "../api";
+import type { CaseDetailResponse, TimelineEvent } from "../types";
 import InvestigateTab from "./InvestigateTab";
 
 /* ─── Lazy-load heavy tabs ────────────────────────────────────────────────── */
@@ -81,6 +81,7 @@ export default function CaseDetailView() {
   const [caseData, setCaseData] = useState<CaseDetailResponse | null>(null);
   const [loadingCase, setLoadingCase] = useState(true);
   const [activeTab, setActiveTab] = useState("investigate");
+  const [activeAngleId, setActiveAngleId] = useState<string | undefined>();
 
   useEffect(() => {
     if (!id) return;
@@ -145,6 +146,7 @@ export default function CaseDetailView() {
           <InvestigateTab
             caseId={id}
             documents={caseData?.documents ?? []}
+            onAngleActive={setActiveAngleId}
           />
         </Tabs.Content>
 
@@ -171,7 +173,26 @@ export default function CaseDetailView() {
         {/* ── Timeline (D3 brush + event rail) ── */}
         <Tabs.Content value="timeline" className="tab-panel">
           <Suspense fallback={TAB_FALLBACK}>
-            <TimelineTab caseId={id} />
+            <TimelineTab
+              caseId={id}
+              activeAngleId={activeAngleId}
+              onCiteInAngle={async (event: TimelineEvent) => {
+                if (!activeAngleId) {
+                  toast("Open an angle first — navigate to one in the Investigate tab.");
+                  return;
+                }
+                try {
+                  const angle = await fetchAngle(id, activeAngleId);
+                  const citation = `\n\n[Cited from timeline: ${event.label} — ${event.date}]`;
+                  await updateAngle(id, activeAngleId, {
+                    narrative: (angle.narrative ?? "") + citation,
+                  });
+                  toast("Cited in angle.");
+                } catch {
+                  toast("Failed to cite event in angle.");
+                }
+              }}
+            />
           </Suspense>
         </Tabs.Content>
 

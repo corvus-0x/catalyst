@@ -288,9 +288,10 @@ function EmptyWeb({ onAddKnot }: { onAddKnot: () => void }) {
 interface InvestigateTabProps {
   caseId: string;
   documents: DocumentItem[];
+  onAngleActive?: (angleId: string | undefined) => void;
 }
 
-export default function InvestigateTab({ caseId, documents }: InvestigateTabProps) {
+export default function InvestigateTab({ caseId, documents, onAngleActive }: InvestigateTabProps) {
   const [graph, setGraph]           = useState<GraphResponse | null>(null);
   const [dashboard, setDashboard]   = useState<DashboardResponse | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -339,14 +340,25 @@ export default function InvestigateTab({ caseId, documents }: InvestigateTabProp
   function navigate(entry: NavEntry) {
     setNavStack((s) => [...s, entry]);
     setWebSelectedEdge(null);
+    if (entry.kind === "angle") {
+      onAngleActive?.(entry.angleId);
+    } else {
+      onAngleActive?.(undefined);
+    }
   }
 
   function navigateTo(index: number) {
     const newStack = navStack.slice(0, index + 1);
     setNavStack(newStack);
-    if (newStack[newStack.length - 1].kind === "web") {
+    const top = newStack[newStack.length - 1];
+    if (top.kind === "web") {
       cyRef.current?.elements().removeClass("dimmed");
       setWebSelectedEdge(null);
+    }
+    if (top.kind === "angle") {
+      onAngleActive?.(top.angleId);
+    } else {
+      onAngleActive?.(undefined);
     }
   }
 
