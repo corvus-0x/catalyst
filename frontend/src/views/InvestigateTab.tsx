@@ -546,8 +546,6 @@ export default function InvestigateTab({ caseId, documents }: InvestigateTabProp
                 onDocumentClick={(docId, docName) => navigate({ kind: "document", documentId: docId, docName })}
                 onBack={navigateBack}
                 onAngleTiedOff={() => fetchGraph(caseId).then(setGraph).catch(console.error)}
-                onOpenCitePicker={() => {}}
-                onOpenTieOff={() => {}}
               />
             </Suspense>
           </div>
