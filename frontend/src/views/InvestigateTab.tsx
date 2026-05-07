@@ -469,7 +469,25 @@ export default function InvestigateTab({ caseId, documents }: InvestigateTabProp
         {/* Level 4 — Document view */}
         {showDocument && current.kind === "document" && (
           <Suspense fallback={fallback("Loading document…")}>
-            <DocumentView caseId={caseId} documentId={current.documentId} onBack={navigateBack} />
+            <DocumentView
+              caseId={caseId}
+              documentId={current.documentId}
+              activeAngleId={(() => {
+                const angleEntry = navStack.find(
+                  (e): e is Extract<NavEntry, { kind: "angle" }> => e.kind === "angle"
+                );
+                return angleEntry?.angleId;
+              })()}
+              onBack={navigateBack}
+              onDocumentNavigate={(docId) => {
+                const node = graph?.nodes.find((n) => n.id === docId);
+                navigate({
+                  kind: "document",
+                  documentId: docId,
+                  docName: node?.label ?? docId.slice(0, 8) + "…",
+                });
+              }}
+            />
           </Suspense>
         )}
 
