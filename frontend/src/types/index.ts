@@ -228,6 +228,11 @@ export interface DocumentItem {
   ocr_status: OcrStatus;
   extraction_status: ExtractionStatus;
   extraction_notes: string;
+  /**
+   * Full OCR-extracted text of the document. Empty string "" if extraction has not completed.
+   * Populated on the document detail endpoint (GET /api/cases/:id/documents/:doc_id/).
+   */
+  extracted_text?: string;
   uploaded_at: ISO8601;
   updated_at: ISO8601;
 }
