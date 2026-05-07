@@ -1,847 +1,1218 @@
 # Catalyst Frontend Design Spec
-**Status:** LIVING DOCUMENT — v1, draft
-**Last updated:** 2026-05-03
-**Owner:** Tyler Collins (tjcollinsku@gmail.com)
-**Replaces:** `catalyst_frontend_design_spec.md` (May 2026 working draft)
-**How to use this doc:** read top-to-bottom the first time. After that, sections are independently editable. Section 13 ("Open questions") is where unresolved decisions live — keep it pruned.
+**Version:** 3.0 (Session 38 — connection/profile/angle model)
+**Owner:** Tyler Collins
+**Status:** Authoritative — build from this
+
+This document is the single source of truth for the Catalyst frontend. It describes the investigation
+model, navigation structure, tab layouts, and interaction patterns for the connection/profile/angle UI.
+Version 2.0 (thread/knot/web) was superseded mid-session when the terminology was clarified.
 
 ---
 
-## 1. The frame
+## 1. Core Investigation Model
 
-### What Catalyst is
-Catalyst is **referral-packaging software for citizen investigators handing off to professionals with subpoena power.** The customer of the output is the AG, IRS, FBI, or federal OIG investigator — not the user of the tool. The user assembles. The customer acts.
+### The fundamental principle
 
-### The defining distinction
-Catalyst is **paper-trail assembly**, not **OSINT discovery**.
+**Documents are the truth.** Every fact in the system traces back to a document. Connections
+between entities are only as real as the document that establishes them. An angle is only as
+strong as the documents it cites. Nothing is asserted without a source.
 
-|                          | OSINT (Maltego, etc.)                                | Paper trail (Catalyst)                                                  |
-|--------------------------|------------------------------------------------------|-------------------------------------------------------------------------|
-| Starting state           | One entity                                           | A pile of public records                                                |
-| Movement                 | Outward — find what else is out there                | Sideways — connect what already exists                                  |
-| Edge meaning             | "A transform produced this link"                     | "This document proves this link"                                        |
-| Quality bar              | Find more leads                                      | Every claim cites a document. Every edge has provenance.                |
-| Output                   | A graph of leads for the analyst                     | A referral package a stranger can verify in 15 minutes                  |
-| Failure mode             | Missed connections                                   | An unsupported claim that discredits the package                        |
+Documents do two jobs when Intake processes them:
+1. **Build profiles** — financial figures, dates, roles, and facts about a single entity
+2. **Establish connections** — when two entities appear together in a document (grantor/grantee,
+   officer/organization, secured party/debtor), that relationship becomes a visible edge in the web
 
-Every UI decision in this document flows from that distinction. When in doubt: **does this help the investigator assemble a defensible paper trail?**
+The **angle** is what the investigator finds by reading across profiles and connections. It is the
+investigative question — the "why does this matter" — built as a narrative with document citations.
 
-### Who the user is
-A non-professional investigator working on a single case at a time, often part-time. They are not a data analyst. They will spend hours staring at this UI and need it to help them think, not fight them. They are NOT the customer of the output — the customer is the agency investigator on the receiving end.
+### Glossary
 
-### The portfolio constraint
-Catalyst is a portfolio piece that needs to get Tyler hired. The interface needs to look serious, deliberate, and dense — like a real investigative tool, not a CRUD app with charts. Recruiters viewing screenshots should immediately read it as professional software.
+| Term | Definition |
+|------|-----------|
+| **Knot** | A node of investigative interest. Only Person and Organization can be knots. Property is NOT a knot — you cannot press charges on a property. |
+| **Connection** | A factual link between two knots established by a document or entered manually. Shown as an edge in the web. Three states: Proposed, Confirmed, Manual. |
+| **Profile** | The accumulated portrait of a knot — all facts Intake extracted about this entity, plus every document associated with them, plus all their confirmed connections. |
+| **Angle** | An investigative line of inquiry. A free-form narrative with `[Doc-N]` citations that builds the case for why a pattern is significant. Maps to the `Finding` model. Can draw on multiple entities and multiple documents. |
+| **Web** | The full investigation graph — all knots as nodes, all connections as edges. The primary view of the Investigate tab. |
+| **Active** | An angle that is open — investigator is building the narrative. Maps to `Finding.status = NEEDS_EVIDENCE`. |
+| **Confirmed** | An angle that has been tied off — narrative complete, evidence cited. Maps to `Finding.status = CONFIRMED`. |
+| **Exhausted** | An angle that went nowhere — dead end. Maps to `Finding.status = DISMISSED`. |
+| **Intake** | The extraction AI role. Runs on document upload. Extracts entities, dates, amounts, and flags. Powered by Claude Haiku. Never display model name — always show as "Intake". |
+| **Lead** | The reasoning AI role. Proposes connections after document processing. Suggests next investigative steps. Can draft angle narratives. Powered by Claude Sonnet. Never display model name — always show as "Lead". |
+| **Quick capture** | An informal note on a knot — an observation not yet part of any angle. Stored as `InvestigatorNote`. |
+| **Fuzzy match** | When Intake finds an entity name that is similar but not identical to an existing knot — e.g. "K Homan" vs "Karen Homan". Lead surfaces these for investigator review rather than silently merging or creating duplicates. |
 
----
+### Backend Model Mapping
 
-## 2. Reference tools and what we're pulling from each
+| Frontend concept | Backend model | Notes |
+|-----------------|--------------|-------|
+| Knot | `Person` or `Organization` | Only these two. Not `Property`. |
+| Connection (confirmed) | `Relationship` or `PersonOrganization` | Existing relationship models |
+| Connection (proposed) | Pending state — stored in `Document.ingestion_metadata` until reviewed | |
+| Connection (manual) | `Relationship` with `source=MANUAL` and a note field | |
+| Profile | Entity model + `FinancialSnapshot[]` + `PersonDocument[]`/`OrgDocument[]` | Assembled view |
+| Angle | `Finding` | One Finding = one angle |
+| Evidence cited in angle | `FindingDocument` | Multi-document, exists today |
+| Active angle | `Finding.status = NEEDS_EVIDENCE` | |
+| Confirmed angle | `Finding.status = CONFIRMED` | |
+| Exhausted angle | `Finding.status = DISMISSED` | |
+| Web (graph) | `GET /api/cases/<uuid>/graph/` | Existing endpoint |
+| Quick capture | `InvestigatorNote` | Existing model |
+| Intake extraction | `ai_extraction.py` + `entity_extraction.py` + `entity_resolution.py` | |
+| Lead connection proposals | `ai_pattern_augmentation.py` + `entity_resolution.py` fuzzy matching | |
+| Fuzzy match candidates | `entity_resolution.py` similarity scores | Surfaced in review panel |
 
-We are not copying any of these. We are stealing patterns and adapting them to paper-trail work. Each entry: tool → what we take → why.
-
-| Tool                          | What we take                                                                                | Why it fits Catalyst                                                                                |
-|-------------------------------|---------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| **Maltego**                   | Graph-as-workspace. Layout algorithms. Multi-select detail table. Lock/freeze. View modes that re-encode node size. | Maltego is the most polished link-analysis UI on the market. Its layout language is what Catalyst should *feel* like. |
-| **i2 Analyst's Notebook**     | Three primary objects: entity, link, attribute. Timeline as a peer chart, not a strip.       | i2 is the closest cousin — built for forensic paper trail with defensibility built in. Closer in spirit than Maltego. |
-| **Palantir Gotham**           | The "applications share one workspace" model. Multiple panes (Graph + Map + Table) coexist. | Lets the investigator compose a workbench instead of jumping between tabs. Solves the "5 tabs problem" of the current spec. |
-| **Cytoscape.js**              | The graph engine itself. Layout algorithms, lock, multi-select, performance.                 | What we use to build the graph. See §8.0 and §16.5.                                                  |
-| **Existing Catalyst tokens**  | Dark-first IBM Plex + Carbon palette. Per-entity-type graph node colors. Severity tags.    | Already built. Don't reinvent.                                                                       |
-
-Reference URLs (for design inspection — open these on a second monitor when iterating):
-
-- Maltego — Navigate the Interface: https://docs.maltego.com/en/support/solutions/articles/15000059532-navigate-the-interface
-- Maltego — Graph Sidebar (layouts + view modes): https://docs.maltego.com/en/support/solutions/articles/15000009615-graph-sidebar
-- Maltego — Entity Palette: https://docs.maltego.com/en/support/solutions/articles/15000019238-entity-palette
-- Maltego — Detail View (multi-select sortable table): https://docs.maltego.com/en/support/solutions/articles/15000019236-detail-view
-- Maltego — Property View (editable entity properties): https://docs.maltego.com/en/support/solutions/articles/15000019237-property-view-window
-- i2 Analyst's Notebook overview: https://i2group.com/solutions/i2-analysts-notebook
-- Palantir Gotham overview: https://www.palantir.com/platforms/gotham/
-- Cytoscape.js documentation: https://js.cytoscape.org/
-- Cytoscape.js layout demos (try cose-bilkent, dagre, breadthfirst): https://js.cytoscape.org/#layouts
-- Radix UI primitives: https://www.radix-ui.com/primitives
-- TanStack Table: https://tanstack.com/table/v8
-
----
-
-## 3. Naming conventions
-
-Lock these. Use them everywhere — code, UI copy, this doc.
-
-| Term            | Definition                                                                                         |
-|-----------------|----------------------------------------------------------------------------------------------------|
-| **Flag**        | Automatic detection from a signal rule. Lives in triage. Not yet reviewed by the investigator.     |
-| **Finding**     | Investigator-confirmed conclusion. Goes in the referral package. Always manually promoted from a flag (or created from scratch). |
-| **Entity**      | A person, organization, property, or financial instrument that's part of the case.                  |
-| **Document**    | A source artifact — 990, deed, UCC filing, building permit, obituary. Has a SHA-256 hash and a citation slot. |
-| **Citation**    | A `[Doc-N]` reference linking a claim back to a document and page.                                  |
-| **Transform**   | A research action run on an entity (IRS lookup, SOS search, recorder pull, AOS audit search). Returns a Document and zero or more new entities. |
-| **Phase**       | One of four workflow stages: Ingest · Detect · Investigate · Determine. Cyclical in practice, sequential in intent. |
-| **Package**     | The exported, deterministic referral PDF. The deliverable.                                          |
-
-**Banned words:** "Pipeline" (already overloaded with the backend processing pipeline). "Dashboard" (this is investigative software, not analytics). "Report" (the deliverable is a Package, not a report).
+No new backend models are required. The frontend is a new lens on existing data.
 
 ---
 
-## 4. Information architecture
+## 2. Technology Stack
 
-```
-CATALYST
-├── Cases list (/cases)
-│   └── Case workspace (/cases/:id) — the rest of this doc is about this screen
-│
-├── Cross-case views (secondary, not the main work surface)
-│   ├── Triage (open flags across all cases)
-│   ├── Entities (browse persons / orgs / properties across cases)
-│   └── Search (full-text)
-│
-└── Settings
-```
+### Core UI
+- React 18.3.1, TypeScript — existing
+- Vite — existing
+- React Router DOM 6.30 — existing
 
-Everything that follows is about **the case workspace**. That's where 95% of the user's time is spent.
+### Graph engine
+- **Cytoscape.js** — force-directed graph for the web view. Chosen over D3 for built-in node/edge
+  interaction model (click, hover, selection, zoom/pan). Replaces the existing D3 entity graph.
 
----
+### UI components
+- **Radix UI** (headless primitives) — Dialog, DropdownMenu, Tooltip, Popover, Select, Tabs
+- **cmdk** — command palette (Cmd+K global search)
+- **sonner** — toast notifications (Intake extraction complete, Lead suggestion ready)
+- **TanStack Table** — Financials tab year-over-year table, Research tab results
+- Existing CSS custom properties for light/dark/auto theming
 
-## 5. Case workspace — the five-zone layout
-
-The case workspace is one screen with five zones. Inspired by Maltego's three-zone interface plus a top bar and a multi-tab bottom dock, adapted for paper-trail work.
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  TOP BAR                                                                │  ← Zone 1: identity + view toggles + global actions
-│  Catalyst › Do Good In His Name Inc · ACTIVE · EIN 82-4458479           │
-│  [Graph] [990 Viewer] [Financials] [Package]    [Find] [Layout] [⌄]    │
-├──────────┬─────────────────────────────────────────┬──────────────────┤
-│          │                                         │                  │
-│  LEFT    │                                         │  RIGHT           │
-│  RAIL    │           CENTER CANVAS                 │  DETAIL          │
-│ ~220px   │           (graph by default)            │ ~280px           │
-│          │                                         │                  │
-│ Zone 2   │  Zone 3                                 │  Zone 4          │
-│          │                                         │                  │
-├──────────┴─────────────────────────────────────────┴──────────────────┤
-│  BOTTOM DOCK                                                            │  ← Zone 5: multi-tab: Audit log · Triage · Transforms · Documents
-│  ~180–360px (resizable, collapsible)                                   │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-This deliberately departs from the current spec's five center-canvas tabs. The new model is:
-
-- **One canvas** in the center — the graph by default.
-- **Top-bar view toggles** open *additional panes* (990 Viewer, Financials, Package) that split the center horizontally. The graph never goes away; you just pull a second pane next to it.
-- **The triage queue is no longer the home view.** Flags appear as badges on entity nodes in the graph AND as a sortable table in the bottom dock's "Triage" tab. Both views are the same data — pick your entry point.
-
-### Why this changes from the previous spec
-
-The previous spec made the triage queue the primary view (locked decision L1). That was a workaround for not having a real graph workspace. Once the graph becomes a serious link-analysis surface, flags can live on the graph itself and the queue becomes a filtered list — same data, different lens. The investigator chooses how to enter the work; the data is unified.
-
-This is a senior-engineer call: **don't build two parallel data displays competing for "primary."** Make the graph the canvas, expose every other view as a lens onto it.
-
-### 5.1 Single-screen baseline
-
-**The minimum viable viewport is 1366×768.** Every workflow in this spec must complete on that screen size. This is non-negotiable: it covers standard low-end laptops, which is what a citizen investigator is likely to own.
-
-How that's achievable:
-- Left rail collapses to a 48px icon-only state (clickable strip with phase + palette + recently-added icons; expands on hover or click)
-- Right detail panel collapses to a 32px tab strip (entity icon + flag count badge; clicks back open)
-- Bottom dock collapses to a 28px tab strip with counts (`Audit · 47` / `Triage · 9` / `Transforms · 3` / `Documents · 12`)
-- Top-bar view panes are opt-in. Default state is Graph only — no second pane unless the user opens it.
-- The "minimum reasonable" working layout is: collapsed left rail (48px) + Graph canvas (flex) + collapsed right panel (32px) + collapsed bottom dock (28px). That leaves ~1280×648 of pure canvas on a 1366×768 screen.
-
-We test the spec on 1366×768 before declaring any view "done."
-
-### 5.2 Multi-monitor (v2 path)
-
-Catalyst's actual investigators (Tyler included) work across two monitors when they have them — one for the case workspace, one for whatever document they're staring at. v1 supports this only via the user's own window arrangement. v2 supports **popout panes**: click `⤢` on the 990 Viewer or Document table → opens in a new window (`window.open`) with state synced via `BroadcastChannel`. Closing the popout returns the pane to the main window.
-
-v1 must not preclude v2. Specifically: pane state lives in case-scoped Context, not in the URL, so it can be hydrated into a second window. We don't hardcode anything that assumes a single window. But we don't ship popout in v1 — it's a real engineering effort and a v1-irrelevant feature for single-monitor users.
+### No new backend dependencies needed. All new functionality uses existing API endpoints.
 
 ---
 
-## 6. Zone 1 — Top bar (~36px)
+## 3. Navigation Structure
 
-Always visible. Three regions: identity (left), view toggles (center), global actions (right).
+### Four levels of drill-down
 
-### Identity (left)
 ```
-Catalyst  ›  Do Good In His Name Inc  ·  [ACTIVE]  ·  EIN 82-4458479  ·  Darke OH
+Level 1: Web view           — full graph canvas (Investigate tab, default)
+Level 2: Profile view       — click a knot node → entity portrait + all documents
+Level 3: Angle view         — click an angle card in Profile, or click a confirmed edge
+Level 4: Document view      — click a document anywhere → full text + Intake highlights
 ```
-- Logo links to `/cases`.
-- Case name is large (14px, weight 500). Click → open rename modal.
-- Status pill (`ACTIVE`, `PAUSED`, `REFERRED`, `CLOSED`) in muted-with-color treatment matching `--tag-*` tokens.
-- EIN and county in `--text-soft` after the status. Useful at-a-glance reference.
 
-### View toggles (center)
-Four toggleable panes. Default state: Graph on, others off.
+Documents are also directly accessible from the web view via the Documents rail (left side).
+A document does not have to be reached through a profile or angle — it is a first-class object.
+
+### Breadcrumb trail (always visible when below level 1)
+
 ```
-[• Graph]   [ 990 Viewer]   [ Financials]   [ Package]
+Investigation web  ›  Karen Homan  ›  Hidden compensation angle  ›  Form 990 · 2019
+[Web — click to return]  [Profile]      [Angle]                      [Document — current]
 ```
-Clicking a toggle splits the center canvas to add that pane on the right. Multiple can be open at once. Panes are resizable by dragging the divider. This is the Gotham/Maltego "applications share a workspace" pattern — not a tab swap.
 
-When more than one pane is open, each pane gets a small `[×]` to close it. Graph cannot be closed (it's the home pane).
+Each crumb is clickable and returns to that level without losing context.
 
-### Global actions (right)
-- `[⚲ Find]` — Cmd/Ctrl+K command palette. Search across entities, documents, findings, flags.
-- `[⊞ Layout]` — saved workspace layouts. "Default", "Triage focus", "990 review", "Pre-export check". Stretch goal.
-- `[⌄]` — overflow: export, print, settings, sign out.
+### Navigation transitions
+- Web → Profile: graph zooms/pans to center the selected knot; profile panel slides in from right
+- Profile → Angle: angle detail panel replaces the profile panel (same right side)
+- Any level → Document: document viewer occupies the main canvas area; graph persists as a
+  mini-map in the bottom-right corner
+- Back navigation: breadcrumb click OR browser back button
+
+### Connection review — non-blocking
+When Lead proposes new connections after document processing, they do NOT block navigation.
+Proposed connections sit as dashed edges in the web. A badge on the toolbar shows the count:
+"4 pending connections." The investigator reviews them when ready — not before.
 
 ---
 
-## 7. Zone 2 — Left rail (~220px)
+## 4. Tab Layout
 
-Three stacked sections, each independently collapsible. Background `--sidebar-bg`. Border-right `--sidebar-border`.
-
-### 7.1 Phase navigator (top)
-The four phases as collapsible groups. Each shows live counts. Active phase gets the `--sidebar-active` background.
+The Case Detail page has five tabs. Referrals is deferred — backend exists, UI is a stretch goal.
 
 ```
-INGEST                                       12 docs
-  990s                                        7
-  SOS filings                                 8
-  Recorder instruments                       14
-  Uploaded                                    5
-
-DETECT                                       9 flags · 6 open
-  Critical                                    2
-  High                                        4
-  Medium                                      0
-  ── dismissed                                3
-
-INVESTIGATE                                  18 transforms run
-  IRS TEOS                                    7
-  Ohio SOS                                    8
-  County Recorder                            11
-  Ohio AOS                                    1
-
-DETERMINE                                    3 / 9 confirmed
-  Confirmed findings                          3
-  Needs evidence                              2
-  Package status                              0 / 4 agencies sent
+[ Investigate ]  [ Research ]  [ Financials ]  [ Timeline ]  [ Referrals ]
 ```
 
-Phase color encoding (use existing tokens):
-- Ingest → `--info` (blue)
-- Detect → `--danger` (red)
-- Investigate → `--warn` (amber)
-- Determine → `--success` (green)
-
-Clicking a sub-item filters the bottom dock to that subset. (E.g. clicking "Critical" filters the Triage tab to critical flags.)
-
-### 7.2 Entity palette (middle)
-Maltego-pattern. Categories collapsible. Drag-and-drop a type onto the canvas to manually add an entity. Used for manual entity creation when the investigator finds something not yet picked up by extraction.
-
-```
-+ Person
-+ Organization
-+ Property
-+ Financial instrument
-+ Document
-```
-
-Category icons match `--graph-node-*` colors. Recently used types float to the top of the section (Maltego pattern — "Recently used Entities will automatically appear at the top of the Entity Palette").
-
-### 7.3 Recently added (bottom)
-Last 5 items added to the case across any source. Click → focus on graph and update right detail panel.
-
-```
-RECENTLY ADDED
-• Doc · IRS 990 2024 — 2 hr ago
-• Entity · Karen Homan — 2 hr ago
-• Flag · SR-025 fired — 1 hr ago
-• Doc · SOS Filing #4128601 — 47 min ago
-• Finding · "Three-day corporate death" — 12 min ago
-```
-
-This is the audit-log preview. Full log lives in the bottom dock.
+- **Investigate** — the web view. This is the primary tab. Recruiter demo starts here.
+- **Research** — external data source queries with async job polling.
+- **Financials** — year-over-year 990 table with anomaly highlighting.
+- **Timeline** — brushable chronological event rail.
+- **Referrals** — deterministic PDF export (backend done in Session 33; UI is a button, deferred).
 
 ---
 
-## 8. Zone 3 — Center canvas (the graph)
+## 5. Investigate Tab — Web View (Level 1)
 
-The graph is the heart of the system. Build this *right*.
-
-### 8.0 Graph engine
-
-**We use [Cytoscape.js](https://js.cytoscape.org/) as the graph engine.** Not D3.
-
-D3 is a low-level visualization toolkit — `d3-force` gives you a physics simulation and you build everything else (lock, layouts, multi-select, edge routing, performance tuning) by hand. Catalyst's spec demands every one of those features. Building them on D3 is reinventing a graph engine.
-
-Cytoscape.js is a purpose-built graph library used in scientific software, biology network analysis, and adjacent to tools like Gephi. It ships with:
-
-- 7+ layout algorithms (cose-bilkent for organic, dagre for hierarchical, breadthfirst, circle, concentric, grid, klay)
-- Lock individual nodes; lock the whole graph
-- Multi-select with rectangle drag
-- Compound nodes (for grouping by entity type or by document source)
-- Pan, zoom, fit-to-screen, panBy programmatic API
-- Edge routing (so edges don't cross each other stupidly)
-- Canvas rendering — performant with thousands of nodes
-- A React binding (`react-cytoscapejs`) that handles the lifecycle
-
-Cytoscape replaces the existing D3 graph code. The migration cost is real but contained — the existing graph is not deeply integrated yet. See §17 (Professional library stack) for the install command.
-
-Specific Cytoscape features we use heavily:
-- `cy.layout({ name: 'cose-bilkent' })` — the default organic layout
-- `cy.elements().lock()` — for the export-gate lock state
-- `cy.style()` — declarative node/edge styling (pluggable into our token system via CSS variables)
-- `cy.on('tap', 'node', handler)` — click events for selection
-- `cy.collection()` — for selection state, multi-select operations
-
-### 8.1 Node types and iconography
-
-Each entity type has a distinct shape, icon, and color (already in tokens):
-
-| Entity type        | Shape         | Color                       | Icon                              |
-|--------------------|---------------|-----------------------------|-----------------------------------|
-| Person             | Circle        | `--graph-node-person`       | Silhouette                        |
-| Organization       | Rounded square| `--graph-node-org`          | Building (different per org type) |
-| Property           | Diamond       | `--graph-node-property`     | House / parcel                    |
-| Financial instrument| Hexagon      | `--graph-node-financial`    | Coin / lien glyph                 |
-| Document           | Document fold | `--graph-label`             | Paper                             |
-
-Document nodes are usually hidden from the graph (they live on edges as citations). Surface them only when "Show source documents" is toggled — see view modes below.
-
-### 8.2 Edges carry provenance
-
-This is the headline difference from Maltego. **Every edge has a citation.** No edge can exist on the graph without a source document.
-
-Edge anatomy:
-```
-Karen Homan ────[OFFICER · Doc-3]────► Do Good In His Name Inc
-```
-
-- Edge label shows the relationship type (`OFFICER`, `MANAGER`, `STATUTORY_AGENT`, `GRANTOR`, `GRANTEE`, `OVERPAYMENT`, etc.)
-- A `[Doc-N]` chip on the edge anchors it to the document that proves the relationship.
-- Hover the edge → tooltip with full citation: "Form 990 (2024), Part VII, p.7 · SHA-256: a3f7…"
-- Click the edge → right detail panel shows the citing document with the relevant page open.
-
-**Edge weight encoding** (different from line color, which encodes type):
-- 1px dashed → SPECULATIVE (claim made by AI extraction, not yet verified)
-- 1.5px solid → DIRECTIONAL (one document supports it)
-- 2px solid → DOCUMENTED (multiple documents agree)
-- 2.5px solid + glow → TRACED (full citation chain end to end)
-
-### 8.3 Node decorations
-
-Live badges on the node, not floating chips:
-
-- **Top-right corner: flag badge.** Number of open flags on this entity. Color = highest severity flag. Click → bottom dock opens to Triage tab filtered to this entity.
-- **Bottom-right corner: finding badge.** Number of confirmed findings. Click → right detail panel scrolls to Findings section.
-- **Top-left: pin** (Maltego pattern). Pinned nodes don't move during layout reflow.
-- **Bottom-left: bookmark color** (Maltego pattern). User can color-tag nodes for personal triage. Five colors. Saved per user, not part of the case data.
-
-### 8.4 Graph controls (on the canvas, not in a sidebar)
-
-A small floating toolbar in the bottom-left of the graph:
+### Layout
 
 ```
-┌─────────────────────────────────────────────────┐
-│  ⊕ ⊖   [layout ⌄]   [view ⌄]   [show ⌄]   [🔒]  │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  TOOLBAR: [ + Knot ]  [ + Angle ]  [ Fit ]  [ Minimap ]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                   CYTOSCAPE CANVAS                          │
+│                                                             │
+│   ● Karen Homan ──────────────── ● Bright Future Found.    │
+│          \                        /                         │
+│           \                      /                          │
+│            ─────── ● EH Const. ──                          │
+│                                                             │
+│                                                [MINIMAP]   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- `⊕ ⊖` — zoom in/out. Mouse wheel and trackpad pinch also work.
-- `[layout ⌄]` — Maltego pattern. Choose: **Organic** (default — Cytoscape's `cose-bilkent`), **Hierarchical** (`dagre`), **Block** (grouped by entity type), **Circular**. Switching is non-destructive.
-- `[view ⌄]` — node-size encoding. Choose: **Normal** (uniform), **Flag intensity** (size by open flag count), **Provenance strength** (size by evidence weight of attached findings), **Document count** (size by number of source documents citing this entity).
-- `[show ⌄]` — what's visible on the graph. Toggles:
-  - ☐ **Source documents** *(off by default)* — when on, document nodes appear at 40% size of entity nodes, document-fold shape, in `--graph-label` color, with edges to every entity they cite. Most cases don't need this on; turn it on when answering "which entities does this 990 touch?" or "what does the citation graph for this finding look like?"
-  - ☑ **Flag badges** *(on by default)* — show flag count badges on entity nodes
-  - ☑ **Finding badges** *(on by default)* — show finding count badges on entity nodes
-  - ☐ **Pinned-only** *(off by default)* — hide all nodes except pinned ones. Useful for focusing on a working subset during package prep.
-- `[🔒]` — Lock layout. Pins all nodes in current positions; new nodes from transforms come in but don't reflow existing ones. **The lock state at export time is what gets rendered into the referral package PDF.** Locking is the export gate.
+### Node (Knot) visual encoding
 
-### 8.5 Mode selector (bottom-left of canvas)
+| State | Color | Border |
+|-------|-------|--------|
+| Person | Blue fill | 2px blue |
+| Organization | Teal fill | 2px teal |
+| Selected | White fill | 3px primary |
+| Has confirmed findings | + gold badge (count) | |
 
-Three states (Maltego pattern):
-- **Pan** (default) — drag the canvas to move
-- **Select** — drag-rectangle to select multiple nodes. Multi-select auto-focuses the bottom dock's Selection tab — see §10.5.
-- **Link** — manually draw an edge between two nodes. The created edge starts as **SPECULATIVE** (1px dashed, lightest weight per §14). The user upgrades it to DIRECTIONAL/DOCUMENTED/TRACED later by attaching citations from the right detail panel's Sources tab. SPECULATIVE edges cannot be exported to a referral package — the pre-flight check (§13) blocks it. This lets investigators draw connections as they think, then back-fill citations without breaking flow.
+### Edge (Connection) visual encoding
 
-`Space` held = temporary pan mode (Maltego shortcut, keep it).
+Three connection states, three visual treatments:
 
-### 8.6 Cold start state
+| State | Style | Meaning |
+|-------|-------|---------|
+| Proposed | Dashed gray line, animated pulse | Lead drew this from a document — awaiting investigator review |
+| Confirmed | Solid gray line (unflagged) or solid colored line (has active/confirmed angle) | Investigator verified this connection is real |
+| Manual | Dotted line, slightly thicker | No document source — entered by investigator (tip, public announcement, etc.) |
 
-When the case is brand new and the graph is empty, the canvas shows the **Cold Start workspace** instead of an empty graph:
+When a confirmed connection has an angle attached, the edge color reflects the highest severity
+angle on that connection:
+- CRITICAL → coral (#D85A30)
+- HIGH → amber (#BA7517)
+- MEDIUM → blue (#185FA5)
+- INFORMATIONAL → gray
 
-- Two large search panels side by side, centered: IRS TEOS (left), Ohio SOS (right).
-- Submit on either runs both in parallel as async jobs (use existing `useAsyncJob` hook).
-- Results show as two stacked entity preview cards.
-- Big primary button below: `Confirm entity → begin investigation`.
-- On confirm: the entity drops onto the canvas as the first node, the layout starts, the 990 fetch transform fires automatically, and the case transitions out of cold-start state.
+### Toolbar actions
 
-This is the only time the canvas shows something other than a graph.
+- **+ Knot** — opens "Create knot" dialog. Fields: name (required), type (Person / Organization),
+  EIN (optional). On save: creates entity via API, adds node to graph.
+- **+ Connection** — opens "Connect knots" modal for a manual connection (see Section 9).
+- **+ Angle** — opens "New angle" modal. Angles can span multiple knots — not limited to two.
+- **[N] pending** — badge showing count of proposed connections awaiting review. Clicking
+  highlights all dashed edges and opens the review panel for the first one.
+- **Fit** — Cytoscape fit() to show all nodes.
+- **Minimap toggle** — shows/hides the minimap overlay.
+
+### Interaction model
+
+- **Click node** → navigate to Profile view (Level 2)
+- **Click confirmed/manual edge** → show connection detail popover (which documents support it,
+  which angles reference it). Click through to an angle from the popover.
+- **Click proposed (dashed) edge** → open connection review panel for that specific proposal
+- **Right-click node** → context menu: View profile / New angle from here / Quick capture / New manual connection
+- **Right-click confirmed edge** → context menu: View supporting documents / Add to angle / Dispute connection
+- **Right-click proposed edge** → context menu: Review now / Dismiss proposal
+- **Drag** — pan the canvas
+- **Scroll** — zoom
+- **Box select** — multi-select nodes for bulk actions (future)
 
 ---
 
-## 9. Zone 4 — Right detail panel (~280px)
+## 6. Profile View (Level 2)
 
-Contextual. Updates based on selection in Zone 3 (graph) or Zone 5 (bottom dock).
+Triggered by clicking a node in the web view. The graph dims unselected elements and the selected
+knot is centered. A profile panel slides in from the right (380px).
 
-The structure is **Maltego's Property View + Detail View merged into one tabbed panel.**
+The profile is the accumulated portrait of this entity — everything known about them, sourced
+from documents. It is a description, not an investigation. Angles are listed here but live
+separately.
 
-### Default state (no selection)
-Shows the **case subject** — the primary organization. Acts as a "you are here" anchor.
-
-```
-DO GOOD IN HIS NAME INC
-501(c)(3) · EIN 82-4458479
-Incorporated 2018-01-23
-
-Status: ACTIVE
-County: Darke OH
-Address: 6712 Olding Rd, Maria Stein OH
-
-[ Properties ]    ← active tab
-[ Sources ]       (12)
-[ Flags ]         (9)
-[ Actions ]
-```
-
-### Tabs
-
-**Properties** — the editable view (Maltego Property View). Shows entity attributes the investigator can edit. Inline editing on click. Last edited timestamp. Edits write to the audit log.
-
-**Sources** — the citation panel. Every document that mentions this entity, with page references. Click → opens the document in the right pane (or in 990 Viewer if it's a 990).
-
-**Flags** — list of open flags on this entity. Each shows severity, rule ID, status. Inline confirm/dismiss buttons.
-
-**Actions** — the transforms menu. List of research actions runnable on this entity:
-- IRS TEOS lookup (if Org)
-- Ohio SOS lookup (if Person or Org)
-- County Recorder lookup (if Person)
-- Ohio AOS audit search (if Org)
-- Mark as deceased (if Person)
-
-Each action runs as an async job (existing pattern). When it returns, results land in the bottom dock's "Transforms" tab and any new entities/edges appear on the graph.
-
-### When a different selection happens
-- **Click an edge** → Properties tab shows edge detail (relationship type, citation, document hash)
-- **Click a flag in bottom dock** → panel shows flag detail with full evidence checklist and confirm/dismiss
-- **Click a year on the financial timeline** → panel shows that year's full 990 line items (citable figures)
-
----
-
-## 10. Zone 5 — Bottom dock (~180–360px, resizable, collapsible)
-
-Four tabs. Default tab is **Audit log**.
+### Profile panel layout
 
 ```
-[ Audit log ] [ Triage ] [ Transforms ] [ Documents ]      ← default tabs
-[ Selection (5) ]                                           ← appears only when graph nodes are multi-selected
+┌──────────────────────────────────────┐
+│  ● K                                 │  ← Avatar circle (initials)
+│  Karen Homan              [ Edit ]   │  ← Name + edit knot metadata
+│  Person                              │  ← Type pill
+│                                      │
+│  Board Member, Bright Future Fnd.    │  ← role_tags[] from PersonOrganization
+│  DOB: 1964-03-12                     │  ← date_of_birth (if present)
+│                                      │
+│  ○ 2 active angles  ✓ 1 confirmed    │  ← angle stats
+│  □ 9 documents                       │  ← ALL docs associated with this entity
+│  ◈ 4 connections                     │  ← confirmed connections in the web
+│                                      │
+├──────────────────────────────────────┤
+│  DOCUMENTS (9)           [ View all ]│
+│                                      │
+│  [990] Form 990 · 2019  ·  3 flags  │  ← doc type, name, Intake flag count
+│  [990] Form 990 · 2018               │
+│  [DEED] Warranty Deed 2019           │
+│  [UCC]  UCC Filing 2019-0044123      │
+│  ...                                 │
+│                                      │
+│  "View all" opens Documents rail     │
+│  filtered to this entity             │
+│                                      │
+├──────────────────────────────────────┤
+│  CONNECTIONS (4)                     │
+│                                      │
+│  ━━ Bright Future Fnd.   Board ED    │  ← confirmed, solid line
+│       [990 2019] [990 2018]          │  ← supporting documents
+│                                      │
+│  ━━ EH Construction      Grantor     │
+│       [Deed 2019]                    │
+│                                      │
+│  ·· Robert Homan         Manual      │  ← manual, dotted
+│       "Same address, SOS filing"     │  ← source note
+│                                      │
+│  -- Do Good Real Estate  Proposed    │  ← proposed, dashed
+│       [Review]                       │  ← click to open review panel
+│                                      │
+├──────────────────────────────────────┤
+│  ANGLES (3)                          │
+│                                      │
+│  ▌ Hidden compensation    ACTIVE     │
+│  ▌ UCC filing pattern     ACTIVE     │
+│  ▌ Property transfer      CONFIRMED  │
+│                                      │
+│  [ + New angle from this entity ]    │
+│                                      │
+├──────────────────────────────────────┤
+│  QUICK CAPTURES                      │
+│  "Licensed contractor but no..."     │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ Add quick capture...           │  │
+│  └────────────────────────────────┘  │
+└──────────────────────────────────────┘
 ```
 
-Tab persistence: which tab is open is remembered per-case in `localStorage` keyed by case ID. The Selection tab is ephemeral — never persisted.
+### Behavior
 
-### 10.1 Audit log (default)
-Reverse-chronological event stream. The case's living history.
+- Clicking a document card → navigates to Document view (Level 4)
+- "View all" on Documents → opens the Documents rail in the Investigate tab filtered to this entity
+- Clicking a confirmed/manual connection → expands inline to show supporting documents
+- Clicking "Review" on a proposed connection → opens connection review panel (Section 6.1)
+- Clicking an angle card → navigates to Angle view (Level 3)
+- "New angle from this entity" → opens New angle modal with this entity pre-filled
+- Quick capture → saves as `InvestigatorNote` via `POST /api/cases/<uuid>/notes/`
 
-```
-14:23 · FLAG_FIRED   SR-025 fired on Do Good In His Name Inc                       [view]
-14:21 · DOC_INGESTED IRS 990 2024 — 12 entities extracted, 3 flags fired           [view]
-14:18 · COLD_START   Entity confirmed: EIN 82-4458479 (Karen Homan)                [view]
-14:17 · CASE_OPENED  Case "Do Good In His Name Inc" created                        [view]
-```
+### 6.1 Connection review panel
 
-Every event is clickable → focuses the relevant entity/document/flag and updates the right detail panel.
-
-This panel is the chain of custody made visible. **For a recruiter looking at screenshots, this is the panel that says "this is serious software."** Don't skimp on it.
-
-### 10.2 Triage
-The flag table. Maltego's multi-select detail view, adapted.
-
-Sortable columns:
-| ✓ | Severity | Rule  | Title                                     | Entity              | Status        | Evidence weight | Source       | Age   |
-|---|----------|-------|-------------------------------------------|---------------------|---------------|-----------------|--------------|-------|
-| ☐ | CRIT     | SR-025| FALSE_DISCLOSURE — Line 28 flip 2018→2019 | Do Good In His Name | NEW           | DOCUMENTED      | 990 (2019)   | 2 hr  |
-| ☐ | CRIT     | SR-015| INSIDER_SWAP — Both sides controlled      | Karen Homan         | NEW           | DIRECTIONAL     | Multiple     | 2 hr  |
-| ☐ | HIGH     | SR-021| REVENUE_SPIKE — 1546% growth              | Do Good In His Name | INVESTIGATING | DIRECTIONAL     | 990 (2019)   | 2 hr  |
-
-- Filter chips above the table: status, severity, source.
-- Selecting a row highlights the entity on the graph (Maltego sync pattern).
-- Bulk actions on multi-select: dismiss with reason, mark as needs-evidence, assign to phase.
-
-### 10.3 Transforms
-Recent research actions. Like a console log.
+Non-blocking. Opens as a drawer from the right side. Shows the proposed connection with the
+relevant document excerpt highlighted so the investigator can verify it before confirming.
 
 ```
-14:25 · RUNNING      IRS TEOS · "Do Good In His Name" by name
-14:18 · SUCCESS      Ohio SOS · EIN 82-4458479 → 1 result, added to case
-14:17 · SUCCESS      IRS TEOS · 82-4458479 → 7 filings, 12 entities
+┌──────────────────────────────────────────────────────────┐
+│  Review proposed connection              [ × Close ]     │
+│                                                          │
+│  Lead found: Karen Homan ←→ Do Good Real Estate LLC      │
+│  Source document: Warranty Deed · 2021-03-14             │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  ...the following described real property:         │  │
+│  │                                                    │  │
+│  │  GRANTOR: ████████████████████████                 │  │  ← highlighted
+│  │  KAREN HOMAN                                       │  │
+│  │                                                    │  │
+│  │  GRANTEE: ████████████████████████████████         │  │  ← highlighted
+│  │  DO GOOD REAL ESTATE LLC                           │  │
+│  │                                                    │  │
+│  │  for consideration of $300,000...                  │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  [ Open full document ]                                  │
+│                                                          │
+│  ──────────────────────────────────────────────────────  │
+│                                                          │
+│  FUZZY MATCH CHECK                                       │
+│  "Do Good Real Estate LLC" — possible matches:           │
+│                                                          │
+│  ○  Do Good Real Estate LLC (exact)    — not in case yet │
+│  ○  Do Good Inc. (68% match)           — already in case │
+│                                                          │
+│  [ Confirm — same entity as Do Good Inc. ]               │
+│  [ Confirm — new entity: Do Good Real Estate LLC ]       │
+│  [ Dismiss — this connection is incorrect ]              │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-Failed transforms stay visible with a retry button. Successful ones link to the new entity/document on the graph.
+Key rules:
+- The document excerpt is always shown. Investigators never confirm blind.
+- "Open full document" navigates to Document view without closing the review panel (opens in new panel).
+- Fuzzy match candidates are sorted by similarity score, highest first.
+- "Confirm — same entity" merges the extracted name into the existing knot.
+- "Confirm — new entity" creates a new knot and draws the connection to it.
+- "Dismiss" records the dismissal in AuditLog so it can be reviewed later.
+- After confirming or dismissing, the panel automatically loads the next pending connection (if any).
 
-### 10.4 Documents
-The document table. SHA-256 hash, type, OCR status, extraction status, page count, filename.
+### 6.2 Manual connection creation
 
-OCR status is the critical column — when a 990 is a scanned PDF, this tells the investigator extraction will need OCR. Visible badge: `OCR PENDING / RUNNING / COMPLETE / FAILED`.
-
-### 10.5 Selection (ephemeral)
-
-When the user multi-selects two or more nodes on the graph, a **Selection** tab auto-appears on the bottom dock and auto-focuses. It vanishes when the selection clears.
-
-This is Maltego's multi-entity detail view, adapted to live in the bottom dock instead of the right rail. Same component as Triage (TanStack Table) — different filter.
-
-Sortable columns:
-| ✓ | Type | Name              | Flags | Findings | Docs | Status     | Evidence weight | Last activity |
-|---|------|-------------------|-------|----------|------|------------|-----------------|---------------|
-| ☐ | Person | Karen Homan      | 4     | 1        | 12   | ACTIVE     | DOCUMENTED      | 12 min ago    |
-| ☐ | Org    | Do Good In His Name | 6  | 2        | 18   | ACTIVE     | TRACED          | 2 min ago     |
-| ☐ | Property | 25 W Main St   | 3     | 0        | 7    | DEFECTIVE  | DOCUMENTED      | 1 hr ago      |
-
-When the Selection tab is active, the right detail panel shows a brief summary ("3 selected · 13 flags · 3 findings · view table below") with a small button that focuses the bottom dock. The right panel doesn't try to render multi-select detail itself — that would cramp the 280px width.
-
-Bulk actions on the Selection table: pin, color-tag, run a transform on all (where applicable), open in Triage filtered to these entities, export selection.
-
----
-
-## 11. The 990 Viewer pane (toggle from top bar)
-
-Opens to the right of the graph as a second pane. Renders the 990 XML as a structured form (NOT as a PDF — we already have the XML).
-
-Sections rendered as labeled blocks:
-- Part I — financials summary
-- Part IV — checklist (each Yes/No on its own row)
-- Part VI — governance + policies
-- Part VII — officers + compensation (each officer is a clickable entity link)
-- Part IX — expense breakdown
-- Schedules B / L / O
-
-**Inline signal callouts** appear directly under the line that triggered them, GitHub-PR-style:
+Accessible from: web view right-click on node → "New manual connection", or Profile view
+"+ Connection" button in the Connections section.
 
 ```
-Part IV, Line 28a — Did the org engage in transactions with current/former officers?
-   ◉  Yes   ◯  No
-   ┌─────────────────────────────────────────────────────────┐
-   │ ⚠  SR-025 FALSE_DISCLOSURE                               │
-   │ This year answered Yes; 2019–2024 answered No.            │
-   │ [ View flag ]  [ Dismiss ]                                │
-   └─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Add manual connection                                │
+│                                                      │
+│  From:  Karen Homan  (pre-filled)                    │
+│  To:    [ Search or create knot... ]                 │
+│                                                      │
+│  Connection type:  [ Board member ▾ ]                │
+│  (Board member / Family / Vendor / Legal counsel /   │
+│   Registered agent / Co-owner / Other)               │
+│                                                      │
+│  Source note (required for manual connections):      │
+│  ┌────────────────────────────────────────────────┐  │
+│  │ e.g. "Facebook announcement, March 2019" or    │  │
+│  │ "Per county auditor phone call, 2024-01-15"    │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  Evidence weight:  ● Speculative  ○ Directional      │
+│  (Manual connections start at Speculative by default)│
+│                                                      │
+│  [ Cancel ]              [ Add connection ]          │
+└──────────────────────────────────────────────────────┘
 ```
 
-Year selector at the top. Switching years updates the entire pane.
+Manual connections appear in the web as dotted lines. They can be upgraded to Confirmed later
+if a document surfaces that supports them — the investigator clicks the dotted edge and chooses
+"Attach document source."
 
 ---
 
-## 12. The Financials pane
+## 7. Angle View (Level 3)
 
-Year-over-year tabular view + sparkline charts. Matches the data already exposed by `FinancialSnapshot`.
+Triggered by clicking an angle card in the Profile view, or by clicking a confirmed/colored
+connection edge in the web view. An angle is a line of investigative inquiry — a narrative the
+investigator is building toward a conclusion.
 
-Columns: year. Rows: revenue, expenses, net assets, program ratio, officer comp, board independence (%).
+Backend model: `Finding` (`status=NEEDS_EVIDENCE` while active, `status=CONFIRMED` when tied off,
+`status=DISMISSED` when exhausted). Cited documents are `FindingDocument` rows.
 
-Above the table, a small revenue/expenses dual-line chart (mini sparkline). Click a year → right detail panel shows that year's full 990 line items.
-
-Anomaly cells (program ratio < 50%, revenue spike > 100%, etc.) get a `--tag-high-bg` highlight with a tiny rule-ID chip (`SR-029`).
-
----
-
-## 13. The Package pane
-
-Where the referral packages get assembled.
-
-Four agency lanes, stacked or side-by-side depending on viewport:
-- Ohio Attorney General
-- IRS Form 13909
-- FBI IC3
-- FCA OIG
-
-Each lane shows:
-- Agency name and complaint type
-- Pre-selected confirmed findings (per the routing table — see `do_good_workflow_spec.md` § Agency routing table)
-- Toggle each finding in/out for this specific agency
-- Status: `Draft / Ready / Submitted`
-- `[ Generate PDF ]` button
-
-The PDF is rendered server-side (existing `referral-pdf` endpoint). Underlying evidence is identical across agencies; only cover narrative and legal authority citations differ.
-
-**Pre-flight check** appears above the lanes: a checklist of conditions that must be true before any package can be generated.
-- ✅ Every confirmed finding has ≥1 source document
-- ✅ Every entity in a confirmed finding is linked to ≥1 source document
-- ⚠ Graph is unlocked (lock before exporting to freeze the snapshot)
-- ⚠ 2 dismissed flags lack a documented reason
-
----
-
-## 14. State, color, and weight encoding
-
-Don't reinvent — these tokens already exist. This section is canonical.
-
-### Severity (use existing `--tag-*` tokens)
-| Severity | Bg                  | Fg                   |
-|----------|---------------------|----------------------|
-| CRITICAL | `--tag-critical-bg` | `--tag-critical-color` |
-| HIGH     | `--tag-high-bg`     | `--tag-high-color`   |
-| MEDIUM   | `--tag-med-bg`      | `--tag-med-color`    |
-| LOW      | `--tag-low-bg`      | `--tag-low-color`    |
-| (neutral)| `--tag-neutral-bg`  | `--tag-neutral-color`|
-
-### Phase (use existing accent tokens)
-| Phase        | Color      |
-|--------------|-----------|
-| Ingest       | `--info`   |
-| Detect       | `--danger` |
-| Investigate  | `--warn`   |
-| Determine    | `--success`|
-
-### Flag status
-| Status        | Visual                                              |
-|---------------|-----------------------------------------------------|
-| NEW           | `--tag-neutral-*` chip                              |
-| INVESTIGATING | `--tag-med-*` chip + animated pulse                 |
-| CONFIRMED     | `--tag-low-*` chip with check                       |
-| DISMISSED     | greyscale, struck-through, dismissal reason on hover|
-
-### Evidence weight (edge stroke)
-| Weight       | Stroke                              | Default state for…                                              |
-|--------------|-------------------------------------|-----------------------------------------------------------------|
-| SPECULATIVE  | 1px dashed, `--graph-edge-default`  | Manually drawn edges (Link mode); AI-extracted relationships    |
-| DIRECTIONAL  | 1.5px solid, `--graph-edge-default` | Edges with one document citation                                |
-| DOCUMENTED   | 2px solid, `--graph-edge-highlight` | Edges with multiple agreeing documents                          |
-| TRACED       | 2.5px solid + 4px glow, `--graph-edge-highlight` | Edges with full citation chain end-to-end       |
-
-**Promotion path:** SPECULATIVE → DIRECTIONAL when the first citation is attached. DIRECTIONAL → DOCUMENTED when a second independent document agrees. DOCUMENTED → TRACED when the chain is end-to-end (every entity in the relationship is itself documented). The user attaches citations from the right detail panel's Sources tab when an edge is selected.
-
-**Export gate:** SPECULATIVE edges cannot be exported into a referral package — the §13 pre-flight check blocks any package that includes a confirmed finding whose edges are still SPECULATIVE. This is the safety on the "draw freely, cite later" workflow.
-
----
-
-## 15. Interaction patterns
-
-### Keyboard shortcuts (lock these)
-- `Cmd/Ctrl+K` — global find / command palette
-- `Space` (hold) — temporary pan mode in graph
-- `V` — switch graph mode to Pan
-- `S` — switch graph mode to Select
-- `L` — switch graph mode to Link
-- `Cmd/Ctrl+L` — toggle layout lock
-- `Cmd/Ctrl+\` — toggle bottom dock
-- `Cmd/Ctrl+1..4` — switch bottom dock tabs (1=Audit, 2=Triage, 3=Transforms, 4=Documents)
-- `Cmd/Ctrl+Shift+1..4` — toggle top-bar view panes (1=Graph, 2=990, 3=Financials, 4=Package)
-- `?` — show keyboard shortcut overlay
-- `Esc` — close modals, deselect
-
-### Right-click context menus
-- **Right-click an entity** → run transform menu, copy citation, mark as deceased, pin/unpin, color-tag, open in detail
-- **Right-click an edge** → view source document, dismiss edge, change relationship type
-- **Right-click a flag in Triage** → confirm, dismiss with reason, assign
-
-### Drag patterns
-- **From entity palette → onto canvas** = manually create entity (prompts for required fields)
-- **From bottom-dock document table → onto an entity node** = link document as source for that entity
-- **Within graph** = move node (or with multi-select, move group)
-
----
-
-## 15.5 Discoverability and first-time use
-
-The investigator opening Catalyst for the first time has no training. They should make real progress on a case in their first session without reading any documentation. Power features (chord shortcuts, layout algorithms, popout windows in v2) reward learning over time but never gate the basic workflow.
-
-There IS a learning curve — the workflow IS Ingest → Detect → Investigate → Determine, and that's not a paradigm everyone knows. But the curve is one-pass: by case 2, the user knows where everything lives. By case 5, they want speed and reach for keyboard shortcuts.
-
-### Principles
-
-1. **Every action is achievable by mouse.** Keyboard shortcuts are augmentation. If a feature exists *only* in a chord shortcut, it doesn't exist for first-time users.
-2. **Every icon has a tooltip.** No mystery glyphs. Tooltips appear on 250ms hover, dismiss on mouseout. Use Radix Tooltip primitives so accessibility is correct by default.
-3. **Empty states teach the next step.** Don't show "No data." Show "Run the IRS or SOS search above to add your first entity." Empty triage tab: "No flags yet — flags appear when documents are processed." Empty findings list: "Promote a flag to a finding to start your referral package."
-4. **Right detail panel is never empty chrome.** When nothing is selected, it shows the case subject (the primary org). Always-something-on-screen.
-5. **Right-click is augmentation, not the only path.** Every right-click action has a button somewhere visible.
-6. **Modals never auto-open.** Always user-initiated.
-
-### First-time-user tour
-
-On first case open, a 5-step guided tour fires (using `driver.js`):
-
-1. **Cold start** — points at the two search panels: "Find your subject organization in IRS or Ohio SOS to begin."
-2. **Phase navigator (left rail)** — points at the four phases: "Track your progress as the case moves through Ingest → Detect → Investigate → Determine."
-3. **Audit log (bottom dock)** — points at the running event log: "Every action you take is recorded here. This is your chain of custody."
-4. **Triage tab** — points at the bottom-dock triage tab: "Flags from automatic detections appear here for you to review and confirm."
-5. **Generate package** — points at the Package toggle in the top bar: "When you're done, this is where you generate referral PDFs for the agencies."
-
-Each step is dismissible. Setting `localStorage.catalyst.tourSeen = true` prevents the tour from reappearing. Re-enable from Settings.
-
-### Learn-as-you-go callouts
-
-When a user does something for the first time, a one-line toast (using `sonner`) appears with the keyboard-shortcut equivalent. Each callout fires once per user.
-
-- First flag confirmed: `✓ Flag confirmed. Tip: press 'c f' next time.`
-- First transform run: `Transform queued. Watch the Transforms tab for results.`
-- First package generated: `Package downloaded. Lock the graph (⌘L) before exporting to freeze the snapshot.`
-
-Toasts dismiss on click or after 6 seconds. Stack in the bottom-right.
-
-### What "easy learning curve" means concretely
-
-- **Cold start screen**: two inputs and one primary button. Not a wizard, not five fields.
-- **Bottom dock collapse handle** has a label, not just an arrow: `Audit log · 47 events · ⌃\\`.
-- **Mode selector** in the graph (Pan / Select / Link) shows current mode in plain English, not just an icon.
-- **Generate package** button is disabled with a tooltip explaining what's missing if the pre-flight check fails. Don't silently allow a half-empty package; don't hide the button either.
-- **Loading states** use skeleton screens (structure visible, data shimmering) instead of spinners. Users learn the layout before they have data.
-
-### Bias toward labels
-
-Use icons + labels (not icons alone) for any control a first-time user might encounter:
-- Top-bar view toggles: `[• Graph]` `[ 990 Viewer]` (icons + word)
-- Bottom-dock tabs: `Audit log · 47` (word + count)
-- Graph mode selector: `Pan` / `Select` / `Link` (words, not icons)
-
-Icon-only is reserved for: collapse arrows, close X, zoom +/−, toolbar actions where the icon is universally understood (search ⚲, settings ⚙).
-
----
-
-## 16. Lock-versus-flex decisions
-
-**Locked** (don't relitigate without strong cause):
-1. Graph is the primary canvas. Triage queue is a lens, not a competing home view.
-2. Every edge has a citation. No edges without `[Doc-N]`.
-3. Findings are always manually promoted from flags or created from scratch — never auto-promoted.
-4. Dismissed flags stay visible with a documented reason. Negative evidence matters in a paper trail.
-5. The deliverable is a deterministic PDF generated from the locked graph snapshot. No AI in the body.
-6. Dark mode is the default. Light mode is supported.
-7. Existing token system (`tokens.css`) is canonical. Don't introduce new color variables without updating tokens.css first.
-8. **Cytoscape.js is the graph engine.** Not D3. (See §16.5 Professional library stack.)
-9. **Single-screen baseline is 1366×768.** Every workflow must complete on that viewport. Multi-monitor popout is v2.
-10. **First-time-user tour fires on first case open** and the workflow is achievable mouse-only without docs. Keyboard shortcuts and chord commands are augmentation.
-
-**Flexible** (open to redesign as we build):
-- Exact widths of left rail / right detail / bottom dock
-- Whether the 990 Viewer renders inline-on-the-graph as overlay vs as a side pane (currently: side pane)
-- How aggressive the auto-layout is when new entities arrive (currently: lock layout is the user's call, default is reflow)
-- The exact set of node-size view modes
-- Whether flags appear ONLY as badges on entity nodes vs ALSO as floating cards above the node when severity is critical
-
----
-
-## 16.5 Professional library stack
-
-We use battle-tested libraries from the same ecosystem as Linear, Vercel, Stripe, and GitHub. **No school-project-feeling defaults. No rolled-our-own primitives where a mature library exists.** This list is locked — if a need arises that isn't covered, propose an addition through this section before installing.
-
-### Currently installed (keep)
-- `react` 18 + `react-dom` + `typescript`
-- `react-router-dom` 6
-- `vite` + `vitest` + `@testing-library/react`
-
-### To install (commit to in this spec)
-
-| Library | Purpose | Why this one |
-|---|---|---|
-| `cytoscape` + `react-cytoscapejs` + `cytoscape-cose-bilkent` | Graph engine, React binding, high-quality organic layout | The library investigative tools use. Replaces D3. See §8.0. |
-| `lucide-react` | Icons | What Linear, Vercel, shadcn, Cal.com use. Clean, consistent, free, ~1500 icons. |
-| `@radix-ui/react-dialog`, `react-popover`, `react-tooltip`, `react-dropdown-menu`, `react-context-menu`, `react-tabs`, `react-toggle-group` | Accessible UI primitives | Foundation of shadcn/ui. Unstyled — we apply our tokens. WAI-ARIA correct out of the box. |
-| `@tanstack/react-table` v8 | Triage queue, audit log, document list, multi-select detail table | What Stripe and GitHub use. Sortable, filterable, virtualizable. Headless — keeps our visual style. |
-| `cmdk` | Command palette (`Cmd/Ctrl+K`) | Paco Coursey's library. The de facto command-palette in React. Used by Vercel. |
-| `react-resizable-panels@^2` | Resizable splits between top-bar panes | Brian Vaughn (React core team). Smooth, native-feeling. Used by Vercel. **Pin to ^2** — v4 (released 2026) renamed all the major APIs (`PanelGroup` → `Group`, `PanelResizeHandle` → `Separator`) and broke every tutorial/blog post on the internet. v2 is what's documented everywhere. |
-| `tinykeys` | Keyboard shortcut registration, including chord sequences (`g g`, `c f`) | ~1kb, zero deps. Composable. |
-| `sonner` | Toast notifications (learn-as-you-go callouts) | Emil Kowalski / Vercel. Tasteful animations, stack management. |
-| `react-pdf` (`pdfjs-dist`) | Document viewer for uploaded PDFs | Mozilla's pdf.js wrapped for React. The standard for serious PDF rendering. |
-| `date-fns` | Date and time formatting | Modular, treeshakeable. Standard. |
-| `driver.js` | First-time-user guided tour | ~5kb, framework-agnostic. Lighter than alternatives. |
-
-### Install command
+### Layout
 
 ```
-npm install cytoscape react-cytoscapejs cytoscape-cose-bilkent \
-  lucide-react \
-  @radix-ui/react-dialog @radix-ui/react-popover @radix-ui/react-tooltip \
-  @radix-ui/react-dropdown-menu @radix-ui/react-context-menu @radix-ui/react-tabs \
-  @radix-ui/react-toggle-group \
-  @tanstack/react-table \
-  cmdk \
-  react-resizable-panels \
-  tinykeys \
-  sonner \
-  react-pdf \
-  date-fns \
-  driver.js
+┌─────────────────────────────────────────┬──────────────────────┐
+│  ANGLE: UCC filing timeline             │  LEAD PANEL          │
+│  Karen Homan ←→ Bright Future F.        │                      │
+│  Status: ACTIVE  SR-004                 │  Suggested next:     │
+│                                         │  ─────────────────   │
+│  [ Cite document ]  [ Tie off ]         │  Look for UCC        │
+│  [ Split angle ]                        │  amendments filed    │
+├─────────────────────────────────────────│  same day as deed    │
+│  NARRATIVE                              │  transfer.           │
+│  ┌─────────────────────────────────┐    │                      │
+│  │ Karen Homan appears as secured  │    │  Pattern match:      │
+│  │ party in [Doc-3] and as a board │    │  ─────────────────   │
+│  │ member in [Doc-1]. Three UCC    │    │  3 UCC amendments    │
+│  │ amendments [Doc-4][Doc-5][Doc-6]│    │  within 24h matches  │
+│  │ were filed the same day...      │    │  SR-004 pattern.     │
+│  │                                 │    │                      │
+│  │ [ Draft with Lead ]             │    │  New angle?          │
+│  └─────────────────────────────────┘    │  ─────────────────   │
+│                                         │  EH Construction ↔   │
+│  CITED DOCUMENTS (3)                    │  Karen Homan may     │
+│  ┌─────────────────────────────────┐    │  warrant a separate  │
+│  │ [Doc-3] Warranty Deed 2019      │    │  angle on the deed   │
+│  │ Page 3 · Extracted by Intake    │    │  transfer.           │
+│  │ "Grantor: EH Construction       │    │                      │
+│  │  Grantee: Bright Future..."     │    │  [ Start angle ]     │
+│  └─────────────────────────────────┘    │                      │
+│  ┌─────────────────────────────────┐    │                      │
+│  │ [Doc-4] UCC Filing 2019-0044    │    │                      │
+│  │ Page 1 · Extracted by Intake    │    │                      │
+│  │ "Debtor: Bright Future Fnd.     │    │                      │
+│  │  Secured party: K. Homan..."    │    │                      │
+│  └─────────────────────────────────┘    │                      │
+│                                         │                      │
+│  [ + Cite another document ]            │                      │
+└─────────────────────────────────────────┴──────────────────────┘
 ```
 
-Then remove `d3` and `@types/d3` from dependencies after the graph migration is complete (Build Sequence step 6).
+### Narrative editor
 
-### Deliberately NOT using
+The narrative is a free-text field. Investigators write in plain language.
 
-- **CSS-in-JS** (styled-components, emotion). We use CSS Modules + tokens. Faster, simpler, already in place.
-- **Animation libraries** (framer-motion). Use CSS transitions tied to existing `--transition-*` tokens. Catalyst should feel calm, not animated.
-- **State-management libraries** (Redux, Zustand, Jotai). React Context + hooks are sufficient until proven otherwise. The async job hook is the most complex state we have and it works fine in Context.
-- **CSS frameworks** (Tailwind, Bootstrap). We have a token system; we don't need a utility framework.
-- **Charting libraries** (recharts, visx) for now — the financial sparklines are simple enough to render with inline SVG. Reconsider if we add complex multi-axis charts.
+**Citation insertion:** typing `[` opens an inline picker listing all case documents by
+`[Doc-N]` reference. Selecting one inserts `[Doc-3]` into the text. Hovering a `[Doc-N]`
+reference in the rendered narrative shows a tooltip with the document title, page number,
+and a 2-line excerpt of the relevant passage.
 
-### Bundle-size discipline
+**Draft with Lead button:** sends the current cited documents and any existing narrative text
+to the Lead role, which returns a draft narrative paragraph. The draft is inserted into the
+editor as a starting point — the investigator edits freely after.
 
-Cytoscape.js is the largest addition (~150kb gzipped); `react-pdf` brings pdf.js (~250kb gzipped, but lazy-loadable). Everything else is small (Lucide 5–10kb tree-shaken, Radix per-primitive 5–15kb, cmdk ~7kb). We tree-shake aggressively. Lazy-load heavy panes (990 Viewer, Document viewer) so the initial graph load isn't blocked.
+Narrative saves automatically on blur (PATCH `findings/<uuid>/` with `narrative=<text>`).
 
-### Visual consistency note
+### Cited documents panel
 
-All Radix primitives ship unstyled. We provide one canonical set of styles for each (Dialog, Popover, Tooltip, etc.) in a shared `components/ui/` directory consuming our tokens. Components elsewhere in the codebase use those wrappers — they don't import Radix primitives directly. This keeps the visual language uniform.
+Each row in the "Cited Documents" list represents one `FindingDocument` record.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  [Doc-4]  [UCC]  UCC Filing 2019-0044123    Page 1  · · ·  │  ← ref badge, doc type, overflow
+├──────────────────────────────────────────────────────────────┤
+│  "Debtor: Bright Future Foundation, Inc.                     │
+│   Secured party: Karen Homan                                 │
+│   Filing date: 2019-11-14..."                                │
+│                                                              │
+│  [Entity: Karen Homan]  [Date: 2019-11-14]  [Flag: UCC]    │  ← Intake fact tags
+│                                                  ──────     │
+│  · · · Intake                                               │  ← source chip, right-aligned
+└──────────────────────────────────────────────────────────────┘
+```
+
+Fact tag colors (from Intake):
+- **Entity** — blue pill, `background: #E6F1FB; color: #0C447C`
+- **Date** — amber pill, `background: #FAEEDA; color: #633806`
+- **Amount** — green pill, `background: #EAF3DE; color: #27500A`
+- **Flag** — coral pill with underline, `background: #FAECE7; color: #712B13; border-bottom: 1.5px solid #D85A30`
+
+Overflow menu on each cited document card:
+- **View document** — opens document view (Level 4) in a side panel
+- **Remove citation** — removes the `FindingDocument` row; does not affect the document itself
+
+### Toolbar actions
+
+- **Cite document** — opens document picker showing all case documents; selecting one adds a
+  `FindingDocument` row and inserts `[Doc-N]` at the cursor position in the narrative
+- **Tie off** — opens the tie-off modal (see Section 7.1)
+- **Split angle** — opens the split/connect modal on the "Split" tab (see Section 8)
+
+### Lead panel
+
+Always visible on the right (240px). Content is AI-generated by the Lead role (Sonnet via
+`ai_pattern_augmentation.py`). Three sections:
+
+1. **Suggested next** — one or two concrete investigative actions ("Look for UCC amendments
+   filed same day as deed transfer")
+2. **Pattern match** — if the accumulated cited documents match a signal rule, names it and
+   explains the match in plain language. Never uses the words: fraud, criminal, illegal,
+   guilty. Evidence weight is capped at DIRECTIONAL — the investigator sets the final weight
+   at tie-off.
+3. **New angle?** — if the Lead sees a secondary line of inquiry worth pursuing, suggests a
+   new angle with both knots named and a [ Start angle ] button. Clicking it opens the new
+   angle form pre-filled with those knots.
+
+The Lead auto-refreshes when a document is cited or removed (debounced 3s). Shows a spinner
+"Lead is thinking..." while refreshing.
+
+### 7.1 Tie-off modal
+
+Opens when the investigator clicks "Tie off". This is the confirmation step — the investigator
+decides the final weight and outcome here, not on individual facts.
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Tie off this angle                                  │
+│                                                      │
+│  Angle: UCC filing timeline                          │
+│  Karen Homan ←→ Bright Future Foundation             │
+│                                                      │
+│  Narrative preview:                                  │
+│  ┌────────────────────────────────────────────────┐  │
+│  │ Karen Homan appears as secured party in        │  │
+│  │ [Doc-3] and as a board member in [Doc-1]...    │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  Cited documents (3):                                │
+│  ✓ [Doc-3] Warranty Deed 2019 — Page 3               │
+│  ✓ [Doc-4] UCC Filing 2019-0044123 — Page 1          │
+│  ✓ [Doc-5] UCC Amendment 2019-0044124 — Page 1       │
+│                                                      │
+│  Signal rule: SR-004 · UCC_BURST                ▾   │  ← dropdown, pre-filled by Lead if matched
+│                                                      │
+│  Evidence weight:  ○ Speculative  ● Directional      │  ← radio
+│                    ○ Documented   ○ Traced            │
+│                                                      │
+│  Outcome:  ● Confirmed (send to referral package)    │  ← radio
+│            ○ Exhausted (dead end, dismiss)           │
+│                                                      │
+│  [ Cancel ]              [ Confirm angle ]           │
+└──────────────────────────────────────────────────────┘
+```
+
+On confirm:
+- PATCH `/api/cases/<uuid>/findings/<uuid>/` with `status=CONFIRMED` or `status=DISMISSED`,
+  `evidence_weight=<selected>`, `rule_id=<selected>`, `narrative=<text>`
+- If confirmed: connection edges for knots associated with this angle update to solid
+  severity-based color in the web view
+- Toast: "Angle confirmed · Added to referral package" or "Angle marked exhausted"
 
 ---
 
-## 17. Decisions log
+## 8. Angle Splitting and Connecting Knots
 
-Open questions get logged here; once resolved they stay as a record of why we landed where we did. Append-only.
+Both actions use the same modal with two tabs: **Split** and **Connect**.
 
-### Currently open
-*(none)*
+### 8.1 Split angle
 
-### Resolved
+Triggered from the angle view toolbar "Split angle" or the right-click context menu on a
+connection edge.
 
-**OQ-1** *(asked 2026-05-03 · resolved 2026-05-04)* — Should documents appear as graph nodes by default, or only on a toggle?
-→ **Toggle, off by default.** Lives in `[show ⌄]` dropdown on graph toolbar (§8.4). Reasoning: a typical case has 30–80 entities + flag/finding badges + citation chips on every edge — already dense. Documents are already represented via `[Doc-N]` chips on edges. Surface document nodes only when the investigator wants to ask a citation-graph question. When on, document nodes render at 40% size in `--graph-label` color so they read as supporting infrastructure.
+```
+┌──────────────────────────────────────────────────────────┐
+│  [ Split ]  [ Connect ]                                  │
+├──────────────────────────────────────────────────────────┤
+│  Split: UCC filing timeline                              │
+│                                                          │
+│  Assign each cited document to Angle A, Angle B, or     │
+│  both. The parent angle will be marked Exhausted.        │
+│                                                          │
+│  ┌────────────────────────────────────────┐              │
+│  │ ○ A  ● B  ○ Both  [Doc-4] UCC Filing  │              │
+│  ├────────────────────────────────────────┤              │
+│  │ ● A  ○ B  ○ Both  [Doc-3] Warranty D. │              │
+│  ├────────────────────────────────────────┤              │
+│  │ ○ A  ● B  ○ Both  [Doc-5] UCC Amend.  │              │
+│  └────────────────────────────────────────┘              │
+│                                                          │
+│  ANGLE A                                                 │
+│  Name: ________________________________                  │
+│  Connects: Karen Homan ←→ [ Bright Future F. ▾ ]        │  ← can redirect to different knot
+│                                                          │
+│  ANGLE B                                                 │
+│  Name: ________________________________                  │
+│  Connects: Karen Homan ←→ [ EH Construction ▾ ]         │  ← redirected to different knot
+│                               [ + New knot ]             │  ← inline knot creation
+│                                                          │
+│  [ Cancel ]                    [ Create angles ]         │
+└──────────────────────────────────────────────────────────┘
+```
 
-**OQ-2** *(asked 2026-05-03 · resolved 2026-05-04)* — How does the graph behave when the user creates a from-scratch finding? Manual link with citation modal vs. SPECULATIVE-default?
-→ **SPECULATIVE-default.** Manually drawn edges (Link mode) and AI-extracted edges start as SPECULATIVE — 1px dashed, lightest weight per §14. User upgrades the edge by attaching citations from the right detail panel's Sources tab. SPECULATIVE edges are visually distinct and **cannot be exported** to a referral package — the §13 pre-flight check blocks any confirmed finding whose edges are still SPECULATIVE. Reasoning: investigators think nonlinearly; they notice a connection, draw it, attach the citation when they find the document. Forcing the citation up front breaks their flow. The SPECULATIVE state preserves the "every exported edge has provenance" rule while allowing flexible working order.
+Key rules:
+- Each child angle can redirect to a DIFFERENT knot pair than the parent. This is the primary
+  reason split exists — not just to create two copies.
+- Parent angle is marked Exhausted (status=DISMISSED) when children are created.
+- Each child starts as Active (status=NEEDS_EVIDENCE) with the assigned documents pre-cited.
+- "+ New knot" opens an inline form (name, type, optional EIN) without leaving the modal.
 
-**OQ-3** *(asked 2026-05-03 · resolved 2026-05-04)* — Multi-select detail: sortable table in right panel or just a count?
-→ **Sortable table in the bottom dock**, not the right panel. New Selection tab (§10.5) appears on multi-select, vanishes when selection clears. Same TanStack Table component as Triage — different filter. Right detail panel shows a brief summary ("5 selected · view table below"). Reasoning: multi-select is a table-shaped view; the bottom dock is where tables live; cramming an 8-column sortable table into a 280px right rail is wrong. Also unifies the multi-select UX with the Triage UX — same component, same interactions.
+### 8.2 Connect knots
 
-**OQ-4** *(asked 2026-05-03 · resolved 2026-05-04)* — Bottom dock tab memory: per-case or default-to-Audit?
-→ **Per-case memory.** Stored in `localStorage` keyed by case ID. Investigators settle into a rhythm per case; forcing them back to Audit on every load fights muscle memory. Selection tab is the exception — never persisted (it's ephemeral by definition).
+Triggered from the web view toolbar "+ Angle", the Profile view "+ New angle", or a right-click
+on the web canvas. Also accessible as the "Connect" tab in the split modal.
 
-**OQ-5** *(asked 2026-05-03 · resolved 2026-05-04)* — Async transforms: ghost node with spinner or wait until success?
-→ **Ghost node.** When a transform queues, a placeholder node appears: dashed circle with spinner glyph, smaller than real nodes, in `--graph-label` color. Replaces with real result on success; removes with toast (sonner) on failure. Reasoning: maps to existing `useAsyncJob` pattern; makes async work visible; removes the "did I click that?" anxiety.
+```
+┌──────────────────────────────────────────────────────────┐
+│  [ Split ]  [ Connect ]                                  │
+├──────────────────────────────────────────────────────────┤
+│  Connect two knots with a new angle                      │
+│                                                          │
+│  KNOT A                          KNOT B                  │
+│  ┌──────────────────────┐   ┌──────────────────────┐    │
+│  │ Karen Homan          │   │ Select or create...  │    │
+│  │ (pre-filled if from  │   │                      │    │
+│  │  Profile view)       │   │ [ search knots... ]  │    │
+│  └──────────────────────┘   │                      │    │
+│                             │ ── existing knots ── │    │
+│                             │ ○ Bright Future F.   │    │
+│                             │ ○ EH Construction    │    │
+│                             │ ○ Robert Homan       │    │
+│                             │                      │    │
+│                             │ [ + New knot ]       │    │  ← inline form
+│                             └──────────────────────┘    │
+│                                                          │
+│  Angle name:                                             │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ Property transfer — Karen Homan → EH Construction  │  │  ← Lead auto-suggests on knot select
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  [ Cancel ]                    [ Create angle ]          │
+└──────────────────────────────────────────────────────────┘
+```
 
-**OQ-6** *(asked 2026-05-03 · resolved 2026-05-04)* — Tablet/mobile responsive?
-→ **Desktop only for v1.** No responsive collapse below 1366×768. Investigative work is keyboard-heavy and dense — tablets fight the format. v2 may add read-only tablet views for reviewing a frozen package. Implicitly locked by §5.1.
+On submit: POST `/api/cases/<uuid>/findings/` with `status=NEEDS_EVIDENCE`, `source=MANUAL`,
+two `FindingEntity` rows linking to both knots.
 
-**OQ-7** *(asked 2026-05-03 · resolved 2026-05-04)* — Package pane four agency lanes on small screens: stack or horizontal scroll?
-→ **Stack vertically below 1440px width.** Vertical scroll is universal muscle memory; horizontal scroll on a 4-column lane layout is awkward. On 1366×768 baseline the user sees one full agency lane at a time and scrolls for the next.
+The Lead suggests an angle name automatically when both knots are selected (lightweight
+inference based on knot names + existing angle context — does not require a full API call).
 
 ---
 
-## 18. Build sequence
+## 9. Document View (Level 4)
 
-This is the order in which the spec gets implemented. Earlier items unblock later ones. Each step lands as its own PR.
+Triggered by clicking a document card in Angle view, or from the Profile view documents panel,
+or from the connection review panel.
 
-0. **Install professional library stack** (§16.5). Single PR. Cytoscape, Radix primitives, TanStack Table, Lucide, cmdk, react-resizable-panels, tinykeys, sonner, react-pdf, date-fns, driver.js. Verify build still passes.
-1. **Layout shell.** AppShell with the five-zone grid using `react-resizable-panels`. Top bar, left rail, center (empty placeholder), right detail panel, bottom dock. Collapse/expand mechanics for left rail, right panel, bottom dock. Verify on 1366×768 (§5.1). No real content yet — just the chrome.
-2. **Token-aware UI primitives.** Wrap Radix Dialog, Popover, Tooltip, DropdownMenu, ContextMenu, Tabs in `components/ui/` with our token-based styles. Wire `sonner` toasts. These are the building blocks for everything else.
-3. **Audit log (Zone 5, default tab).** TanStack Table reading from existing audit log endpoint. Reverse-chronological. Click → focus event in the workspace. **This is the "visible chain of custody" panel — the most distinctive thing about Catalyst's UI vs. a generic CRUD app. Get it right early; the screenshots from this build already start looking serious.**
-4. **Document table (Zone 5, Documents tab).** TanStack Table. SHA-256 hash, OCR status badge, type, page count, filename. Reuse logic from existing DocumentsTab.
-5. **Cold start workspace (Zone 3 empty state).** Two-search-panel layout (IRS TEOS + Ohio SOS). Uses existing `useAsyncJob` hook. On confirm, drops the first entity onto the canvas.
-6. **Graph view — Cytoscape.js migration.** Install Cytoscape, replace existing D3 force-directed graph. Implement node iconography (§8.1), edge citation chips (§8.2), and node decorations (§8.3). Default cose-bilkent layout. **Remove `d3` and `@types/d3` from package.json after this lands.**
-7. **Right detail panel (Zone 4).** Properties / Sources / Flags / Actions tabs (Radix Tabs). Wire to graph selection events.
-8. **Phase navigator (Zone 2 top).** Live counts pulled from existing endpoints. Filter wiring to bottom dock.
-9. **Triage tab (Zone 5).** TanStack Table — the sortable flag queue (§10.2). Sync to graph selection. Bulk actions via Radix Dialog confirmations.
-10. **Graph controls (Zone 3 floating toolbar).** Lock, layout algorithms, node-size view modes. All wired through Cytoscape's API (§8.0).
-11. **990 Viewer pane.** Structured form rendering from existing 990 XML. Inline signal callouts. Add as a top-bar toggle pane.
-12. **Financials pane.** Year-over-year table + inline-SVG sparklines. Top-bar toggle.
-13. **Package pane + pre-flight check.** Four agency lanes. Finding toggles. PDF export via existing `referral-pdf` endpoint. Pre-flight check disables generate button when conditions fail (§13).
-14. **Entity palette + drag-to-create (Zone 2 middle).** Drag-and-drop from palette → canvas creates a node. Required-field modal on drop.
-15. **Transforms tab (Zone 5).** Wire to existing async job system. Retry, link to result on graph.
-16. **Discoverability layer.** First-time-user tour via `driver.js`. Learn-as-you-go toasts. Tooltips on every icon (Radix Tooltip). Empty-state copy on every empty container.
-17. **Command palette (`Cmd/Ctrl+K`).** Using `cmdk`. Search across entities, documents, findings, flags. Open from top bar Find button or shortcut.
-18. **Keyboard shortcuts.** `tinykeys` registration of single-key (`V`, `S`, `L`) and chord (`g g`, `c f`) commands per §15.
-19. **Polish.** Right-click context menus, recently-added strip, multi-select detail table, animation timing tuning.
+### Layout
 
-Each of steps 1–19 should be reviewable as a screenshot. By step 3 Catalyst should already look serious.
+```
+┌────────────────────────────────────┬─────────────────────┐
+│  BREADCRUMB: Web › Karen › UCC... │                     │
+├────────────────────────────────────┤  RAG SEARCH (open)  │
+│                                    │                     │
+│  DOCUMENT: UCC Filing 2019-0044123 │  ┌───────────────┐ │
+│  [UCC]  Page 1 of 3                │  │ Search docs...│ │
+│                                    │  └───────────────┘ │
+│  ┌──────────────────────────────┐  │                     │
+│  │ UCC FINANCING STATEMENT      │  │  Results (3):       │
+│  │                              │  │                     │
+│  │ Debtor:                      │  │  UCC Amend. 0044    │
+│  │ ████████████████████████     │  │  "Secured party:    │
+│  │ BRIGHT FUTURE FOUNDATION INC │  │  K. Homan..."       │
+│  │                              │  │                     │
+│  │ Secured party:               │  │  Warranty Deed 2019 │
+│  │ ████████████████             │  │  "Karen Homan,      │
+│  │ KAREN HOMAN                  │  │  grantor..."        │
+│  │                              │  │                     │
+│  │ Filing date:                 │  │  990 Form 2019      │
+│  │ ████████████                 │  │  "K. Homan, Board   │
+│  │ 11/14/2019                   │  │  member..."         │
+│  │                              │  │                     │
+│  └──────────────────────────────┘  └─────────────────────┘
+└────────────────────────────────────┴─────────────────────┘
+```
+
+### Intake highlight layer
+
+Overlaid on OCR text. Color-coded spans:
+
+| Tag type | Background | Border-bottom | Text color |
+|----------|-----------|--------------|------------|
+| Entity | `#E6F1FB` (blue-50) | none | `#0C447C` (blue-800) |
+| Date | `#FAEEDA` (amber-50) | none | `#633806` (amber-900) |
+| Amount | `#EAF3DE` (green-50) | none | `#27500A` (green-800) |
+| Flag | `#FAECE7` (coral-50) | `1.5px solid #D85A30` | `#712B13` (coral-800) |
+
+Highlights come from `Document.ingestion_metadata["parsed_990"]` and entity extraction results.
+Toggle: "Intake highlights" switch in the document toolbar.
+
+### RAG search panel
+
+- Default: open (toggleable, persists per session via localStorage)
+- Triggered by: typing in the search box OR right-clicking selected text in the document
+- Right-click context menu on selected text:
+  - **"Search docs for '[selection]'"** — populates search box and runs query
+  - **"Cite in angle"** — attaches this document + page to an angle via `FindingDocument`;
+    shows a picker of active angles if multiple are open
+  - **"Quick capture this"** — saves passage as `InvestigatorNote` on the current knot
+
+Search implementation (v1): keyword grep against `Document.extracted_text` via the existing
+`GET /api/search/` endpoint filtered to the current case. Full-text search is already in the
+backend. Semantic embeddings deferred to v2.
+
+Results show: document type badge, document name, matching excerpt (50 words around the match),
+click to navigate to that document at the matching page.
 
 ---
 
-## 19. What this replaces
+## 10. Research Tab
 
-The previous design spec (`catalyst_frontend_design_spec.md`) had:
-- Triage queue as primary view (L1) — **replaced by graph as primary view**
-- 5-tab center canvas (Triage / Graph / 990 / Financials / Package) — **replaced by single canvas + composable top-bar panes**
-- Research as a separate inline panel inside flag cards — **replaced by Actions tab in right detail panel; transforms run from any entity in the graph context, not just from inside a flag**
-- Financial timeline as a permanent bottom strip — **replaced by Financials pane (top-bar toggle); chart can be shown alongside the graph when relevant**
+External data source queries. Five connectors, four of them async.
 
-Every other locked decision from the previous spec carries forward. In particular: cold start sequence (L3), manual finding creation (L4), tight research coupling (L5), four-agency-package routing (L6).
+### Layout
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  SOURCE:  [IRS 990 ▾]  [Ohio SOS]  [Ohio AOS]  [Recorder]  [Parcel] │
+├──────────────────────────────────────────────────────────────┤
+│  QUERY FORM (context-aware per source)                       │
+│                                                              │
+│  Search by: ● EIN  ○ Name                                   │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ 31-1234567                                             │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                          [ Search ]          │
+├──────────────────────────────────────────────────────────────┤
+│  RECENT JOBS                                                 │
+│                                                              │
+│  ✓ IRS · "do good" · 177 results · 16s ago      [ View ]   │
+│  ↻ Ohio AOS · "Bright Future" · Running...      [Cancel]   │
+│  ○ IRS · "31-1234567" · Queued                             │
+├──────────────────────────────────────────────────────────────┤
+│  RESULTS — IRS 990 · do good · 177 filings                   │
+│                                                              │
+│  EIN            Name                       Year  Form  │ + │
+│  ─────────────────────────────────────────────────────────  │
+│  31-1234567     Do Good Foundation         2022  990   │ + │
+│  31-1234567     Do Good Foundation         2021  990   │ + │
+│  ...                                                        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Async job model
+
+- POST to research endpoint returns `202 Accepted` + `{ job_id, status_url }`
+- Frontend polls `GET /api/jobs/<uuid>/` every 2 seconds
+- Job states: `QUEUED` → `RUNNING` → `SUCCESS` or `FAILED`
+- On mount: `GET /api/cases/<uuid>/jobs/?limit=5` to reattach to in-flight jobs
+  (investigator can close the tab and come back — jobs keep running in the worker)
+- Hook: `useAsyncJob<TResult>` (built in Session 36) — expose `run`, `reattach`, status, result
+
+### Sync vs async per source
+
+| Source | Mode | Notes |
+|--------|------|-------|
+| IRS 990 (name search) | Async | Streams 50–90MB index CSVs |
+| IRS 990 (fetch XML) | Async | One 990 XML per filing |
+| Ohio AOS | Async | ASP.NET postback scrape |
+| County Parcel | Async | ODNR ArcGIS (currently broken) |
+| Ohio SOS | Sync | Local CSV search, fast |
+| County Recorder | Sync | URL builder, no network call |
+
+### Add to case
+
+Each result row has a `+` button. Opens a quick dialog:
+- "Create as Organization knot" (if EIN present)
+- "Create as Document" (for 990 XML results — fetches and stores the filing)
+- "Add as note" (free-form import)
 
 ---
 
-*v1 draft — 2026-05-03 — Review with Tyler before any code lands. This document is the source of truth for the case workspace UI; code should follow the spec, not the other way around.*
+## 11. Financials Tab
+
+Year-over-year 990 data table sourced from `FinancialSnapshot` model. Rows are metrics, columns
+are tax years. Shows up to 7 years (most available on IRS TEOS).
+
+### Layout
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  FINANCIALS — Bright Future Foundation                        │
+│  Source: IRS Form 990 · 6 years on file  [ Fetch new 990s ] │
+├────────────────────┬──────┬──────┬──────┬──────┬──────┬─────┤
+│ Metric             │ 2017 │ 2018 │ 2019 │ 2020 │ 2021 │2022 │
+├────────────────────┼──────┼──────┼──────┼──────┼──────┼─────┤
+│ Total revenue      │ 42K  │ 89K  │ ████ │ 198K │ 220K │240K │
+│                    │      │      │ 191K │      │      │     │
+│                    │      │      │ ↑127%│      │      │     │  ← SR-021 spike badge
+├────────────────────┼──────┼──────┼──────┼──────┼──────┼─────┤
+│ Total expenses     │ 38K  │ 80K  │ 170K │ 185K │ 200K │215K │
+├────────────────────┼──────┼──────┼──────┼──────┼──────┼─────┤
+│ Program services   │ 30K  │ 60K  │ ████ │ 70K  │ 75K  │ 80K │
+│ (% of expenses)    │ 79%  │ 75%  │ 38%  │ 38%  │ 38%  │ 37% │  ← SR-029 flagged (coral)
+├────────────────────┼──────┼──────┼──────┼──────┼──────┼─────┤
+│ Net assets         │  4K  │  9K  │  21K │  34K │  54K │ 79K │
+├────────────────────┼──────┼──────┼──────┼──────┼──────┼─────┤
+│ Officer comp       │   $0 │   $0 │   $0 │   $0 │   $0 │  $0 │  ← SR-013 flagged (coral)
+└────────────────────┴──────┴──────┴──────┴──────┴──────┴─────┘
+```
+
+### Anomaly highlighting
+
+Cells that triggered a signal rule are highlighted:
+
+- **SR-021 (REVENUE_SPIKE, >100% YoY)** — amber cell background, `↑127%` badge below the value
+- **SR-029 (LOW_PROGRAM_RATIO, <50%)** — coral cell background
+- **SR-013 (ZERO_OFFICER_PAY at high-revenue org)** — coral cell background on the entire officer
+  comp row when revenue exceeds $100K threshold
+
+Clicking a highlighted cell opens a tooltip:
+```
+SR-021 · REVENUE_SPIKE
+Revenue increased 127% from 2018 to 2019.
+Threshold: >100% year-over-year.
+
+[ Open existing angle ]    [ Start new angle ]
+```
+
+**"Open existing angle"** — only shown if an angle already exists citing a document that
+triggered this rule. Navigates to that angle in the Investigate tab.
+
+**"Start new angle"** — navigates to the Investigate tab and opens the Connect knots modal
+pre-filled with this organization as Knot A and an empty Knot B picker. The angle name
+is pre-suggested ("Revenue spike 2019 — Bright Future Foundation").
+
+### Sparklines
+
+Each row has a small sparkline chart (40px tall, TanStack Table column) showing the trend across
+all years. Revenue and expenses share the same scale for visual comparison.
+
+---
+
+## 12. Timeline Tab
+
+Brushable chronological rail of all case events. Particularly useful for showing compression
+patterns (SR-004 UCC burst, timeline of property transfers vs. 990 filings).
+
+### Event types and colors
+
+| Event type | Color | Source |
+|-----------|-------|--------|
+| Document uploaded | Gray | `Document.created_at` |
+| 990 filing | Blue | `FinancialSnapshot.tax_year` |
+| Property transaction | Amber | `PropertyTransaction.transaction_date` |
+| UCC filing / amendment | Coral | `FinancialInstrument` (instrument_type=UCC) |
+| Confirmed finding | Green with check | `Finding.status=CONFIRMED` |
+| Quick capture | Purple dot | `InvestigatorNote.created_at` |
+
+### Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TIMELINE — Bright Future Foundation                         │
+│  [ 2015 ─────────────────────────────────────── 2023 ]     │  ← brush range
+│  [ 2018 ─────────────────── 2020 ]  (zoomed)              │
+├─────────────────────────────────────────────────────────────┤
+│   2018                2019                2020              │
+│                                                             │
+│    ●990               ●UCC 0044   ●DEED   ●990   ●UCC amnd │
+│                       ●UCC 0045           ●990              │  ← SR-004 burst visible as column
+│                       ●UCC 0046                             │
+│                                                             │
+│    [  ]               [  ][  ]    [  ]   [  ]   [  ]      │  ← event cards below
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Behavior
+
+- **Brush** — range selector at the top. Dragging updates the visible date range. Double-click
+  resets to full range.
+- Events that cluster within 24 hours are grouped into a vertical stack — the SR-004 UCC burst
+  pattern becomes visible as a tall stack of coral dots on a single day. Clicking the stack
+  opens a popup listing all events in the cluster.
+- **Clicking an event card** — navigates to the relevant document (Level 4) or angle (Level 3)
+- **"Cite in angle" on an event card** — attaches the document to any active angle via
+  `FindingDocument`; shows an angle picker ("Which angle?") if multiple are active; includes
+  "Create new angle" as the last option in the picker
+- **Filter chips** — toggle each event type on/off. Chips: All · Documents · 990s · Transactions ·
+  UCC · Angles · Notes
+
+### Event card anatomy
+
+```
+┌─────────────────────────────────────────────┐
+│  [UCC]  UCC Amendment 2019-0044124          │  ← doc type badge + name
+│  Nov 14, 2019 · Extracted by Intake         │
+│  "Secured party: K. Homan..."               │  ← 1-line excerpt
+│                                             │
+│  [ View document ]  [ Cite in angle ]       │
+└─────────────────────────────────────────────┘
+```
+
+For confirmed angles:
+```
+┌─────────────────────────────────────────────┐
+│  [CONFIRMED]  UCC filing timeline           │  ← angle status badge + name
+│  Nov 14, 2019 · SR-004 · DIRECTIONAL        │
+│  Karen Homan ←→ Bright Future Foundation    │
+│                                             │
+│  [ Open angle ]                             │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 13. AI Role Naming — LOCKED
+
+This is non-negotiable. Do not expose model names anywhere in the UI.
+
+| Role | Display name | Underlying model | Where it appears |
+|------|-------------|-----------------|-----------------|
+| Extraction | **Intake** | Claude Haiku | "Intake" chip on evidence cards; "Extracted by Intake" label; highlight legend |
+| Reasoning | **Lead** | Claude Sonnet | Lead panel header; "Lead is thinking..." spinner; Lead suggestion cards |
+
+### Banned strings (never appear in UI text)
+- Haiku
+- Sonnet
+- Opus
+- Claude
+- AI assistant
+- LLM
+- Machine learning model
+- GPT (or any other model name)
+
+The investigative framing is deliberate: "Intake" evokes the evidence room intake process;
+"Lead" evokes the lead investigator directing the case.
+
+---
+
+## 14. Decisions Log
+
+All design decisions made during wireframing sessions. These are locked — change requires a
+session decision, not a code change.
+
+| ID | Decision | Notes |
+|----|---------|-------|
+| OQ-1 | Cytoscape.js for web graph | Better interaction model than D3 for click/select/zoom |
+| OQ-2 | Five tabs: Investigate, Research, Financials, Timeline, Referrals | Referrals deferred |
+| OQ-3 | Four-level navigation: Web → Profile → Angle → Document | Breadcrumb always visible below Level 1 |
+| OQ-4 | Angle = Finding model, Connection = Relationship/PersonOrganization, Profile = entity + FinancialSnapshot[] | No new backend models needed |
+| OQ-5 | Active = NEEDS_EVIDENCE, Confirmed = CONFIRMED, Exhausted = DISMISSED | |
+| OQ-6 | Lead panel auto-refreshes on cited document change (debounced 3s) | |
+| OQ-7 | RAG search: keyword grep in v1, semantic embeddings deferred to v2 | Uses existing /api/search/ |
+| OQ-8 | Confirmation at tie-off level only — not per extracted fact | Can revisit via prompt change |
+| OQ-9 | Only Person and Organization can be knots — not Property | "You can't press charges on a property" |
+| OQ-10 | One angle has exactly two knots | Multiple angles can share the same pair |
+| OQ-11 | Angle split can redirect each child to a DIFFERENT knot pair than parent | Key reason split exists |
+| OQ-12 | AI names are "Intake" (Haiku) and "Lead" (Sonnet) — never show model names | LOCKED |
+| OQ-13 | RAG panel is toggleable, default open | |
+| OQ-14 | Angle splitting and connecting knots share one modal with two tabs | |
+| OQ-15 | Financials anomaly cells show BOTH "Open existing angle" and "Start new angle" in tooltip | "Financials are a description, not an angle" |
+| OQ-16 | SR-004 UCC burst visible as vertical stack of events on Timeline tab | |
+| OQ-17 | Connection review is non-blocking — pending connections shown as dashed edges, reviewed when ready | Investigator should never be forced to confirm before continuing |
+| OQ-18 | Connection review always shows the document excerpt — never confirm blind | Legal defensibility requirement |
+| OQ-19 | Manual connections allowed (dotted edge) for sources that cannot be uploaded (e.g. social media) | |
+| OQ-20 | Documents do two jobs: (1) build profiles via extracted facts, (2) establish connections when two entities appear together | Documents do NOT belong to angles; angles cite documents as evidence |
+| OQ-21 | Vocabulary: Connection (factual link), Profile (entity portrait), Angle (investigative narrative) | Replaces ambiguous "Thread" terminology |
+
+---
+
+## 15. Overflow Menus, Pickers, and Secondary Interactions
+
+### 15.1 Cited document card overflow menu (· · ·)
+
+Appears on every cited document card in the Angle view, top-right corner. Opens a small dropdown:
+
+```
+┌──────────────────────────────┐
+│  View document               │  ← navigate to Document view (Level 4)
+│  Remove citation             │  ← DELETE FindingDocument row; document stays in case
+│  Move to different angle     │  ← reassign: opens angle picker dropdown
+│  ──────────────────────────  │
+│  View source page            │  ← jump to the specific page number stored in FindingDocument
+└──────────────────────────────┘
+```
+
+"Remove citation" requires a confirmation toast (see Section 15.4) — citation removal is
+a chain-of-custody action and should not be silent.
+
+### 15.2 Cite document picker
+
+Opens when the investigator clicks "Cite document" on the Angle view toolbar.
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Cite a document in: UCC filing timeline             │
+│                                                       │
+│  ┌─────────────────────────────────────────────────┐ │
+│  │ Filter documents...                             │ │
+│  └─────────────────────────────────────────────────┘ │
+│                                                       │
+│  Already cited in this angle (3) ──────────────────  │
+│  ✓ [Doc-3] Warranty Deed 2019                        │
+│  ✓ [Doc-4] UCC Filing 2019-0044123                   │
+│  ✓ [Doc-5] UCC Amendment 2019-0044124                │
+│                                                       │
+│  Available (8) ────────────────────────────────────  │
+│  ○ [Doc-1] Form 990 · 2019                           │  ← checkbox
+│  ○ [Doc-2] Form 990 · 2020                           │
+│  ○ [Doc-6] Quit-Claim Deed 2021                      │
+│  ○ [Doc-7] UCC Filing 2022-0081233                   │
+│  ...                                                  │
+│                                                       │
+│  [ Cancel ]              [ Cite selected (0) ]       │
+└──────────────────────────────────────────────────────┘
+```
+
+- Documents already cited are shown grayed-out (already attached, not re-selectable)
+- Document type badges match the Angle view card badges
+- "Cite selected" button label updates live: "Cite selected (2)", "Cite selected (0)", etc.
+- On confirm: POST one `FindingDocument` row per selected document. Each is attached with `page_ref=null`
+  initially — investigator can set a specific page via the card's "View source page" action later.
+- Source: `GET /api/cases/<uuid>/documents/` filtered to exclude already-cited IDs
+
+### 15.3 Add to case dialog (Research tab)
+
+Each result row in the Research tab has a `+` button. Opens a small popover (not a full modal):
+
+```
+┌────────────────────────────────────────┐
+│  Add to investigation                   │
+│                                         │
+│  [ Create Organization knot ]           │  ← if EIN present in result
+│    "Do Good Foundation"                 │     POST /api/cases/<id>/findings/ linking org
+│                                         │
+│  [ Fetch and store 990 XML ]            │  ← IRS results only
+│    Stores as Document + runs Intake     │     POST /api/cases/<id>/fetch-990s/ for this EIN
+│                                         │
+│  [ Save as note ]                       │  ← always available
+│    Adds InvestigatorNote with result    │     POST /api/cases/<id>/notes/
+│    as body text                         │
+└────────────────────────────────────────┘
+```
+
+After any action, the `+` button on that row changes to a `✓` checkmark (disabled). Multiple
+actions on the same result are allowed — you can create a knot AND save a note.
+
+"Fetch and store 990 XML" is only shown for IRS results. It runs the IRS TEOS XML fetch for that
+specific EIN (`POST /api/cases/<uuid>/fetch-990s/`), stores the filing as a `Document`, and
+triggers Intake extraction. A toast fires when extraction completes (see Section 15.4).
+
+### 15.4 Toast notifications
+
+Toasts appear bottom-right, 4s auto-dismiss, using the `sonner` library.
+
+| Trigger | Toast text | Type |
+|---------|-----------|------|
+| Document uploaded | "Intake is processing [filename]..." | Info (spinner) |
+| Intake extraction complete | "Intake finished: [N] entities, [M] flags found in [filename]" | Success |
+| Angle tied off (confirmed) | "Angle confirmed — added to referral package" | Success |
+| Angle tied off (exhausted) | "Angle marked exhausted" | Info |
+| Angle created | "New angle: [angle name]" | Success |
+| Citation removed from angle | "Removed [docname] from [angle name]. [Undo]" | Warning with Undo |
+| Connection confirmed | "Connection confirmed: [Knot A] ←→ [Knot B]" | Success |
+| Knot created | "[Name] added to the web" | Success |
+| Lead suggestions ready | (no toast — Lead panel just updates silently) | — |
+| Research job complete | "IRS search complete — [N] results found" | Success |
+| Research job failed | "IRS search failed: [error reason]" | Error |
+| 990 fetch + Intake complete | "990 loaded — Intake found [N] entities" | Success |
+| AI pattern analysis complete | "[N] AI patterns found · [M] dropped" | Success |
+
+**Undo** on citation removal: a 5s window. Clicking Undo re-creates the `FindingDocument` row.
+After 5s the undo option expires and removal is permanent (an `AuditLog` entry records the removal).
+
+### 15.5 Empty states
+
+Each view needs a clear empty state so the recruiter demo doesn't show a blank screen.
+
+**Web view (no knots)**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│               (web icon — faint nodes and edges)            │
+│                                                             │
+│          Your investigation web is empty.                   │
+│                                                             │
+│    Add a person or organization to start building the web.  │
+│                                                             │
+│              [ + Add first knot ]                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Angle view (no citations yet)**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ANGLE: [name]                                              │
+│  Status: ACTIVE — no documents cited yet                    │
+│                                                             │
+│   (document icon — faint)                                   │
+│                                                             │
+│   No documents cited in this angle yet.                     │
+│   Cite a document from the case to start building           │
+│   the narrative.                                            │
+│                                                             │
+│              [ + Cite first document ]                      │
+└─────────────────────────────────────────────────────────────┘
+```
+The Lead panel in this state shows one static prompt: "Cite a document in this angle and Lead
+will suggest what to look for next."
+
+**Research tab (no jobs run yet)**
+```
+Select a source above and run your first search.
+```
+Small, non-intrusive. Does not use an icon.
+
+**Financials tab (no snapshots)**
+```
+No Form 990 data on file for this case.
+
+[ Fetch 990 data ]   or   use Research → IRS 990 to find filings.
+```
+
+### 15.6 Global command palette (Cmd+K)
+
+Available on every page and tab. Opens a `cmdk` Command palette.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ ⌘  Search or jump to...                            │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  Recent                                                  │
+│  → Karen Homan — Person                                  │
+│  → UCC filing timeline — Angle (Karen Homan ↔ BFF)      │
+│  → Form 990 · 2019 — Document                            │
+│                                                          │
+│  Quick actions                                           │
+│  + Add knot                                              │
+│  + New angle                                             │
+│  ↑ Upload document                                       │
+│  ⌘K  Run Research search                                 │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Typing filters all entity names, document names, angle names, and quick actions simultaneously.
+Pressing Enter on a result navigates to it (Profile view for entities, Angle view for findings,
+Document view for documents). Quick actions open the relevant modal.
+
+Source: the existing `GET /api/search/` endpoint handles the text search. The command palette
+adds quick actions on top of the search results.
+
+---
+
+## 16. Timeline Tab — Add Event
+
+Triggered by the `+ Add event` button on the Timeline tab toolbar.
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Add event to timeline                                │
+│                                                       │
+│  Event type:                                          │
+│  ┌──────────────────────────────────────────────┐    │
+│  │ Manual note                                ▾ │    │  ← dropdown
+│  └──────────────────────────────────────────────┘    │
+│  (Property transaction / UCC filing / Other)          │
+│                                                       │
+│  Date:  ┌──────────────────────────────────────┐     │
+│         │ 2019-11-14                            │     │
+│         └──────────────────────────────────────┘     │
+│                                                       │
+│  Description:                                         │
+│  ┌────────────────────────────────────────────────┐  │
+│  │                                                │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                       │
+│  Cite in angle (optional):                            │
+│  ┌──────────────────────────────────────────────┐    │
+│  │ Select angle...                            ▾ │    │
+│  └──────────────────────────────────────────────┘    │
+│                                                       │
+│  ─────────────────────────────────────────────────── │
+│  Start a new angle from this event?  [ Yes / No ]    │
+│                                                       │
+│  If Yes → opens "Connect knots" modal after save     │
+│  (pre-filled with event description as angle name)   │
+│                                                       │
+│  [ Cancel ]                    [ Add to timeline ]    │
+└──────────────────────────────────────────────────────┘
+```
+
+Implementation: a manual event is stored as an `InvestigatorNote` with a `date` field in the
+body JSON. The timeline renders it as a purple dot at that date (same as Quick capture). It is
+NOT a `Finding` unless the investigator chooses "Create a finding from this event."
+
+"Start a new angle from this event → Yes" flow:
+1. "Add to timeline" saves the note
+2. The Connect knots modal opens immediately after, pre-filled with the event description as
+   the angle name. At least one citation is required before the angle can be tied off — the
+   note gives context, but an angle must have at least one cited document to be confirmed.
+
+---
+
+## 18. Build Sequence
+
+Recommended implementation order. Each step is independently testable.
+
+1. **Cytoscape.js scaffolding** — install library, render empty canvas, zoom/pan
+2. **Web view: nodes** — wire to `/api/cases/<uuid>/graph/`, render Person + Org nodes with
+   correct colors, pending connection badge
+3. **Web view: edges** — render connections as edges with state-based styling (dashed/solid/dotted)
+4. **Profile view** — click node → side panel with entity metadata, documents panel, connections
+   panel, angles panel
+5. **Connection review panel** — pending connection card with document excerpt, confirm/dismiss
+6. **Angle view** — click edge OR angle card → narrative editor, cited documents list, Lead panel
+7. **Cited document card rendering** — doc type badges, `[Doc-N]` refs, Intake fact tags chip
+8. **Lead panel** — wire to `ai_pattern_augmentation.py`, show suggestions, spinner state
+9. **Document view** — OCR text display, Intake highlight layer, RAG search panel
+10. **RAG right-click menu** — "Search docs for", "Cite in angle", "Quick capture this"
+11. **Cite document picker** — document picker, `FindingDocument` creation, `[Doc-N]` insertion
+12. **Tie-off modal** — narrative preview, cited docs list, signal rule dropdown, evidence weight,
+    outcome radio, confirm → PATCH Finding
+13. **Angle split modal** — citation assignment A/B/Both, child angle creation
+14. **Connect knots modal** — knot selection, inline knot creation, Lead name suggestion
+15. **Quick capture** — textarea on Profile view, InvestigatorNote creation
+16. **Research tab** — source picker, query form, `useAsyncJob` hook, job status rail, results table
+17. **Add to case** — result → knot/document promotion
+18. **Financials tab** — YoY table, anomaly cell highlighting with dual tooltip buttons, sparklines
+19. **Timeline tab** — event rail, brush range, event type colors, cluster view, "Cite in angle" picker
+20. **Breadcrumb + back navigation** — full four-level nav with browser back support
+21. **Minimap** — Cytoscape minimap overlay on web view
+
+Steps 1–12 cover the full recruiter demo path (web → profile → angle → document → tie-off).
+Steps 13–15 cover the investigation creation flow.
+Steps 16–17 cover the data import flow.
+Steps 18–21 are the remaining tabs and polish.
