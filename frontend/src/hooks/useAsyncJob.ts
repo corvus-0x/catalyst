@@ -1,156 +1,104 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * useAsyncJob — polls a backend async job until it reaches SUCCESS or FAILED.
+ *
+ * Usage pattern (Research tab):
+ *   const job = useAsyncJob<IrsSearchJobResult>();
+ *   await job.run(() => searchIrs(caseId, params));   // POST → 202, then polls
+ *   // job.status: "idle" | "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED"
+ *   // job.result: TResult | null (populated on SUCCESS)
+ *
+ * Reattach-on-mount (resume a job started in a previous session):
+ *   const jobs = await fetchCaseJobs(caseId, 5);
+ *   const inFlight = jobs.results.find(j => j.status === "QUEUED" || j.status === "RUNNING");
+ *   if (inFlight) job.reattach(inFlight);
+ */
+
+import { useEffect, useRef, useState } from "react";
 import { fetchJob } from "../api";
-import type { JobEnqueueResponse, JobStatus, SearchJobSummary } from "../types";
+import type { AsyncJobEnqueuedResponse, JobStatus, SearchJob } from "../types";
 
-const POLL_INTERVAL_MS = 2000;
-
-export type UseAsyncJobStatus = "idle" | "queued" | "running" | "success" | "failed";
-
-export interface UseAsyncJobReturn<TResult> {
-    status: UseAsyncJobStatus;
-    jobId: string | null;
-    result: TResult | null;
-    error: string | null;
-    run: (body: Record<string, unknown>) => Promise<void>;
-    reattach: (jobId: string) => void;
-    cancel: () => void;
+export interface AsyncJobState<TResult> {
+  status: JobStatus | "idle";
+  result: TResult | null;
+  error: string | null;
+  jobId: string | null;
+  run: (postFn: () => Promise<AsyncJobEnqueuedResponse>) => Promise<void>;
+  reattach: (job: SearchJob) => void;
+  reset: () => void;
 }
 
-export interface UseAsyncJobOptions {
-    postUrl: string;
-}
+export function useAsyncJob<TResult = unknown>(): AsyncJobState<TResult> {
+  const [status, setStatus] = useState<JobStatus | "idle">("idle");
+  const [result, setResult] = useState<TResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-function getCSRFToken(): string {
-    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : "";
-}
+  function stopPolling() {
+    if (intervalRef.current != null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }
 
-export function useAsyncJob<TResult = unknown>(
-    options: UseAsyncJobOptions,
-): UseAsyncJobReturn<TResult> {
-    const [status, setStatus] = useState<UseAsyncJobStatus>("idle");
-    const [jobId, setJobId] = useState<string | null>(null);
-    const [result, setResult] = useState<TResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-    const mounted = useRef(true);
-
-    useEffect(() => {
-        mounted.current = true;
-        return () => {
-            mounted.current = false;
-            if (pollTimer.current !== null) {
-                clearInterval(pollTimer.current);
-                pollTimer.current = null;
-            }
-        };
-    }, []);
-
-    const stopPolling = useCallback(() => {
-        if (pollTimer.current !== null) {
-            clearInterval(pollTimer.current);
-            pollTimer.current = null;
+  function startPolling(id: string) {
+    stopPolling();
+    intervalRef.current = setInterval(async () => {
+      try {
+        const job = await fetchJob(id);
+        setStatus(job.status);
+        if (job.status === "SUCCESS") {
+          setResult(job.result as TResult);
+          stopPolling();
+        } else if (job.status === "FAILED") {
+          setError(job.error_message ?? "Job failed");
+          stopPolling();
         }
-    }, []);
+      } catch {
+        // Network blip — keep polling until status resolves
+      }
+    }, 2000);
+  }
 
-    const applyJobState = useCallback(
-        (job: SearchJobSummary) => {
-            if (!mounted.current) return;
-            const jobStatus = job.status as JobStatus;
-            if (jobStatus === "QUEUED") {
-                setStatus("queued");
-            } else if (jobStatus === "RUNNING") {
-                setStatus("running");
-            } else if (jobStatus === "SUCCESS") {
-                setStatus("success");
-                setResult(job.result as TResult);
-                stopPolling();
-            } else if (jobStatus === "FAILED") {
-                setStatus("failed");
-                setError(job.error_message || "Job failed");
-                stopPolling();
-            }
-        },
-        [stopPolling],
-    );
+  async function run(postFn: () => Promise<AsyncJobEnqueuedResponse>) {
+    stopPolling();
+    setStatus("QUEUED");
+    setResult(null);
+    setError(null);
+    setJobId(null);
+    try {
+      const envelope = await postFn();
+      setJobId(envelope.job_id);
+      setStatus("QUEUED");
+      startPolling(envelope.job_id);
+    } catch (err) {
+      setStatus("FAILED");
+      setError(err instanceof Error ? err.message : "Failed to start job");
+    }
+  }
 
-    const startPolling = useCallback(
-        (id: string) => {
-            stopPolling();
-            const tick = async () => {
-                try {
-                    const job = await fetchJob(id);
-                    applyJobState(job);
-                } catch (e) {
-                    if (!mounted.current) return;
-                    setStatus("failed");
-                    setError(e instanceof Error ? e.message : "Poll failed");
-                    stopPolling();
-                }
-            };
-            pollTimer.current = setInterval(tick, POLL_INTERVAL_MS);
-            void tick();
-        },
-        [applyJobState, stopPolling],
-    );
+  function reattach(job: SearchJob) {
+    setJobId(job.id);
+    setStatus(job.status);
+    if (job.status === "SUCCESS") {
+      setResult(job.result as TResult);
+    } else if (job.status === "FAILED") {
+      setError(job.error_message ?? "Job failed");
+    } else {
+      startPolling(job.id);
+    }
+  }
 
-    const run = useCallback(
-        async (body: Record<string, unknown>) => {
-            setStatus("queued");
-            setResult(null);
-            setError(null);
-            try {
-                const res = await fetch(options.postUrl, {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": getCSRFToken(),
-                    },
-                    body: JSON.stringify(body),
-                });
-                if (!res.ok) {
-                    // Surface the backend's `error` body field when present —
-                    // e.g. the 409 "An AI analysis job is already running for
-                    // this case." instead of a bare "Enqueue failed: 409".
-                    let detail = `Enqueue failed: ${res.status}`;
-                    try {
-                        const body = (await res.json()) as { error?: string };
-                        if (body && typeof body.error === "string" && body.error) {
-                            detail = body.error;
-                        }
-                    } catch {
-                        // Body was empty or non-JSON; fall back to the status.
-                    }
-                    throw new Error(detail);
-                }
-                const enqueue = (await res.json()) as JobEnqueueResponse;
-                setJobId(enqueue.job_id);
-                startPolling(enqueue.job_id);
-            } catch (e) {
-                setStatus("failed");
-                setError(e instanceof Error ? e.message : "Enqueue failed");
-            }
-        },
-        [options.postUrl, startPolling],
-    );
+  function reset() {
+    stopPolling();
+    setStatus("idle");
+    setResult(null);
+    setError(null);
+    setJobId(null);
+  }
 
-    const reattach = useCallback(
-        (id: string) => {
-            setStatus("queued");
-            setResult(null);
-            setError(null);
-            setJobId(id);
-            startPolling(id);
-        },
-        [startPolling],
-    );
+  // Stop polling on unmount — do NOT cancel the server-side job
+  useEffect(() => () => stopPolling(), []);
 
-    const cancel = useCallback(() => {
-        stopPolling();
-        setStatus("idle");
-    }, [stopPolling]);
-
-    return { status, jobId, result, error, run, reattach, cancel };
+  return { status, result, error, jobId, run, reattach, reset };
 }

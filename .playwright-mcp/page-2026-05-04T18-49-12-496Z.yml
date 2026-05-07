@@ -1,0 +1,169 @@
+- generic [ref=e2]:
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary "Main navigation" [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: ⚗️
+        - generic [ref=e8]: CATALYST
+      - navigation "Primary" [ref=e9]:
+        - generic [ref=e10]:
+          - link "📊 Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e12]: 📊
+            - generic [ref=e13]: Dashboard
+          - link "📁 Cases" [ref=e14] [cursor=pointer]:
+            - /url: /cases
+            - generic [ref=e15]: 📁
+            - generic [ref=e16]: Cases
+          - link "👤 Entities" [ref=e17] [cursor=pointer]:
+            - /url: /entities
+            - generic [ref=e18]: 👤
+            - generic [ref=e19]: Entities
+          - link "⚡ Triage" [ref=e20] [cursor=pointer]:
+            - /url: /triage
+            - generic [ref=e21]: ⚡
+            - generic [ref=e22]: Triage
+          - link "📤 Referrals" [ref=e23] [cursor=pointer]:
+            - /url: /referrals
+            - generic [ref=e24]: 📤
+            - generic [ref=e25]: Referrals
+          - link "🔍 Search" [ref=e26] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e27]: 🔍
+            - generic [ref=e28]: Search
+        - separator [ref=e29]
+        - link "⚙️ Settings" [ref=e31] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=e32]: ⚙️
+          - generic [ref=e33]: Settings
+      - generic "Current user" [ref=e34]:
+        - generic [ref=e35]: TC
+        - generic [ref=e36]:
+          - generic [ref=e37]: Tyler Collins
+          - generic [ref=e38]: Investigator
+    - main [ref=e52]:
+      - generic [ref=e183]:
+        - generic [ref=e184]:
+          - generic [ref=e186]: Do Good In His Name Inc·ACTIVE
+          - group "View panes" [ref=e187]:
+            - button "Graph" [disabled] [pressed] [ref=e188]
+            - button "990 Viewer" [ref=e189] [cursor=pointer]
+            - button "Financials" [ref=e190] [cursor=pointer]
+            - button "Package" [ref=e191] [cursor=pointer]
+          - generic [ref=e192]:
+            - button "Find within case" [ref=e193] [cursor=pointer]:
+              - img [ref=e194]
+            - button "Layout presets" [ref=e197] [cursor=pointer]:
+              - img [ref=e198]
+            - button "More" [ref=e202] [cursor=pointer]:
+              - img [ref=e203]
+        - generic [ref=e207]:
+          - generic [ref=e209]:
+            - generic [ref=e212]:
+              - generic [ref=e213]:
+                - heading "Begin investigation" [level=2] [ref=e214]
+                - paragraph [ref=e215]: Search for your subject in IRS filings or Ohio SOS, or upload documents directly.
+              - generic [ref=e216]:
+                - region "IRS Form 990" [ref=e217]:
+                  - generic [ref=e218]:
+                    - img [ref=e219]
+                    - generic [ref=e224]:
+                      - heading "IRS Form 990" [level=3] [ref=e225]
+                      - paragraph [ref=e226]: Tax-exempt organizations registered with the IRS
+                  - generic [ref=e227]:
+                    - generic [ref=e228]: IRS organization name
+                    - textbox "IRS organization name" [disabled] [ref=e229]:
+                      - /placeholder: Organization name
+                      - text: Do Good In His Name
+                    - button "Starting…" [disabled] [ref=e346]:
+                      - img [ref=e347]
+                      - generic [ref=e234]: Starting…
+                  - paragraph [ref=e349]: Scanning IRS Form 990 filings across multiple years — this usually takes 30–60 seconds.
+                - region "Ohio Secretary of State" [ref=e235]:
+                  - generic [ref=e236]:
+                    - img [ref=e237]
+                    - generic [ref=e241]:
+                      - heading "Ohio Secretary of State" [level=3] [ref=e242]
+                      - paragraph [ref=e243]: Registered business entities, statutory agents, formation dates
+                  - generic [ref=e244]:
+                    - generic [ref=e245]: SOS entity name
+                    - textbox "SOS entity name" [ref=e246]:
+                      - /placeholder: Entity name or charter number
+                    - button "Search SOS" [disabled] [ref=e247]:
+                      - img [ref=e248]
+                      - generic [ref=e251]: Search SOS
+              - generic [ref=e252]:
+                - button
+                - button "Or upload documents directly" [ref=e253] [cursor=pointer]:
+                  - img [ref=e254]
+                  - generic [ref=e257]: Or upload documents directly
+                - generic [ref=e258]: PDFs, spreadsheets, images — Catalyst extracts entities automatically
+            - separator [ref=e259]
+            - generic [ref=e262]:
+              - generic [ref=e263]:
+                - tablist "Bottom dock" [ref=e264]:
+                  - tab "Audit log 1" [selected] [ref=e265] [cursor=pointer]:
+                    - generic [ref=e266]: Audit log
+                    - generic [ref=e267]: "1"
+                  - tab "Triage" [ref=e268] [cursor=pointer]:
+                    - generic [ref=e269]: Triage
+                  - tab "Transforms" [ref=e270] [cursor=pointer]:
+                    - generic [ref=e271]: Transforms
+                  - tab "Documents" [ref=e272] [cursor=pointer]:
+                    - generic [ref=e273]: Documents
+                - button "Collapse bottom dock" [ref=e274] [cursor=pointer]:
+                  - img [ref=e275]
+              - tabpanel "Audit log 1" [ref=e277]:
+                - generic [ref=e278]:
+                  - generic [ref=e279]:
+                    - generic [ref=e280]:
+                      - generic [ref=e281]: Audit log
+                      - generic [ref=e282]: 1 events
+                      - generic [ref=e283]: · chain of custody, append-only
+                    - button "Refresh audit log" [ref=e284] [cursor=pointer]:
+                      - img [ref=e285]
+                  - table [ref=e291]:
+                    - rowgroup [ref=e297]:
+                      - row "Time Event Description Source" [ref=e298]:
+                        - columnheader "Time" [ref=e299] [cursor=pointer]:
+                          - text: Time
+                          - img [ref=e301]
+                        - columnheader "Event" [ref=e303]
+                        - columnheader "Description" [ref=e304] [cursor=pointer]:
+                          - text: Description
+                          - img [ref=e306]
+                        - columnheader "Source" [ref=e309] [cursor=pointer]:
+                          - text: Source
+                          - img [ref=e311]
+                    - rowgroup [ref=e314]:
+                      - row "14:48 Case created cases · 7a5d09c4 system" [ref=e315]:
+                        - cell "14:48" [ref=e316]
+                        - cell "Case created" [ref=e317]:
+                          - generic [ref=e318]: Case created
+                        - cell "cases · 7a5d09c4" [ref=e319]
+                        - cell "system" [ref=e320]
+              - tabpanel "Triage" [ref=e321]
+              - tabpanel "Transforms" [ref=e322]
+              - tabpanel "Documents" [ref=e323]
+          - separator [ref=e324]
+          - generic [ref=e326]:
+            - generic [ref=e327]:
+              - button "Collapse detail panel" [ref=e328] [cursor=pointer]:
+                - img [ref=e329]
+              - generic [ref=e331]: Detail
+            - generic [ref=e332]:
+              - generic [ref=e333]: Case subject
+              - heading "Do Good In His Name Inc" [level=2] [ref=e334]
+              - generic [ref=e335]:
+                - generic [ref=e336]:
+                  - term [ref=e337]: Status
+                  - definition [ref=e338]: ACTIVE
+                - generic [ref=e339]:
+                  - term [ref=e340]: Created
+                  - definition [ref=e341]: May 4, 2026, 2:48 PM
+                - generic [ref=e342]:
+                  - term [ref=e343]: Documents
+                  - definition [ref=e344]: "0"
+            - paragraph [ref=e345]: Click an entity on the graph to see its properties, sources, flags, and the research actions you can run on it.

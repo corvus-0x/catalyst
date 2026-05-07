@@ -1,0 +1,108 @@
+- generic [ref=e2]:
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary "Main navigation" [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: ⚗️
+        - generic [ref=e8]: CATALYST
+      - navigation "Primary" [ref=e9]:
+        - generic [ref=e10]:
+          - link "📊 Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e12]: 📊
+            - generic [ref=e13]: Dashboard
+          - link "📁 Cases" [active] [ref=e14] [cursor=pointer]:
+            - /url: /cases
+            - generic [ref=e15]: 📁
+            - generic [ref=e16]: Cases
+          - link "👤 Entities" [ref=e17] [cursor=pointer]:
+            - /url: /entities
+            - generic [ref=e18]: 👤
+            - generic [ref=e19]: Entities
+          - link "⚡ Triage" [ref=e20] [cursor=pointer]:
+            - /url: /triage
+            - generic [ref=e21]: ⚡
+            - generic [ref=e22]: Triage
+          - link "📤 Referrals" [ref=e23] [cursor=pointer]:
+            - /url: /referrals
+            - generic [ref=e24]: 📤
+            - generic [ref=e25]: Referrals
+          - link "🔍 Search" [ref=e26] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e27]: 🔍
+            - generic [ref=e28]: Search
+        - separator [ref=e29]
+        - link "⚙️ Settings" [ref=e31] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=e32]: ⚙️
+          - generic [ref=e33]: Settings
+      - generic "Current user" [ref=e34]:
+        - generic [ref=e35]: TC
+        - generic [ref=e36]:
+          - generic [ref=e37]: Tyler Collins
+          - generic [ref=e38]: Investigator
+    - generic [ref=e39]:
+      - banner [ref=e40]:
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e43]: 🔍
+            - textbox "Search cases, findings, entities" [ref=e44]:
+              - /placeholder: Ask anything about your cases...
+            - generic [ref=e45]: Ctrl+K
+          - generic [ref=e46]:
+            - 'button "Switch theme (current: dark)" [ref=e47] [cursor=pointer]': 🌙
+            - button "Notifications" [ref=e48] [cursor=pointer]: 🔔
+            - button "Sign out" [ref=e49] [cursor=pointer]
+        - navigation "Breadcrumb" [ref=e50]:
+          - generic [ref=e51]: Cases
+      - main [ref=e52]:
+        - generic [ref=e128]:
+          - heading "Cases" [level=2] [ref=e129]
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - button "☰" [ref=e132] [cursor=pointer]
+              - button "▦" [ref=e133] [cursor=pointer]
+            - button "+ New Case" [ref=e134] [cursor=pointer]
+        - generic [ref=e135]:
+          - searchbox "Search cases" [ref=e136]
+          - combobox "Filter by status" [ref=e137]:
+            - option "All statuses" [selected]
+            - option "ACTIVE"
+          - combobox "Sort cases" [ref=e138]:
+            - option "Newest updated" [selected]
+            - option "Oldest updated"
+            - option "Name A-Z"
+            - option "Name Z-A"
+            - option "Status A-Z"
+        - generic [ref=e139]:
+          - table [ref=e140]:
+            - rowgroup [ref=e141]:
+              - row "Case Name Status Findings Docs Updated" [ref=e142]:
+                - columnheader [ref=e143]
+                - columnheader "Case Name" [ref=e144]
+                - columnheader "Status" [ref=e145]
+                - columnheader "Findings" [ref=e146]
+                - columnheader "Docs" [ref=e147]
+                - columnheader "Updated" [ref=e148]
+            - rowgroup [ref=e149]:
+              - row "⚪ Do good ACTIVE 0 — 1h ago" [ref=e150] [cursor=pointer]:
+                - cell "⚪" [ref=e151]
+                - cell "Do good" [ref=e152]:
+                  - generic [ref=e153]: Do good
+                - cell "ACTIVE" [ref=e154]:
+                  - generic [ref=e155]: ACTIVE
+                - cell "0" [ref=e156]
+                - cell "—" [ref=e157]
+                - cell "1h ago" [ref=e158]
+              - row "🔴 Bright Future Foundation Investigation ACTIVE 9 — 6h ago" [ref=e159] [cursor=pointer]:
+                - cell "🔴" [ref=e160]
+                - cell "Bright Future Foundation Investigation" [ref=e161]:
+                  - generic [ref=e162]: Bright Future Foundation Investigation
+                - cell "ACTIVE" [ref=e163]:
+                  - generic [ref=e164]: ACTIVE
+                - cell "9" [ref=e165]
+                - cell "—" [ref=e166]
+                - cell "6h ago" [ref=e167]
+          - generic [ref=e168]: Showing 2 of 2 cases

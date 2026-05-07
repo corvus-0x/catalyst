@@ -402,6 +402,17 @@ def analyze_case(case_id: Any) -> dict[str, Any]:
                         "suggested_action": p["suggested_action"],
                         "doc_refs": p["doc_refs"],
                         "entity_refs": p.get("entity_refs", []),
+                        # Map each [Doc-N] citation to a stable document UUID.
+                        # The doc numbering is assigned at analysis time (newest
+                        # first); if new documents are uploaded later, the same
+                        # [Doc-3] tag would refer to a different file. Storing
+                        # the resolution here lets the frontend display the
+                        # correct filename regardless of upload order.
+                        "doc_ref_resolution": {
+                            ref: doc_ref_map[ref]
+                            for ref in p["doc_refs"]
+                            if ref in doc_ref_map
+                        },
                     },
                 )
                 # Dedupe doc_refs; Claude occasionally repeats a ref and the

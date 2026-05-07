@@ -1,7 +1,26 @@
 # CLAUDE.md — Catalyst System Map
-**Last updated:** 2026-04-30 (Session 37 — QA audit P0+P1 hardening pass)
+**Last updated:** 2026-05-06 (Session 38 — frontend rebuild planning; frontend vocabulary, tabs, and tech stack corrected)
 **Owner:** Tyler Collins (tjcollinsku@gmail.com)
 **Purpose:** This is the single source of truth for the entire Catalyst system. Read this FIRST before doing any work.
+
+---
+
+## CRITICAL READING FOR FRONTEND WORK
+
+Before writing any frontend code, read these two documents in full:
+
+1. **`docs/architecture/frontend-design-spec.md`** — 1,218-line authoritative UI spec. Covers the
+   Cytoscape graph setup, 4-level drill-down interaction model, node/edge visual encoding, all tab
+   layouts, async job polling pattern, AI role naming rules, and a locked 21-step build sequence.
+   The build sequence is the order in which to implement things.
+
+2. **`docs/architecture/api-contract.md`** — Exact JSON shapes for every endpoint the frontend
+   consumes. Covers monetary field types (integer vs string), optional YoY fields on financials,
+   `finding_links` on graph edges, `doc_ref_resolution` in AI finding evidence_snapshot, async job
+   response format, and FuzzyMatchCandidate shape. Read this before accessing any endpoint.
+
+The vocabulary mapping (Angle/Knot/Connection/Lead/Intake) is in the FRONTEND VOCABULARY section
+below. Use that vocabulary in all component names, comments, and user-visible strings.
 
 ---
 
@@ -73,7 +92,7 @@ Catalyst/
 │   │   ├── views/               ← Page-level components
 │   │   ├── types/               ← TypeScript interfaces
 │   │   └── context/             ← React context providers
-│   ├── package.json             ← React 18, D3.js, Vite
+│   ├── package.json             ← React 18, Cytoscape.js, Radix UI, TanStack Table, Vite
 │   └── vite.config.ts
 │
 ├── docs/
@@ -301,35 +320,80 @@ GET    /api/activity-feed/                      → Recent audit log
 
 ---
 
+## FRONTEND VOCABULARY (READ THIS BEFORE WRITING ANY FRONTEND CODE)
+
+The frontend uses investigation-domain language throughout. These are NOT synonyms to swap
+freely — they are the UI-facing names that appear in labels, comments, and component names.
+Backend model names appear only in API calls and TypeScript types.
+
+| Frontend term | Backend model / concept | Notes |
+|---------------|------------------------|-------|
+| **Angle** | `Finding` | The investigation's narrative unit. Created from the graph, tied off with evidence. |
+| **Knot** | `Person` or `Organization` | Only these two entity types appear as nodes. `Property` is NOT a knot. |
+| **Connection** | Graph edge (Relationship / PersonOrganization / PropertyTransaction) | Displayed as lines between knots. |
+| **Web** | The Cytoscape graph canvas | The primary investigation workspace. |
+| **Lead** | AI pattern analysis result (`FindingSource.AI`) | Async. Powered by Sonnet. NEVER show "Sonnet", "Claude", "AI", "LLM" in the UI — call it "Lead". |
+| **Intake** | Document extraction pipeline | Powered by Haiku. NEVER show "Haiku", "Claude", "AI" in the UI — call it "Intake". |
+| **Quick capture** | `InvestigatorNote` | Free-text note attached to a knot, connection, or angle. |
+| **Pending connections** | `FuzzyMatchCandidate` review queue | Badge on the Web toolbar showing count of unreviewed entity disambiguation candidates. |
+
+**Banned strings in any user-visible text:** "Haiku", "Sonnet", "Opus", "Claude", "AI assistant", "LLM", "GPT"
+
+---
+
 ## FRONTEND VIEWS (What the User Sees)
+
+The frontend is being built from scratch. The authoritative design is in
+`docs/architecture/frontend-design-spec.md` (1,218 lines, 21-step build sequence).
+The table below reflects that spec — NOT the old 6-tab layout.
 
 | Route | Component | What It Does |
 |-------|-----------|-------------|
 | `/` | Dashboard | KPI cards, recent cases, activity feed |
-| `/cases` | CasesList | Table/Kanban view, create case, filter/sort |
-| `/cases/:id` | CaseDetail | **6 tabs: Overview, Documents, Research, Financials, Pipeline, Referrals** |
-| `/entities` | EntityBrowser | Search/filter persons, orgs, properties |
-| `/entities/:type/:id` | EntityDetail | Entity profile + external search launchers |
-| `/triage` | TriageQueue | Cross-case signal queue |
-| `/referrals` | ReferralsView | Cross-case referral pipeline |
-| `/search` | SearchView | Full-text search across everything |
-| `/settings` | Settings | Theme, keyboard shortcuts, external launchers |
+| `/cases` | CasesList | Table view, create case, filter/sort |
+| `/cases/:id` | CaseDetail | **5 tabs: Investigate, Research, Financials, Timeline, Referrals** |
+| `/search` | SearchView | Full-text search via Cmd+K command palette |
+| `/settings` | Settings | Theme, SOS CSV upload, keyboard shortcuts |
 
-### Case Detail Tabs
-1. **Overview** — Dashboard metrics, entity-relationship graph (D3), interactive timeline
-2. **Documents** — Upload, OCR, view PDFs, generate memo
-3. **Research** — Search external data sources (Parcels, Ohio SOS, Ohio AOS, IRS, Recorder) — NEW Session 28
-4. **Financials** — Year-over-year 990 data table (revenue, expenses, assets)
-5. **Pipeline** — Signals → Detections → Findings workflow
-6. **Referrals** — Government referral tracking + case export
+### Case Detail Tabs (authoritative — from frontend-design-spec.md)
 
-### What's MISSING from the Frontend
-- **~~NO Research tab~~** — BUILT in Session 28 (6th tab on Case Detail)
-- **~~NO connector UI~~** — BUILT in Session 28 (5 search sources wired)
-- **NO inline notes on entities** — only signal notes exist
-- **NO saved searches**
-- **NO document annotation**
-- **NO "Add to Case" button on research results** — results display but can't auto-create entities yet
+1. **Investigate** — Cytoscape.js graph canvas (the "Web"). Four drill-down levels:
+   - Level 1: Web (graph) — knots (Person/Org nodes), connections (edges), toolbar with "+ Knot", "+ Connection", "+ Angle", pending badge, minimap
+   - Level 2: Profile — entity portrait, linked documents, connections list, angles list, quick capture textarea
+   - Level 3: Angle — narrative editor, cited document cards, Lead panel (async AI suggestions)
+   - Level 4: Document — OCR text with Intake highlights, RAG search panel, right-click context menu
+
+2. **Research** — External data source search (IRS, Ohio SOS, Ohio AOS, County Recorder, County Auditor). Async job polling (202 → poll every 2s). Results table with "+ Add to case" buttons.
+
+3. **Financials** — Year-over-year 990 data table (TanStack Table). Anomaly cell highlighting with "Open existing angle" / "Create new angle" actions.
+
+4. **Timeline** — Brushable chronological rail. Event types: Document upload, 990 filing, property transaction, UCC filing, confirmed angle, quick capture. "Cite in angle" picker.
+
+5. **Referrals** — "Generate Referral Package (PDF)" button → `POST /api/cases/<uuid>/referral-pdf/`. Deferred polish; backend is done.
+
+### Graph library: Cytoscape.js (NOT D3)
+D3 is present in the project but is used only for the Timeline brush. The entity-relationship
+graph uses `react-cytoscapejs` + `cytoscape-cose-bilkent` layout. Do not use D3 force simulation
+for the graph.
+
+### Node + edge visual encoding
+- **Person knot:** blue fill, 2px blue border
+- **Organization knot:** teal fill, 2px teal border
+- **Selected knot:** white fill, 3px primary border, gold badge
+- **Proposed connection:** dashed gray
+- **Confirmed connection:** solid, color = highest-severity angle on that connection
+  - CRITICAL: coral `#D85A30`
+  - HIGH: amber `#BA7517`
+  - MEDIUM: blue `#185FA5`
+  - INFORMATIONAL: gray
+- **Manual connection:** dotted
+
+### What's NOT in the new frontend
+- No standalone Entity Browser route — entity detail is the Profile drill-down within the Web
+- No Triage queue route — cross-case triage is future work
+- No Pipeline tab — Angles (Findings) live inside the Investigate tab workflow
+- No Documents tab — document viewing is Level 4 drill-down from a knot's Profile
+- No Overview tab — the Web *is* the overview
 
 ---
 
@@ -360,7 +424,7 @@ data_quality.py ─────── Validate extracted data, log issues
 signal_rules.py ─────── Run 29 fraud detection rules against case data
       │
       ▼
-Results visible in Pipeline tab (Signals → Detections → Findings)
+Results stored as Findings — visible as Angles in the Investigate tab
 ```
 
 **form990_parser.py** is NOT in this pipeline. It should be called after classification identifies a 990, to extract Part IV/VI/VII governance data. This is a known gap.
@@ -457,7 +521,13 @@ Results visible in Pipeline tab (Signals → Detections → Findings)
 ### Frontend
 - React 18.3.1, TypeScript
 - Vite build system
-- D3.js (entity-relationship graphs)
+- **Cytoscape.js** (`react-cytoscapejs` + `cytoscape-cose-bilkent`) — entity-relationship graph (the "Web")
+- D3.js — Timeline brush only (NOT for the graph)
+- Radix UI — headless component primitives (dialog, tabs, dropdown, tooltip, etc.)
+- TanStack Table 8 — Financials tab year-over-year table
+- sonner — toast notifications
+- cmdk — Cmd+K command palette (wired to `/api/search/`)
+- lucide-react — icon library
 - React Router DOM 6.30
 
 ### Infrastructure
@@ -637,7 +707,7 @@ the system, keep these accurate.
 - **Implemented a human-in-the-loop entity resolution pipeline** (rule-based extraction → normalization → fuzzy matching → investigator confirmation) that surfaces match candidates rather than silent-merging, as a deliberate legal defensibility decision.
 - **Integrated the Anthropic Claude API** as a fallback for messy document extraction and as a triage/exploration aid — while keeping the deliverable (referral package export) deterministic and citation-bearing rather than AI-generated.
 - **Designed a fraud signal detection engine** with pattern rules (shell entities, timeline compression, excessive officer compensation, address nexus) derived directly from anomalies I encountered in the founding investigation — not speculative.
-- **Shipped a React + TypeScript + D3 frontend** with a force-directed entity-relationship graph synchronized to a brushable timeline, dark/light/auto theming, skeleton loading states, and WCAG-aware accessibility (skip-to-content, ARIA live regions, reduced-motion support).
+- **Shipped a React + TypeScript frontend** with a Cytoscape.js entity-relationship graph (graph-first investigation workspace with 4-level drill-down), a D3-brushable timeline, dark/light/auto theming, skeleton loading states, and WCAG-aware accessibility (skip-to-content, ARIA live regions, reduced-motion support).
 - **Wrote 555+ backend tests** covering connectors, API endpoints, and signal rules, with CI running ruff, TypeScript type-check, and Vite build on every push.
 - **Reframed the product mid-build** after recognizing the right customer of the output is the professional investigator, not the citizen user — then consolidated an over-engineered three-table workflow (Signal / Detection / Finding) into a single two-dimensional model, cut speculative features, and refocused on a defensible referral package as the core deliverable.
 

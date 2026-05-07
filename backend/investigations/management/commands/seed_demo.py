@@ -1000,9 +1000,78 @@ class Command(BaseCommand):
                         },
                     )
 
+            # SR-015 INSIDER_SWAP involves both insiders — add the second entity link
+            if finding_data["rule_id"] == "SR-015":
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=james.id,
+                    entity_type="person",
+                    defaults={"context_note": "Second insider: received property at $0"},
+                )
+
             self.stdout.write(
                 self.style.SUCCESS(f"  ✓ {finding_data['rule_id']}: {finding_data['title'][:50]}")
             )
+
+        # ────────────────────────────────────────────────────────────────
+        # 11a. AI FINDING (seeded to demonstrate AI pattern analysis)
+        # ────────────────────────────────────────────────────────────────
+
+        ai_finding, _ = Finding.objects.get_or_create(
+            case=case,
+            rule_id="",
+            title="Timeline compression: multiple transactions within 30-day window",
+            defaults={
+                "description": (
+                    "Bright Future Foundation, James Mitchell, and two property transactions "
+                    "(1250 Oak Street and 875 Elm Avenue) share an unusually compressed timeline "
+                    "across three documents. The BFF board meeting minutes, the Oak Street deed, "
+                    "and the Elm Avenue deed all fall within a 49-day window (June 28 – August 15, "
+                    "2021), suggesting coordinated execution of a pre-arranged insider scheme."
+                ),
+                "severity": "INFORMATIONAL",
+                "status": "NEW",
+                "evidence_weight": "DIRECTIONAL",
+                "source": FindingSource.AI,
+                "narrative": "",
+                "legal_refs": [],
+                "evidence_snapshot": {
+                    "rationale": (
+                        "Two property deeds and contemporaneous board minutes fall within a "
+                        "49-day window. Coordinated timing between BFF governance records and "
+                        "recorder filings is consistent with pre-planned insider dealing."
+                    ),
+                    "suggested_action": (
+                        "Pull all deed transfers within 60 days of the BFF board meeting minutes"
+                    ),
+                    "doc_refs": ["Doc-1", "Doc-3"],
+                    "doc_ref_resolution": {
+                        "Doc-1": "STUB_DOC_1",
+                        "Doc-3": "STUB_DOC_3",
+                    },
+                },
+            },
+        )
+
+        # Link AI finding to both the org and the person at the center of the pattern
+        FindingEntity.objects.get_or_create(
+            finding=ai_finding,
+            entity_id=bff.id,
+            entity_type="organization",
+            defaults={"context_note": "Foundation involved in compressed-timeline transactions"},
+        )
+        FindingEntity.objects.get_or_create(
+            finding=ai_finding,
+            entity_id=james.id,
+            entity_type="person",
+            defaults={"context_note": "Insider who received property in the same window"},
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "  ✓ AI: Timeline compression: multiple transactions within 30-day window"
+            )
+        )
 
         # ────────────────────────────────────────────────────────────────
         # 12. INVESTIGATOR NOTES

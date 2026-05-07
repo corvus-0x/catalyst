@@ -3147,6 +3147,30 @@ def api_case_graph(request, pk):
     ):
         entity_finding_counts[str(row["entity_id"])] = row["cnt"]
 
+    # ── Helper: build finding-link lookup per entity pair ──────────────
+    # For each non-dismissed Finding with ≥2 entity_links, every (a, b)
+    # pair of those entities gets a summary entry. At render time the
+    # frontend uses this to colour/weight edges by confirmation state.
+    _finding_pairs: dict[tuple, list[dict]] = {}
+    for _f in (
+        Finding.objects.filter(case=case)
+        .exclude(status="DISMISSED")
+        .prefetch_related("entity_links")
+    ):
+        _eids = [str(_fe.entity_id) for _fe in _f.entity_links.all()]
+        if len(_eids) < 2:
+            continue
+        _meta = {
+            "finding_id": str(_f.pk),
+            "status": _f.status,
+            "severity": _f.severity,
+            "title": _f.title or "",
+        }
+        for _i, _ea in enumerate(_eids):
+            for _eb in _eids[_i + 1 :]:
+                _pair_key = (min(_ea, _eb), max(_ea, _eb))
+                _finding_pairs.setdefault(_pair_key, []).append(_meta)
+
     # ── 1. Collect nodes ──────────────────────────────────────────────
 
     # Persons
@@ -3396,6 +3420,14 @@ def api_case_graph(request, pk):
                     },
                 }
             )
+
+    # ── Annotate every edge with finding_links ────────────────────────
+    # For each edge, look up whether any non-dismissed Findings reference
+    # both endpoints. The frontend uses this list to colour confirmed
+    # connections differently from unconfirmed ones in the D3 graph.
+    for _edge in edges:
+        _pair_key = (min(_edge["source"], _edge["target"]), max(_edge["source"], _edge["target"]))
+        _edge["finding_links"] = _finding_pairs.get(_pair_key, [])
 
     # ── 3. Collect timeline events ────────────────────────────────────
 

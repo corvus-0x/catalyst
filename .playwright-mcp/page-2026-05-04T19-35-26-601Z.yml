@@ -1,0 +1,260 @@
+- generic [ref=e2]:
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary "Main navigation" [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: ⚗️
+        - generic [ref=e8]: CATALYST
+      - navigation "Primary" [ref=e9]:
+        - generic [ref=e10]:
+          - link "📊 Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e12]: 📊
+            - generic [ref=e13]: Dashboard
+          - link "📁 Cases" [ref=e14] [cursor=pointer]:
+            - /url: /cases
+            - generic [ref=e15]: 📁
+            - generic [ref=e16]: Cases
+          - link "👤 Entities" [ref=e17] [cursor=pointer]:
+            - /url: /entities
+            - generic [ref=e18]: 👤
+            - generic [ref=e19]: Entities
+          - link "⚡ Triage" [ref=e20] [cursor=pointer]:
+            - /url: /triage
+            - generic [ref=e21]: ⚡
+            - generic [ref=e22]: Triage
+          - link "📤 Referrals" [ref=e23] [cursor=pointer]:
+            - /url: /referrals
+            - generic [ref=e24]: 📤
+            - generic [ref=e25]: Referrals
+          - link "🔍 Search" [ref=e26] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e27]: 🔍
+            - generic [ref=e28]: Search
+        - separator [ref=e29]
+        - link "⚙️ Settings" [ref=e31] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=e32]: ⚙️
+          - generic [ref=e33]: Settings
+      - generic "Current user" [ref=e34]:
+        - generic [ref=e35]: TC
+        - generic [ref=e36]:
+          - generic [ref=e37]: Tyler Collins
+          - generic [ref=e38]: Investigator
+    - main [ref=e40]:
+      - generic [ref=e645]:
+        - generic [ref=e646]:
+          - generic [ref=e648]: Do Good In His Name Inc·ACTIVE
+          - group "View panes" [ref=e649]:
+            - button "Graph" [disabled] [pressed] [ref=e650]
+            - button "990 Viewer" [ref=e651] [cursor=pointer]
+            - button "Financials" [ref=e652] [cursor=pointer]
+            - button "Package" [ref=e653] [cursor=pointer]
+          - generic [ref=e654]:
+            - button "Find within case" [ref=e655] [cursor=pointer]:
+              - img [ref=e656]
+            - button "Layout presets" [ref=e659] [cursor=pointer]:
+              - img [ref=e660]
+            - button "More" [ref=e664] [cursor=pointer]:
+              - img [ref=e665]
+        - generic [ref=e669]:
+          - generic [ref=e671]:
+            - generic [ref=e672]:
+              - generic [ref=e673]: Phases
+              - button "Collapse left rail" [ref=e674] [cursor=pointer]:
+                - img [ref=e675]
+            - navigation "Phase navigator" [ref=e678]:
+              - generic [ref=e679]:
+                - generic [ref=e680]:
+                  - button "INGEST 1 doc" [expanded] [ref=e681] [cursor=pointer]:
+                    - img [ref=e683]
+                    - generic [ref=e685]: INGEST
+                    - generic [ref=e686]: 1 doc
+                  - list [ref=e687]:
+                    - listitem [ref=e688]:
+                      - button "990s 1" [ref=e689] [cursor=pointer]:
+                        - generic [ref=e690]: 990s
+                        - generic [ref=e691]: "1"
+                    - listitem [ref=e692]:
+                      - button "SOS filings 0" [ref=e693] [cursor=pointer]:
+                        - generic [ref=e694]: SOS filings
+                        - generic [ref=e695]: "0"
+                    - listitem [ref=e696]:
+                      - button "Recorder instruments 0" [ref=e697] [cursor=pointer]:
+                        - generic [ref=e698]: Recorder instruments
+                        - generic [ref=e699]: "0"
+                    - listitem [ref=e700]:
+                      - button "Uploaded 0" [ref=e701] [cursor=pointer]:
+                        - generic [ref=e702]: Uploaded
+                        - generic [ref=e703]: "0"
+                - generic [ref=e704]:
+                  - button "DETECT 0 flags · 0 open" [expanded] [ref=e705] [cursor=pointer]:
+                    - img [ref=e707]
+                    - generic [ref=e709]: DETECT
+                    - generic [ref=e710]: 0 flags · 0 open
+                  - list [ref=e711]:
+                    - listitem [ref=e712]:
+                      - button "Critical 0" [ref=e713] [cursor=pointer]:
+                        - generic [ref=e714]: Critical
+                        - generic [ref=e715]: "0"
+                    - listitem [ref=e716]:
+                      - button "High 0" [ref=e717] [cursor=pointer]:
+                        - generic [ref=e718]: High
+                        - generic [ref=e719]: "0"
+                    - listitem [ref=e720]:
+                      - button "Medium 0" [ref=e721] [cursor=pointer]:
+                        - generic [ref=e722]: Medium
+                        - generic [ref=e723]: "0"
+                    - listitem [ref=e724]:
+                      - button "── dismissed 0" [ref=e725] [cursor=pointer]:
+                        - generic [ref=e726]: ── dismissed
+                        - generic [ref=e727]: "0"
+                - generic [ref=e728]:
+                  - button "INVESTIGATE 2 transforms run" [expanded] [ref=e729] [cursor=pointer]:
+                    - img [ref=e731]
+                    - generic [ref=e733]: INVESTIGATE
+                    - generic [ref=e734]: 2 transforms run
+                  - list [ref=e735]:
+                    - listitem [ref=e736]:
+                      - button "IRS TEOS 2" [ref=e737] [cursor=pointer]:
+                        - generic [ref=e738]: IRS TEOS
+                        - generic [ref=e739]: "2"
+                - generic [ref=e740]:
+                  - button "DETERMINE 0 / 0 confirmed" [expanded] [ref=e741] [cursor=pointer]:
+                    - img [ref=e743]
+                    - generic [ref=e745]: DETERMINE
+                    - generic [ref=e746]: 0 / 0 confirmed
+                  - list [ref=e747]:
+                    - listitem [ref=e748]:
+                      - button "Confirmed findings 0" [ref=e749] [cursor=pointer]:
+                        - generic [ref=e750]: Confirmed findings
+                        - generic [ref=e751]: "0"
+                    - listitem [ref=e752]:
+                      - button "Needs evidence 0" [ref=e753] [cursor=pointer]:
+                        - generic [ref=e754]: Needs evidence
+                        - generic [ref=e755]: "0"
+                    - listitem [ref=e756]:
+                      - button "Package status 0 / 4 agencies sent" [disabled] [ref=e757]:
+                        - generic [ref=e758]: Package status
+                        - generic [ref=e759]: 0 / 4 agencies sent
+            - generic [ref=e760]: Entity palette
+            - list [ref=e763]:
+              - listitem [ref=e764]:
+                - button "Add Financial instrument" [ref=e765] [cursor=pointer]:
+                  - img [ref=e766]
+                  - generic [ref=e771]: Financial instrument
+              - listitem [ref=e772]:
+                - button "Add Organization" [ref=e773] [cursor=pointer]:
+                  - img [ref=e774]
+                  - generic [ref=e778]: Organization
+              - listitem [ref=e779]:
+                - button "Add Person" [ref=e780] [cursor=pointer]:
+                  - img [ref=e781]
+                  - generic [ref=e784]: Person
+              - listitem [ref=e785]:
+                - button "Add Property" [ref=e786] [cursor=pointer]:
+                  - img [ref=e787]
+                  - generic [ref=e790]: Property
+              - listitem [ref=e791]:
+                - button "Add Document" [disabled] [ref=e792]:
+                  - img [ref=e793]
+                  - generic [ref=e796]: Document
+            - generic [ref=e797]: Recently added
+            - region "Recently added" [ref=e799]:
+              - heading "RECENTLY ADDED" [level=3] [ref=e800]
+              - paragraph [ref=e801]: No recent activity yet — items will appear here as you add documents, entities, and findings.
+          - separator [ref=e802]
+          - generic [ref=e804]:
+            - generic [ref=e807]:
+              - generic "Graph legend":
+                - generic: Person
+                - generic: Org
+                - generic: Property
+                - generic: Financial
+              - toolbar "Graph controls" [ref=e813]:
+                - generic [ref=e814]:
+                  - button "Zoom in" [ref=e815] [cursor=pointer]:
+                    - img [ref=e816]
+                  - button "Zoom out" [ref=e817] [cursor=pointer]:
+                    - img [ref=e818]
+                - button "Layout" [ref=e819] [cursor=pointer]:
+                  - generic [ref=e820]: Organic
+                  - img [ref=e821]
+                - button "View" [ref=e823] [cursor=pointer]:
+                  - generic [ref=e824]: Normal
+                  - img [ref=e825]
+                - button "Show" [ref=e827] [cursor=pointer]:
+                  - generic [ref=e828]: Show
+                  - img [ref=e829]
+                - button "Lock layout" [ref=e831] [cursor=pointer]:
+                  - img [ref=e832]
+            - separator [ref=e835]
+            - generic [ref=e838]:
+              - generic [ref=e839]:
+                - tablist "Bottom dock" [ref=e840]:
+                  - tab "Audit log 1" [active] [selected] [ref=e841] [cursor=pointer]:
+                    - generic [ref=e842]: Audit log
+                    - generic [ref=e843]: "1"
+                  - tab "Triage" [ref=e844] [cursor=pointer]:
+                    - generic [ref=e845]: Triage
+                  - tab "Transforms" [ref=e846] [cursor=pointer]:
+                    - generic [ref=e847]: Transforms
+                  - tab "Documents 1" [ref=e848] [cursor=pointer]:
+                    - generic [ref=e849]: Documents
+                    - generic [ref=e850]: "1"
+                - button "Collapse bottom dock" [ref=e851] [cursor=pointer]:
+                  - img [ref=e852]
+              - tabpanel "Audit log 1" [ref=e854]:
+                - generic [ref=e855]:
+                  - generic [ref=e856]:
+                    - generic [ref=e857]:
+                      - generic [ref=e858]: Audit log
+                      - generic [ref=e859]: 1 events
+                      - generic [ref=e860]: · chain of custody, append-only
+                    - button "Refresh audit log" [ref=e861] [cursor=pointer]:
+                      - img [ref=e862]
+                  - table [ref=e868]:
+                    - rowgroup [ref=e874]:
+                      - row "Time Event Description Source" [ref=e875]:
+                        - columnheader "Time" [ref=e876] [cursor=pointer]:
+                          - text: Time
+                          - img [ref=e878]
+                        - columnheader "Event" [ref=e880]
+                        - columnheader "Description" [ref=e881] [cursor=pointer]:
+                          - text: Description
+                          - img [ref=e883]
+                        - columnheader "Source" [ref=e886] [cursor=pointer]:
+                          - text: Source
+                          - img [ref=e888]
+                    - rowgroup [ref=e891]:
+                      - row "14:48 Case created cases · 7a5d09c4 system" [ref=e892]:
+                        - cell "14:48" [ref=e893]
+                        - cell "Case created" [ref=e894]:
+                          - generic [ref=e895]: Case created
+                        - cell "cases · 7a5d09c4" [ref=e896]
+                        - cell "system" [ref=e897]
+              - tabpanel "Triage" [ref=e898]
+              - tabpanel "Transforms" [ref=e899]
+              - tabpanel "Documents 1" [ref=e900]
+          - separator [ref=e901]
+          - generic [ref=e903]:
+            - generic [ref=e904]:
+              - button "Collapse detail panel" [ref=e905] [cursor=pointer]:
+                - img [ref=e906]
+              - generic [ref=e908]: Detail
+            - generic [ref=e909]:
+              - generic [ref=e910]: Case subject
+              - heading "Do Good In His Name Inc" [level=2] [ref=e911]
+              - generic [ref=e912]:
+                - generic [ref=e913]:
+                  - term [ref=e914]: Status
+                  - definition [ref=e915]: ACTIVE
+                - generic [ref=e916]:
+                  - term [ref=e917]: Created
+                  - definition [ref=e918]: May 4, 2026, 2:48 PM
+                - generic [ref=e919]:
+                  - term [ref=e920]: Documents
+                  - definition [ref=e921]: "1"
+            - paragraph [ref=e922]: Click an entity on the graph to see its properties, sources, flags, and the research actions you can run on it.
