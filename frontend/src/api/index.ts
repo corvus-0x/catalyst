@@ -34,6 +34,7 @@ export {
   fetchFinancials,
   fetch990s,
   fetchAngles,
+  fetchAngle,
   createAngle,
   updateAngle,
   deleteAngle,

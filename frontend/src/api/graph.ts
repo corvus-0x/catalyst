@@ -28,10 +28,10 @@ import type {
  * and `timeline_events` for the D3 brushable timeline.
  *
  * Edge colour guide (from finding_links severity):
- *   CRITICAL → coral #D85A30
- *   HIGH     → amber #BA7517
- *   MEDIUM   → blue  #185FA5
- *   Empty    → default grey
+ *   CRITICAL -> coral #D85A30
+ *   HIGH     -> amber #BA7517
+ *   MEDIUM   -> blue  #185FA5
+ *   Empty    -> default grey
  *
  * Cytoscape layout: cytoscape-cose-bilkent (NOT D3 force simulation).
  */
@@ -76,7 +76,7 @@ export async function fetchEntities(
 }
 
 // ---------------------------------------------------------------------------
-// Entity detail (Profile drill-down — Level 2 in the Web)
+// Entity detail (Profile drill-down -- Level 2 in the Web)
 // ---------------------------------------------------------------------------
 
 /**
@@ -86,10 +86,10 @@ export async function fetchEntities(
  * "property" | "financial_instrument".
  *
  * Response includes:
- *   - `related_documents` — full DocumentItem shapes with page_reference and context_note
- *   - `related_findings` — compact finding summaries (use this, ignore related_signals)
- *   - `organization_roles` — for persons: list of org roles with dates
- *   - `transactions` — for properties: list of PropertyTransaction shapes
+ *   - `related_documents` -- full DocumentItem shapes with page_reference and context_note
+ *   - `related_findings` -- compact finding summaries (use this, ignore related_signals)
+ *   - `organization_roles` -- for persons: list of org roles with dates
+ *   - `transactions` -- for properties: list of PropertyTransaction shapes
  *
  * Per API contract GAP-3: `related_signals` duplicates `related_findings` in a
  * different shape. Ignore `related_signals` in the UI.

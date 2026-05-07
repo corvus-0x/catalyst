@@ -1,31 +1,21 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-
-/* ─── Placeholder stub components ───────────────────────────────────────────
-   These will be replaced by real page components in later build steps.
-   Each renders a bare div so the router is testable immediately.
-─────────────────────────────────────────────────────────────────────────── */
+import CaseDetailView from "./views/CaseDetailView";
 
 function Dashboard() {
-  return <div>Dashboard — coming soon</div>;
+  return <div style={{ padding: 24 }}>Dashboard -- coming soon</div>;
 }
 
 function CasesList() {
-  return <div>CasesList — coming soon</div>;
-}
-
-function CaseDetail() {
-  return <div>CaseDetail — coming soon</div>;
+  return <div style={{ padding: 24 }}>CasesList -- coming soon</div>;
 }
 
 function SearchView() {
-  return <div>SearchView — coming soon</div>;
+  return <div style={{ padding: 24 }}>SearchView -- coming soon</div>;
 }
 
 function Settings() {
-  return <div>Settings — coming soon</div>;
+  return <div style={{ padding: 24 }}>Settings -- coming soon</div>;
 }
-
-/* ─── Router ─────────────────────────────────────────────────────────────── */
 
 export default function App() {
   return (
@@ -33,10 +23,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/cases" element={<CasesList />} />
-        <Route path="/cases/:id" element={<CaseDetail />} />
+        <Route path="/cases/:id" element={<CaseDetailView />} />
         <Route path="/search" element={<SearchView />} />
         <Route path="/settings" element={<Settings />} />
-        {/* Catch-all: redirect unknown paths to dashboard */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

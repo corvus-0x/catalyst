@@ -1,5 +1,5 @@
 /**
- * cases.ts — API functions for case management, documents, Angles (Findings), and notes.
+ * cases.ts -- API functions for case management, documents, Angles (Findings), and notes.
  *
  * Vocabulary used in JSDoc comments follows the frontend spec (CLAUDE.md):
  *   Angle   = Finding (backend model)
@@ -29,12 +29,11 @@ import type {
   SignalSummary,
   FindingSeverity,
   FindingStatus,
-  EvidenceWeight,
   FindingSource,
 } from "../types";
 
 // ---------------------------------------------------------------------------
-// Local param shapes (not exported from types — used only as function params)
+// Local param shapes (not exported from types -- used only as function params)
 // ---------------------------------------------------------------------------
 
 export interface PaginationParams {
@@ -45,7 +44,7 @@ export interface PaginationParams {
 export interface FindingFilterParams {
   status?: FindingStatus;
   severity?: FindingSeverity;
-  /** "Rule" chip → AUTO, "Manual" chip → MANUAL, "AI" chip → AI */
+  /** "Rule" chip -> AUTO, "Manual" chip -> MANUAL, "AI" chip -> AI */
   source?: FindingSource;
   order_by?: string;
   direction?: "asc" | "desc";
@@ -125,11 +124,8 @@ export async function exportCase(
 
 /**
  * Upload one or more files to a case.
- * Pass a FormData with the files already appended — this endpoint uses
+ * Pass a FormData with the files already appended -- this endpoint uses
  * multipart/form-data, NOT JSON, so we bypass the default Content-Type header.
- * We call fetch directly here instead of fetchApi because fetchApi JSON-serializes
- * its `body` arg and sets Content-Type: application/json. For multipart, the browser
- * must set the Content-Type (including boundary) automatically.
  */
 export async function uploadDocuments(
   caseId: string,
@@ -139,7 +135,6 @@ export async function uploadDocuments(
   const response = await fetch(`/api/cases/${caseId}/documents/bulk/`, {
     method: "POST",
     body: formData,
-    // No Content-Type — browser sets multipart/form-data + boundary automatically
   });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -154,7 +149,6 @@ export async function uploadDocuments(
 
 /**
  * Trigger batch OCR on all pending documents in a case.
- * The backend processes synchronously and returns a status summary.
  */
 export async function processPendingDocuments(caseId: string): Promise<unknown> {
   return fetchApi<unknown>(`/api/cases/${caseId}/documents/process-pending/`, {
@@ -186,7 +180,7 @@ export async function deleteDocument(
 
 /**
  * Generate the deterministic, citation-bearing referral PDF.
- * Returns a Blob — callers should use URL.createObjectURL to open it.
+ * Returns a Blob -- callers should use URL.createObjectURL to open it.
  */
 export async function generateReferralPdf(caseId: string): Promise<Blob> {
   return fetchApi<Blob>(`/api/cases/${caseId}/referral-pdf/`, {
@@ -235,7 +229,7 @@ export interface AngleListParams extends PaginationParams, FindingFilterParams {
  * Fetch the paginated list of Angles (Findings) for a case.
  *
  * Use `source` filter chips in the Pipeline tab:
- *   "Rule" → source=AUTO, "Manual" → source=MANUAL, "AI" → source=AI
+ *   "Rule" -> source=AUTO, "Manual" -> source=MANUAL, "AI" -> source=AI
  */
 export async function fetchAngles(
   caseId: string,
@@ -308,6 +302,11 @@ export async function deleteAngle(
   return fetchApi<void>(`/api/cases/${caseId}/findings/${findingId}/`, {
     method: "DELETE",
   });
+}
+
+/** Fetch a single Angle (Finding) by ID. */
+export async function fetchAngle(caseId: string, findingId: string): Promise<FindingItem> {
+  return fetchApi<FindingItem>(`/api/cases/${caseId}/findings/${findingId}/`);
 }
 
 /** Re-run all signal rules against a case, creating new Angles for new hits. */
