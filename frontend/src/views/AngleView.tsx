@@ -189,6 +189,12 @@ function CitedDocCard({
 // LeadPanel — 224px right sub-panel with debounced AI suggestion refresh
 // ---------------------------------------------------------------------------
 
+interface LeadSections {
+  next_step: string;
+  pattern_match: string | null;
+  new_angle: string | null;
+}
+
 interface LeadPanelProps {
   caseId: string;
   finding: FindingItem | null;
@@ -197,7 +203,8 @@ interface LeadPanelProps {
 }
 
 function LeadPanel({ caseId, finding, citedDocCount }: LeadPanelProps) {
-  const [leadContent, setLeadContent] = useState<string | null>(null);
+  const [sections, setSections] = useState<LeadSections | null>(null);
+  const [rawText, setRawText] = useState<string | null>(null);
   const [leadLoading, setLeadLoading] = useState(false);
   const [leadError, setLeadError] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,7 +212,8 @@ function LeadPanel({ caseId, finding, citedDocCount }: LeadPanelProps) {
   const fetchLead = useCallback(async () => {
     if (!finding) return;
     if (citedDocCount === 0) {
-      setLeadContent(null);
+      setSections(null);
+      setRawText(null);
       setLeadLoading(false);
       return;
     }
@@ -213,21 +221,42 @@ function LeadPanel({ caseId, finding, citedDocCount }: LeadPanelProps) {
     setLeadLoading(true);
     setLeadError(false);
 
-    const question =
-      `Angle: "${finding.title}". Cited docs: ${citedDocCount}. ` +
-      `Suggest ONE concrete next investigative step in 1-2 sentences. ` +
-      `Be specific about what to look for. ` +
-      `Do NOT use words: fraud, criminal, illegal, guilty.`;
+    const question = [
+      `Angle: "${finding.title}"`,
+      `Evidence cited: ${citedDocCount} documents`,
+      `Existing narrative: ${finding.narrative ? finding.narrative.slice(0, 400) : "(none yet)"}`,
+      ``,
+      `Respond with ONLY a valid JSON object — no markdown, no explanation, just the JSON:`,
+      `{`,
+      `  "next_step": "one concrete investigative action (1-2 sentences)",`,
+      `  "pattern_match": null,`,
+      `  "new_angle": null`,
+      `}`,
+      `For pattern_match: if the cited evidence matches one of these signal rules (SR-003, SR-004, SR-005, SR-006, SR-010, SR-012, SR-013, SR-015, SR-017, SR-021, SR-024, SR-025, SR-026, SR-028, SR-029), set it to a 1-2 sentence explanation naming the rule. Otherwise null.`,
+      `For new_angle: if you see a second independent line of inquiry worth pursuing, set it to "EntityA and EntityB — brief reason (1 sentence)". Otherwise null.`,
+      `Rules: Never use the words fraud, criminal, illegal, guilty. Evidence weight is at most DIRECTIONAL.`,
+    ].join("\n");
 
     try {
       const response = await aiAsk(caseId, question);
-      setLeadContent(response.answer);
+      const text = response.answer.trim();
+      // Strip markdown code fences if the model wraps in ```json ... ```
+      const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+      try {
+        const parsed = JSON.parse(clean) as LeadSections;
+        setSections(parsed);
+        setRawText(null);
+      } catch {
+        // Couldn't parse JSON — show raw text in Suggested next only
+        setRawText(text);
+        setSections(null);
+      }
     } catch {
       setLeadError(true);
     } finally {
       setLeadLoading(false);
     }
-  }, [caseId, finding, citedDocCount]);
+  }, [caseId, finding?.id, finding?.title, finding?.narrative, citedDocCount]);
 
   // Debounced re-fetch whenever citedDocCount changes (3 s delay spec §8)
   useEffect(() => {
@@ -270,16 +299,42 @@ function LeadPanel({ caseId, finding, citedDocCount }: LeadPanelProps) {
 
         {/* Error state */}
         {citedDocCount > 0 && !leadLoading && leadError && (
-          <p className="lead-panel__text lead-panel__text--muted">
-            Lead unavailable.
-          </p>
+          <p className="lead-panel__text lead-panel__text--muted">Lead unavailable.</p>
         )}
 
-        {/* Suggestion */}
-        {citedDocCount > 0 && !leadLoading && !leadError && leadContent && (
+        {/* Raw text fallback — JSON parse failed */}
+        {citedDocCount > 0 && !leadLoading && !leadError && rawText && (
           <>
             <p className="lead-panel__section-title">Suggested next</p>
-            <p className="lead-panel__text">{leadContent}</p>
+            <p className="lead-panel__text">{rawText}</p>
+          </>
+        )}
+
+        {/* Structured 3-section response */}
+        {citedDocCount > 0 && !leadLoading && !leadError && sections && (
+          <>
+            {sections.next_step && (
+              <>
+                <p className="lead-panel__section-title">Suggested next</p>
+                <p className="lead-panel__text">{sections.next_step}</p>
+              </>
+            )}
+
+            {sections.pattern_match && (
+              <>
+                <hr className="lead-panel__divider" />
+                <p className="lead-panel__section-title">Pattern match</p>
+                <p className="lead-panel__text">{sections.pattern_match}</p>
+              </>
+            )}
+
+            {sections.new_angle && (
+              <>
+                <hr className="lead-panel__divider" />
+                <p className="lead-panel__section-title">New angle?</p>
+                <p className="lead-panel__text">{sections.new_angle}</p>
+              </>
+            )}
           </>
         )}
       </div>

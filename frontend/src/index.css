@@ -7,6 +7,9 @@
   --color-medium: #185FA5;
   --color-informational: #9ca3af;
 
+  /* Alias used in error/warning inline styles */
+  --color-coral: #D85A30;
+
   /* Knot (node) fill colors */
   --color-knot-person: #3b82f6;
   --color-knot-org: #14b8a6;
@@ -33,7 +36,1013 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  height: 100%;
   margin: 0;
-  font-family: system-ui, sans-serif;
 }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #111827;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Remove default browser focus rings from Radix tab panels (they get tabIndex="0"
+   automatically and the browser focus ring can appear as a coral/pink outline on
+   Windows depending on the system accent colour). Interactive elements keep their
+   own focused styles. */
+[role="tabpanel"]:focus,
+[role="tabpanel"]:focus-visible {
+  outline: none;
+}
+
+/* Remove Cytoscape canvas container focus ring (clicking the graph gives it focus) */
+.cytoscape-container:focus,
+.cytoscape-container:focus-visible {
+  outline: none;
+}
+
+/* ─── Tab primitives (Radix UI) ─────────────────────────────────────────────── */
+
+.tabs-list {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 16px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.tabs-trigger {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.tabs-trigger:hover {
+  color: #374151;
+}
+
+.tabs-trigger[data-state="active"] {
+  color: #111827;
+  border-bottom-color: #3b82f6;
+}
+
+/* Tab panel full-height fix.
+   Radix sets [hidden] on inactive panels to collapse them.
+   Inline display:flex would override [hidden], so we use data-state selectors here instead. */
+.tab-panel[data-state="inactive"] { display: none; }
+.tab-panel[data-state="active"]   { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ─── Toolbar buttons ────────────────────────────────────────────────────────── */
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.toolbar-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.toolbar-btn:active {
+  background: #f3f4f6;
+}
+
+.toolbar-btn--pending {
+  border-color: #fbbf24;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.toolbar-btn--pending:hover {
+  background: #fef3c7;
+}
+
+/* ─── Status pill ───────────────────────────────────────────────────────────── */
+
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-pill--active   { background: #dcfce7; color: #166534; }
+.status-pill--paused   { background: #fef9c3; color: #713f12; }
+.status-pill--referred { background: #dbeafe; color: #1e40af; }
+.status-pill--closed   { background: #f3f4f6; color: #6b7280; }
+
+/* ─── Empty state ───────────────────────────────────────────────────────────── */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 32px;
+}
+
+.empty-state__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+.empty-state__body {
+  font-size: 14px;
+  margin: 0;
+  max-width: 320px;
+}
+
+/* ─── Right panel (Profile / Angle / Connection review) ─────────────────────── */
+
+.right-panel {
+  border-left: 1px solid #e5e7eb;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.right-panel--profile { width: 380px; }
+.right-panel--angle   { width: 600px; }
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.panel-section {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.panel-section__title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  margin: 0 0 6px;
+}
+
+.panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ─── Entity avatar ──────────────────────────────────────────────────────────── */
+
+.entity-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.entity-avatar--person { background: #3b82f6; }
+.entity-avatar--org    { background: #14b8a6; }
+
+/* ─── Doc type badges ────────────────────────────────────────────────────────── */
+
+.doc-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.doc-badge--IRS_990       { background: #dbeafe; color: #1e3a8a; }
+.doc-badge--DEED          { background: #dcfce7; color: #14532d; }
+.doc-badge--UCC           { background: #fef9c3; color: #713f12; }
+.doc-badge--AUDIT_REPORT  { background: #fce7f3; color: #831843; }
+.doc-badge--BANK_STATEMENT{ background: #ede9fe; color: #4c1d95; }
+.doc-badge--PERMIT        { background: #ffedd5; color: #7c2d12; }
+.doc-badge--CONTRACT      { background: #d1fae5; color: #064e3b; }
+.doc-badge--CORRESPONDENCE{ background: #e0f2fe; color: #0c4a6e; }
+.doc-badge--OTHER,
+.doc-badge--UNKNOWN       { background: #f3f4f6; color: #6b7280; }
+
+/* ─── Status / severity / weight / connection badges ────────────────────────── */
+
+.angle-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; }
+.angle-badge--NEW            { background: #ede9fe; color: #4c1d95; }
+.angle-badge--NEEDS_EVIDENCE { background: #fef3c7; color: #92400e; }
+.angle-badge--CONFIRMED      { background: #dcfce7; color: #166534; }
+.angle-badge--DISMISSED      { background: #f3f4f6; color: #6b7280; }
+
+.severity-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+.severity-badge--CRITICAL    { background: #fee2e2; color: #7f1d1d; }
+.severity-badge--HIGH        { background: #fef3c7; color: #78350f; }
+.severity-badge--MEDIUM      { background: #dbeafe; color: #1e3a8a; }
+.severity-badge--LOW,
+.severity-badge--INFORMATIONAL { background: #f3f4f6; color: #6b7280; }
+
+.weight-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.weight-badge--SPECULATIVE { background: #f3f4f6; color: #6b7280; }
+.weight-badge--DIRECTIONAL { background: #fef3c7; color: #92400e; }
+.weight-badge--DOCUMENTED  { background: #dbeafe; color: #1e40af; }
+.weight-badge--TRACED      { background: #dcfce7; color: #166534; }
+
+.conn-state-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+.conn-state-badge--confirmed { background: #dcfce7; color: #166534; }
+.conn-state-badge--proposed  { background: #fef3c7; color: #92400e; }
+.conn-state-badge--manual    { background: #ede9fe; color: #4c1d95; }
+
+/* ─── Panel list items ───────────────────────────────────────────────────────── */
+
+.panel-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.panel-list-item:hover { background: #f9fafb; }
+
+.panel-list-item__label {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-list-item__meta {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* ─── Back button ────────────────────────────────────────────────────────────── */
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.back-btn:hover { background: #f3f4f6; color: #374151; }
+
+/* ─── Quick capture textarea ─────────────────────────────────────────────────── */
+
+.quick-capture {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 52px;
+  transition: border-color 0.1s;
+  box-sizing: border-box;
+}
+
+.quick-capture:focus { border-color: #3b82f6; }
+
+/* ─── Angle view (Steps 6–8) ─────────────────────────────────────────────────── */
+
+.angle-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.angle-view__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.angle-view__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  overflow-y: auto;
+  gap: 14px;
+}
+
+.narrative-editor {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  min-height: 110px;
+  line-height: 1.5;
+  transition: border-color 0.1s;
+  box-sizing: border-box;
+}
+
+.narrative-editor:focus { border-color: #3b82f6; }
+
+/* ─── Cited document card ────────────────────────────────────────────────────── */
+
+.cited-doc-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cited-doc-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cited-doc-card__excerpt {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cited-doc-card__tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 4px 10px 8px;
+}
+
+/* Intake fact tags on cited doc cards */
+.fact-tag { display: inline-block; padding: 1px 6px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+.fact-tag--entity { background: var(--tag-entity-bg); color: var(--tag-entity-color); }
+.fact-tag--date   { background: var(--tag-date-bg);   color: var(--tag-date-color); }
+.fact-tag--amount { background: var(--tag-amount-bg);  color: var(--tag-amount-color); }
+.fact-tag--flag   { background: var(--tag-flag-bg);   color: var(--tag-flag-color); border-bottom: 1.5px solid #D85A30; }
+
+/* ─── Lead panel (Step 8) ────────────────────────────────────────────────────── */
+
+.lead-panel {
+  width: 224px;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e7eb;
+  background: #fafaf9;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.lead-panel__header {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.lead-panel__section {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.lead-panel__section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin: 0 0 5px;
+}
+
+.lead-panel__text {
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* ─── Document view (Steps 9–10) ────────────────────────────────────────────── */
+
+.doc-view {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.doc-view__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.doc-view__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.doc-view__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  background: #fafaf9;
+}
+
+/* ─── RAG search panel (Step 10) ────────────────────────────────────────────── */
+
+.rag-panel {
+  width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.rag-panel__header {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.rag-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.1s;
+}
+
+.rag-input:focus { border-color: #3b82f6; }
+
+.rag-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.rag-result {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.rag-result:hover { background: #f9fafb; }
+
+.rag-result__title { font-size: 12px; font-weight: 600; color: #111827; margin: 0 0 2px; }
+.rag-result__snippet { font-size: 11px; color: #6b7280; margin: 0; line-height: 1.4; }
+
+/* ─── Dialogs (Steps 11–12) ──────────────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  animation: fade-in 0.12s ease;
+}
+
+.dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  z-index: 101;
+  min-width: 480px;
+  max-width: 600px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: slide-up 0.14s ease;
+}
+
+.dialog-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.dialog-title { font-size: 15px; font-weight: 600; margin: 0; }
+
+.dialog-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dialog-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { transform: translate(-50%, -46%); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-primary:hover    { background: #1d4ed8; }
+.btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+.btn-danger {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-danger:hover { background: #b91c1c; }
+
+.btn-secondary {
+  padding: 7px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-secondary:hover { background: #f9fafb; }
+
+/* ─── Icon button ────────────────────────────────────────────────────────────── */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #6b7280;
+  transition: background 0.1s, color 0.1s;
+}
+
+.icon-btn:hover { background: #f3f4f6; color: #111827; }
+
+/* ─── Cite picker (Step 11) ──────────────────────────────────────────────────── */
+
+.cite-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+}
+
+.cite-item:last-child { border-bottom: none; }
+.cite-item--already-cited { opacity: 0.45; cursor: default; }
+
+/* ─── Tie-off modal radio pills (Step 12) ────────────────────────────────────── */
+
+.outcome-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+  font-size: 13px;
+}
+
+.outcome-pill--selected { border-color: #2563eb; background: #eff6ff; }
+.outcome-pill:hover:not(.outcome-pill--selected) { background: #f9fafb; }
+
+/* ─── Connection review drawer (Step 5) ──────────────────────────────────────── */
+
+.conn-review-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  z-index: 10;
+}
+
+.conn-review-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 460px;
+  background: #fff;
+  border-left: 1px solid #e5e7eb;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -6px 0 24px rgba(0,0,0,0.1);
+}
+
+.excerpt-box {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* ─── Research tab (Steps 16–17) ────────────────────────────────────────────── */
+
+.source-bar { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid #e5e7eb; background: #fff; flex-shrink: 0; flex-wrap: wrap; }
+.source-btn { padding: 5px 12px; border: 1.5px solid #d1d5db; border-radius: 20px; background: #fff; font-size: 13px; font-weight: 500; color: #374151; cursor: pointer; transition: all 0.1s; }
+.source-btn:hover { border-color: #9ca3af; background: #f9fafb; }
+.source-btn--active { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.source-btn--broken { color: #9ca3af; border-style: dashed; cursor: default; }
+.query-form { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; background: #fff; }
+.query-input { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 13px; outline: none; transition: border-color 0.1s; }
+.query-input:focus { border-color: #3b82f6; }
+.job-rail { padding: 8px 16px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; background: #fafaf9; }
+.job-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: #6b7280; }
+.job-item__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.results-area { flex: 1; overflow-y: auto; }
+.results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.results-table th { padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #f9fafb; position: sticky; top: 0; }
+.results-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+.results-table tr:hover td { background: #f9fafb; }
+.add-trigger { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid #d1d5db; background: #fff; cursor: pointer; font-size: 15px; color: #6b7280; transition: all 0.1s; }
+.add-trigger:hover { border-color: #2563eb; color: #2563eb; }
+.add-trigger--done { border-color: #16a34a; color: #16a34a; cursor: default; }
+.add-popover { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 6px; min-width: 200px; z-index: 50; }
+.add-option { display: block; width: 100%; padding: 7px 10px; text-align: left; font-size: 13px; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #374151; transition: background 0.1s; }
+.add-option:hover { background: #f3f4f6; }
+.add-option__sub { font-size: 11px; color: #9ca3af; display: block; }
+
+/* ─── Financials tab (Step 18) ───────────────────────────────────────────────── */
+
+.fin-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #fff; }
+.fin-tab__header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.fin-tab__title { font-size: 14px; font-weight: 600; margin: 0; }
+.fin-tab__sub { font-size: 12px; color: #9ca3af; }
+.fin-table-wrap { flex: 1; overflow: auto; }
+.fin-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
+.fin-table th { padding: 8px 12px; text-align: right; font-size: 11px; font-weight: 700; color: #6b7280; border-bottom: 2px solid #e5e7eb; white-space: nowrap; position: sticky; top: 0; background: #fff; z-index: 1; letter-spacing: 0.03em; }
+.fin-table th:first-child { text-align: left; width: 180px; }
+.fin-table td { padding: 7px 12px; text-align: right; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
+.fin-table td:first-child { text-align: left; font-weight: 500; color: #374151; }
+.fin-table tr:hover td { background: #f9fafb; }
+.cell--spike { background: #fef3c7 !important; }
+.cell--flag  { background: #fff1f0 !important; }
+.yoy-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 3px; border-radius: 2px; margin-left: 4px; vertical-align: middle; }
+.yoy-badge--up { color: #d97706; }
+.yoy-badge--down { color: #2563eb; }
+
+/* ─── Timeline tab (Step 19) ─────────────────────────────────────────────────── */
+
+.timeline-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #fff; }
+.timeline-controls { padding: 8px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+.filter-chip { padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 20px; font-size: 12px; font-weight: 500; color: #6b7280; cursor: pointer; background: #fff; transition: all 0.1s; }
+.filter-chip--active { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.filter-chip:hover:not(.filter-chip--active) { border-color: #9ca3af; color: #374151; }
+.timeline-brush-area { padding: 8px 16px 0; flex-shrink: 0; }
+.timeline-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.event-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.event-dot--document    { background: #9ca3af; }
+.event-dot--financial   { background: #3b82f6; }
+.event-dot--transaction { background: #f59e0b; }
+.event-dot--finding     { background: #16a34a; }
+.event-dot--ucc         { background: #D85A30; }
+.event-dot--note        { background: #8b5cf6; }
+.event-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; transition: background 0.1s; }
+.event-card:hover { background: #f9fafb; }
+.event-card__header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: 13px; font-weight: 600; }
+.event-card__meta { font-size: 11px; color: #9ca3af; }
+.event-card__excerpt { font-size: 12px; color: #6b7280; margin-top: 3px; }
+
+/* ─── Breadcrumb (Step 20) ───────────────────────────────────────────────────── */
+
+.breadcrumb { display: flex; align-items: center; gap: 2px; padding: 4px 14px; border-bottom: 1px solid #f3f4f6; background: #f9fafb; flex-shrink: 0; font-size: 12px; overflow: hidden; }
+.breadcrumb__sep { color: #d1d5db; padding: 0 2px; -webkit-user-select: none; user-select: none; }
+.breadcrumb__item { border: none; background: transparent; padding: 2px 4px; border-radius: 3px; font-size: 12px; white-space: nowrap; cursor: pointer; color: #6b7280; transition: color 0.1s, background 0.1s; }
+.breadcrumb__item:hover { color: #2563eb; background: #eff6ff; }
+.breadcrumb__item--current { color: #111827; font-weight: 600; cursor: default; }
+.breadcrumb__item--current:hover { color: #111827; background: transparent; }
+
+/* ─── Minimap (Step 21) ──────────────────────────────────────────────────────── */
+
+.minimap-container { position: absolute; bottom: 12px; right: 12px; width: 160px; height: 110px; border: 1.5px solid #d1d5db; border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 5; pointer-events: none; }
+
+/* ─── Skeleton loader ───────────────────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-sweep {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── AngleView supplemental classes (Steps 6–8) ────────────────────────────── */
+
+/* Angle title in the panel header */
+.angle-view__title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Secondary toolbar strip beneath the panel header */
+.angle-view__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+/* Saved flash indicator */
+.angle-view__saved-flash {
+  font-size: 12px;
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+/* Citation-removed banner */
+.angle-view__remove-banner {
+  padding: 6px 14px;
+  background: #fef9c3;
+  color: #92400e;
+  font-size: 12px;
+  border-bottom: 1px solid #fde68a;
+  flex-shrink: 0;
+}
+
+/* Loading / error center-fill */
+.angle-view__loading-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* Error text in the panel header */
+.angle-view__error-text {
+  color: #ef4444;
+  font-size: 14px;
+}
+
+/* Skeleton title placeholder in the loading state */
+.angle-view__skeleton-title {
+  display: inline-block;
+  width: 200px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+/* Doc citation list wrapper */
+.angle-view__citation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Empty state for cited docs — compact vertical padding */
+.angle-view__empty-cite {
+  padding: 24px 0;
+}
+
+/* Section with top margin for the Lead analysis block */
+.angle-view__lead-analysis-section {
+  margin-top: 24px;
+}
+
+/* Rationale text under Lead analysis heading */
+.angle-view__rationale {
+  font-size: 13px;
+  color: #374151;
+  margin: 0 0 8px;
+}
+
+/* Suggested action callout box */
+.angle-view__suggested-action {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #166534;
+}
+
+/* Cited doc card: doc-ref monospace label */
+.doc-ref-label {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+/* Cited doc card: filename trigger button */
+.cited-doc-card__filename-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.1s;
+}
+
+.cited-doc-card__filename-btn:hover { color: #2563eb; }
+
+/* Filename text inside the button — truncates */
+.cited-doc-card__filename-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Page reference chip in header */
+.cited-doc-card__page-ref {
+  font-size: 11px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* Lead panel: thinking spinner row */
+.lead-panel__thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+/* Lead panel: muted text (no docs / unavailable) */
+.lead-panel__text--muted {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+/* Lead panel: section divider between Suggested next / Pattern match / New angle */
+.lead-panel__divider {
+  border: none;
+  border-top: 0.5px solid #e5e7eb;
+  margin: 8px 0;
+}
+
+/* Count suffix on the "CITED DOCUMENTS" heading */
+.cited-docs-count {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+/* icon-btn — small transparent button for inline icon actions */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #9ca3af;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover { color: #374151; background: #f3f4f6; }
