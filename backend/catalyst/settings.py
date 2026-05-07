@@ -154,7 +154,10 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        # CompressedStaticFilesStorage compresses but does NOT rename files.
+        # Vite already content-hashes filenames at build time, so Manifest
+        # storage's renaming step breaks the references inside index.html.
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
