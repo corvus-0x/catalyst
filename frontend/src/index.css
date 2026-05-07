@@ -1,0 +1,39 @@
+/* ─── Color tokens ─────────────────────────────────────────────────────────── */
+
+:root {
+  /* Severity colors (edge and badge use) */
+  --color-critical: #D85A30;
+  --color-high: #BA7517;
+  --color-medium: #185FA5;
+  --color-informational: #9ca3af;
+
+  /* Knot (node) fill colors */
+  --color-knot-person: #3b82f6;
+  --color-knot-org: #14b8a6;
+
+  /* Intake extraction highlight pill colors */
+  --tag-entity-bg: #E6F1FB;
+  --tag-entity-color: #0C447C;
+
+  --tag-date-bg: #FAEEDA;
+  --tag-date-color: #633806;
+
+  --tag-amount-bg: #EAF3DE;
+  --tag-amount-color: #27500A;
+
+  --tag-flag-bg: #FAECE7;
+  --tag-flag-color: #712B13;
+}
+
+/* ─── Reset ─────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
