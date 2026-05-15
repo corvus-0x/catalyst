@@ -515,7 +515,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
         )}
 
         {/* Levels 1–3 — Graph canvas */}
-        {!showDocument && (
+        {!showDocument && current.kind !== "profile" && (
           <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
             {isEmpty ? (
               <EmptyWeb onAddKnot={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
@@ -551,9 +551,9 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
           </div>
         )}
 
-        {/* Level 2 — Profile panel */}
-        {showRightPanel && current.kind === "profile" && (
-          <div className={rightPanelCls} style={{ overflowY: "auto" }}>
+        {/* Level 2 — Profile panel (full-width, no canvas behind it) */}
+        {current.kind === "profile" && (
+          <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
             <Suspense fallback={fallback("Loading…")}>
               <ProfilePanel
                 caseId={caseId}
