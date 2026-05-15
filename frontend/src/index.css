@@ -1269,6 +1269,7 @@ body {
 
 .knot-avatar--person { background: rgba(59,130,246,0.2); color: var(--color-knot-person); }
 .knot-avatar--org    { background: rgba(20,184,166,0.2); color: #14b8a6; }
+.knot-avatar--organization { background: rgba(20,184,166,0.2); color: #14b8a6; }
 
 .knot-name { font-size: 16px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
 
@@ -1280,6 +1281,7 @@ body {
   margin-bottom: 12px;
 }
 .knot-type-badge--org    { background: rgba(20,184,166,0.15); color: #14b8a6; border: 1px solid rgba(20,184,166,0.25); }
+.knot-type-badge--organization { background: rgba(20,184,166,0.15); color: #14b8a6; border: 1px solid rgba(20,184,250,0.25); }
 .knot-type-badge--person { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
 
 .knot-meta-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 14px; }

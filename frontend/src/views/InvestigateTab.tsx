@@ -199,22 +199,22 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
         <button type="button" className="back-btn" onClick={onClearEdge} style={{ marginBottom: 8 }}>
           ← Clear
         </button>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#9ca3af", marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
           Connection
         </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#111827", marginBottom: 2 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
           {fromLabel}
         </div>
-        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>↔ {toLabel}</div>
-        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>{selectedEdge.label}</div>
+        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 2 }}>↔ {toLabel}</div>
+        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>{selectedEdge.label}</div>
         <span className={`conn-state-badge conn-state-badge--${stateLabel.toLowerCase()}`} style={{ marginBottom: 10, display: "inline-block" }}>
           {stateLabel}
         </span>
 
         {selectedEdge.finding_links?.length > 0 && (
           <>
-            <hr style={{ border: "none", borderTop: "0.5px solid #e5e7eb", margin: "8px 0" }} />
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#9ca3af", marginBottom: 6 }}>
+            <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 6 }}>
               Angles on this connection
             </div>
             {selectedEdge.finding_links.map((fl) => (
@@ -233,7 +233,7 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
         )}
 
         {isProposed && (
-          <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
+          <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
             Proposed by Intake — review in the connections panel.
           </p>
         )}
@@ -244,10 +244,10 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
   /* ── Default: case stats ── */
   return (
     <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#9ca3af", marginBottom: 5 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
         Case web
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#111827", marginBottom: 2 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
         {graph?.stats ? `${knotCount} knots · ${edgeCount} connections` : "Loading…"}
       </div>
 
@@ -259,7 +259,7 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
             { label: "Documents",        value: dashboard.documents.total, badge: null },
           ].map(({ label, value, badge }) => (
             <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ color: "#6b7280" }}>{label}</span>
+              <span style={{ color: "var(--text-3)" }}>{label}</span>
               <span className={badge ? `badge ${badge}` : ""} style={badge ? {} : { fontWeight: 600 }}>
                 {value}
               </span>
@@ -268,8 +268,8 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
         </div>
       )}
 
-      <hr style={{ border: "none", borderTop: "0.5px solid #e5e7eb", margin: "8px 0" }} />
-      <div style={{ fontSize: 10, color: "#9ca3af" }}>
+      <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
+      <div style={{ fontSize: 10, color: "var(--text-3)" }}>
         Click a knot to open its profile. Click a connection to see detail.
       </div>
     </div>
@@ -454,7 +454,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
   const rightPanelCls = current.kind === "angle" ? "right-panel right-panel--angle" : "right-panel right-panel--profile";
 
   const fallback = (msg: string) => (
-    <div style={{ padding: 24, color: "#9ca3af", fontSize: 14 }}>{msg}</div>
+    <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>
   );
 
   if (loading) return (
@@ -540,7 +540,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
 
         {/* Level 1 — Always-visible 215px web right panel (wireframe design) */}
         {current.kind === "web" && !showDocument && (
-          <div style={{ width: 215, flexShrink: 0, borderLeft: "0.5px solid #e5e7eb", background: "#fff", overflow: "hidden" }}>
+          <div style={{ width: 215, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
             <WebRightPanel
               graph={graph}
               dashboard={dashboard}
