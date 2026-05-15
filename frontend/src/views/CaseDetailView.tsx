@@ -113,9 +113,9 @@ export default function CaseDetailView() {
           <div className="skeleton" style={{ width: 180, height: 16 }} />
         ) : (
           <>
-            <span className="case-shell-header__title">
+            <h1 className="case-shell-header__title">
               {caseData?.name ?? "Unknown case"}
-            </span>
+            </h1>
             <div className="case-shell-header__right">
               {caseData && <StatusPill status={caseData.status} />}
             </div>
