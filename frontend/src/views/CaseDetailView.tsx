@@ -102,27 +102,23 @@ export default function CaseDetailView() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-0)" }}>
       {/* Page header */}
-      <header
-        style={{
-          padding: "10px 20px",
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexShrink: 0,
-          background: "#fff",
-        }}
-      >
+      <header className="case-shell-header">
+        <span className="case-shell-header__wordmark">
+          Cata<span>lyst</span>
+        </span>
+        <span className="case-shell-header__sep">›</span>
         {loadingCase ? (
-          <div className="skeleton" style={{ width: 220, height: 20 }} />
+          <div className="skeleton" style={{ width: 180, height: 16 }} />
         ) : (
           <>
-            <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>
+            <span className="case-shell-header__title">
               {caseData?.name ?? "Unknown case"}
-            </h1>
-            {caseData && <StatusPill status={caseData.status} />}
+            </span>
+            <div className="case-shell-header__right">
+              {caseData && <StatusPill status={caseData.status} />}
+            </div>
           </>
         )}
       </header>
