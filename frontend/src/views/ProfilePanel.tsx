@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { createNote, fetchNotes } from "../api";
 import type {
   PersonDetailResponse,
@@ -196,6 +197,14 @@ export default function ProfilePanel({
   const [notes, setNotes] = useState<InvestigatorNote[]>([]);
 
   // ------------------------------------------------------------------
+  // Reset quick capture UI when the entity changes
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    setShowQuickCapture(false);
+    setCaptureText("");
+  }, [entityId]);
+
+  // ------------------------------------------------------------------
   // Fetch existing notes on mount / when entity changes
   // ------------------------------------------------------------------
   useEffect(() => {
@@ -226,11 +235,7 @@ export default function ProfilePanel({
   const isPerson = entityData.entity_type === "person";
   const isOrg = entityData.entity_type === "organization";
 
-  const personData = isPerson ? (entityData as PersonDetailResponse) : null;
   const orgData = isOrg ? (entityData as OrgDetailResponse) : null;
-
-  // Suppress unused-variable warnings — these are used for metaRows below
-  void personData;
 
   const orgSubtype = orgData?.org_type;
 
@@ -305,7 +310,7 @@ export default function ProfilePanel({
         } as InvestigatorNote,
       ]);
     } catch {
-      // silently ignore — user can retry
+      toast.error("Failed to save quick capture.");
     } finally {
       setSavingCapture(false);
     }
@@ -331,8 +336,8 @@ export default function ProfilePanel({
         {metaRows.length > 0 && (
           <table className="knot-meta-table">
             <tbody>
-              {metaRows.map(({ label, value }) => (
-                <tr key={label}>
+              {metaRows.map(({ label, value }, i) => (
+                <tr key={`${label}-${i}`}>
                   <td className="knot-meta-label">{label}</td>
                   <td className="knot-meta-value">{value}</td>
                 </tr>
@@ -413,9 +418,7 @@ export default function ProfilePanel({
                 <div className={`angle-card__bar angle-card__bar--${a.severity}`} />
                 <div className="angle-card__info">
                   <div className="angle-card__title">{a.title}</div>
-                  <div className="angle-card__meta">
-                    {(a as unknown as { rule_id?: string }).rule_id ? `${(a as unknown as { rule_id?: string }).rule_id} · ` : ""}{(a as unknown as { doc_count?: number }).doc_count ?? 0} docs cited
-                  </div>
+                  <div className="angle-card__meta">{a.severity}</div>
                 </div>
                 <AngleStatusBadge status={a.status} />
               </div>
@@ -454,10 +457,8 @@ export default function ProfilePanel({
             documents.map((d) => (
               <div key={d.id} className="doc-row" onClick={() => onDocumentClick(d.id, d.filename)}>
                 <DocBadge docType={d.doc_type} />
-                <span className="doc-row__name">{d.filename}</span>
-                <span className="doc-row__meta">
-                  {(d as unknown as { page_count?: number }).page_count ? `${(d as unknown as { page_count?: number }).page_count} pg` : ""}
-                </span>
+                <span className="doc-row__name">{d.display_name || d.filename}</span>
+                <span className="doc-row__meta">{d.doc_type}</span>
               </div>
             ))
           )}
