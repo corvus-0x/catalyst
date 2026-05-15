@@ -50,6 +50,10 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+
+  /* Button backgrounds */
+  --btn-primary-bg: #2563eb;
+  --btn-danger-bg: #dc2626;
 }
 
 /* ─── Reset ───────────────────────────────────────────────────────────────────── */
@@ -261,7 +265,7 @@ body {
   flex-shrink: 0;
 }
 
-.entity-avatar--person { background: rgba(59,130,246,0.2); color: #60a5fa; }
+.entity-avatar--person { background: rgba(59,130,246,0.2); color: var(--color-knot-person); }
 .entity-avatar--org    { background: rgba(20,184,166,0.2); color: #14b8a6; }
 
 /* ─── Doc type badges ────────────────────────────────────────────────────────── */
@@ -665,7 +669,7 @@ body {
   padding: 7px 14px;
   border: none;
   border-radius: var(--radius-md);
-  background: #2563eb;
+  background: var(--btn-primary-bg);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -680,7 +684,7 @@ body {
   padding: 7px 14px;
   border: none;
   border-radius: var(--radius-md);
-  background: #dc2626;
+  background: var(--btn-danger-bg);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -1262,7 +1266,7 @@ body {
   flex-shrink: 0;
 }
 
-.knot-avatar--person { background: rgba(59,130,246,0.2); color: #3b82f6; }
+.knot-avatar--person { background: rgba(59,130,246,0.2); color: var(--color-knot-person); }
 .knot-avatar--org    { background: rgba(20,184,166,0.2); color: #14b8a6; }
 
 .knot-name { font-size: 16px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
