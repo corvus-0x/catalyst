@@ -112,19 +112,32 @@ interface ToolbarProps {
 
 function WebToolbar({ pendingCount, showMinimap, onAddKnot, onAddConnection, onAddAngle, onFit, onPendingClick, onToggleMinimap }: ToolbarProps) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderBottom: "1px solid #e5e7eb", background: "#fff", flexShrink: 0 }}>
-      <button type="button" className="toolbar-btn" onClick={onAddKnot}>+ Knot</button>
-      <button type="button" className="toolbar-btn" onClick={onAddConnection}>+ Connection</button>
-      <button type="button" className="toolbar-btn" onClick={onAddAngle}>+ Angle</button>
-      <div style={{ flex: 1 }} />
-      {pendingCount > 0 && (
-        <button type="button" className="toolbar-btn toolbar-btn--pending" onClick={onPendingClick}>
-          {pendingCount} pending
-        </button>
-      )}
-      <button type="button" className="toolbar-btn" onClick={onFit}>Fit</button>
-      <button type="button" className="toolbar-btn" onClick={onToggleMinimap} style={{ opacity: showMinimap ? 1 : 0.6 }}>
-        Minimap
+    <div className="web-toolbar-rail">
+      <button type="button" className="web-tool-btn" title="+ Knot" onClick={onAddKnot}>＋</button>
+      <button type="button" className="web-tool-btn" title="+ Connection" onClick={onAddConnection}>⟷</button>
+      <button type="button" className="web-tool-btn" title="+ Angle" onClick={onAddAngle}>⚑</button>
+      <div className="web-toolbar-rail__sep" />
+      <button type="button" className="web-tool-btn" title="Fit graph" onClick={onFit}>⊞</button>
+      <button
+        type="button"
+        className="web-tool-btn"
+        title="Toggle minimap"
+        onClick={onToggleMinimap}
+        style={{ opacity: showMinimap ? 1 : 0.5 }}
+      >
+        ▣
+      </button>
+      <div className="web-toolbar-rail__sep" />
+      <button
+        type="button"
+        className="web-tool-btn"
+        title="Pending connections"
+        onClick={onPendingClick}
+      >
+        🔗
+        {pendingCount > 0 && (
+          <span className="web-tool-btn__badge">{pendingCount}</span>
+        )}
       </button>
     </div>
   );
@@ -445,38 +458,36 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
   );
 
   if (loading) return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
       <WebToolbar pendingCount={0} showMinimap={false} onFit={() => {}} onAddKnot={() => {}} onAddConnection={() => {}} onAddAngle={() => {}} onPendingClick={() => {}} onToggleMinimap={() => {}} />
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading web…</div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)" }}>Loading web…</div>
     </div>
   );
 
   if (error) return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
       <WebToolbar pendingCount={0} showMinimap={false} onFit={() => {}} onAddKnot={() => {}} onAddConnection={() => {}} onAddAngle={() => {}} onPendingClick={() => {}} onToggleMinimap={() => {}} />
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", padding: 24, textAlign: "center" }}>{error}</div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-critical)", padding: 24, textAlign: "center" }}>{error}</div>
     </div>
   );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
-      {/* Toolbar */}
-      <WebToolbar
-        pendingCount={pendingCount}
-        showMinimap={showMinimap}
-        onFit={() => cyRef.current?.fit(undefined, 40)}
-        onAddKnot={() => { setConnectPrefill({}); setShowConnectModal(true); }}
-        onAddConnection={() => { setConnectPrefill({}); setShowConnectModal(true); }}
-        onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }}
-        onPendingClick={() => setShowConnectionReview(true)}
-        onToggleMinimap={() => setShowMinimap((s) => !s)}
-      />
-
       {/* Breadcrumb */}
       <Breadcrumb stack={navStack} onNavigateTo={navigateTo} />
 
-      {/* Main area */}
+      {/* Main row: toolbar + canvas + panels */}
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+        <WebToolbar
+          pendingCount={pendingCount}
+          showMinimap={showMinimap}
+          onFit={() => cyRef.current?.fit(undefined, 40)}
+          onAddKnot={() => { setConnectPrefill({}); setShowConnectModal(true); }}
+          onAddConnection={() => { setConnectPrefill({}); setShowConnectModal(true); }}
+          onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }}
+          onPendingClick={() => setShowConnectionReview(true)}
+          onToggleMinimap={() => setShowMinimap((s) => !s)}
+        />
 
         {/* Level 4 — Document view */}
         {showDocument && current.kind === "document" && (
@@ -505,7 +516,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
 
         {/* Levels 1–3 — Graph canvas */}
         {!showDocument && (
-          <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+          <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
             {isEmpty ? (
               <EmptyWeb onAddKnot={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
             ) : (
