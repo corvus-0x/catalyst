@@ -449,9 +449,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
     : [];
 
   const isEmpty = !graph || graph.nodes.filter(n => n.type === "person" || n.type === "organization").length === 0;
-  const showRightPanel = current.kind === "profile" || current.kind === "angle";
   const showDocument = current.kind === "document";
-  const rightPanelCls = current.kind === "angle" ? "right-panel right-panel--angle" : "right-panel right-panel--profile";
 
   const fallback = (msg: string) => (
     <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>
@@ -515,7 +513,7 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
         )}
 
         {/* Levels 1–3 — Graph canvas */}
-        {!showDocument && current.kind !== "profile" && (
+        {!showDocument && current.kind !== "profile" && current.kind !== "angle" && (
           <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
             {isEmpty ? (
               <EmptyWeb onAddKnot={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
@@ -576,9 +574,9 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
           </div>
         )}
 
-        {/* Level 3 — Angle view */}
-        {showRightPanel && current.kind === "angle" && (
-          <div className={rightPanelCls} style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Level 3 — Angle view (full-width, canvas hidden) */}
+        {current.kind === "angle" && (
+          <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <Suspense fallback={fallback("Loading…")}>
               <AngleView
                 caseId={caseId}
