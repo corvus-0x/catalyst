@@ -83,9 +83,9 @@ function JobStatusIcon({ status }: { status: string }) {
       />
     );
   if (status === "SUCCESS")
-    return <CheckCircle2 size={13} style={{ color: "#16a34a", flexShrink: 0 }} />;
+    return <CheckCircle2 size={13} style={{ color: "var(--color-medium)", flexShrink: 0 }} />;
   if (status === "FAILED")
-    return <XCircle size={13} style={{ color: "#dc2626", flexShrink: 0 }} />;
+    return <XCircle size={13} style={{ color: "var(--color-critical)", flexShrink: 0 }} />;
   return null;
 }
 
@@ -378,7 +378,7 @@ function RecorderResults({ results }: RecorderResultsProps) {
                       <ExternalLink size={11} />
                     </a>
                   ) : (
-                    <span style={{ color: "#9ca3af", fontSize: 12 }}>No URL</span>
+                    <span style={{ color: "var(--text-3)", fontSize: 12 }}>No URL</span>
                   )}
                 </td>
               </tr>
@@ -553,7 +553,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           <div className="empty-state" style={{ marginTop: 48 }}>
             <Loader2
               size={28}
-              style={{ animation: "spin 1s linear infinite", color: "#6b7280" }}
+              style={{ animation: "spin 1s linear infinite", color: "var(--text-3)" }}
             />
             <p className="empty-state__body" style={{ marginTop: 12 }}>
               Searching IRS TEOS — this can take up to 60 seconds…
@@ -564,7 +564,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
       if (irsJob.status === "FAILED") {
         return (
           <div className="empty-state" style={{ marginTop: 48 }}>
-            <XCircle size={28} style={{ color: "#dc2626" }} />
+            <XCircle size={28} style={{ color: "var(--color-critical)" }} />
             <p className="empty-state__body" style={{ marginTop: 12 }}>
               {irsJob.error ?? "Search failed."}
             </p>
@@ -602,7 +602,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           <div className="empty-state" style={{ marginTop: 48 }}>
             <Loader2
               size={28}
-              style={{ animation: "spin 1s linear infinite", color: "#6b7280" }}
+              style={{ animation: "spin 1s linear infinite", color: "var(--text-3)" }}
             />
           </div>
         );
@@ -620,8 +620,8 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
                 style={{
                   padding: "6px 16px",
                   fontSize: 12,
-                  color: "#6b7280",
-                  borderBottom: "1px solid #f3f4f6",
+                  color: "var(--text-3)",
+                  borderBottom: "1px solid var(--bg-2)",
                 }}
               >
                 {n}
@@ -653,7 +653,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           <div className="empty-state" style={{ marginTop: 48 }}>
             <Loader2
               size={28}
-              style={{ animation: "spin 1s linear infinite", color: "#6b7280" }}
+              style={{ animation: "spin 1s linear infinite", color: "var(--text-3)" }}
             />
             <p className="empty-state__body" style={{ marginTop: 12 }}>
               Searching Ohio Auditor of State…
@@ -664,7 +664,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
       if (aosJob.status === "FAILED") {
         return (
           <div className="empty-state" style={{ marginTop: 48 }}>
-            <XCircle size={28} style={{ color: "#dc2626" }} />
+            <XCircle size={28} style={{ color: "var(--color-critical)" }} />
             <p className="empty-state__body" style={{ marginTop: 12 }}>
               {aosJob.error ?? "Search failed."}
             </p>
@@ -710,7 +710,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           <div className="empty-state" style={{ marginTop: 48 }}>
             <Loader2
               size={28}
-              style={{ animation: "spin 1s linear infinite", color: "#6b7280" }}
+              style={{ animation: "spin 1s linear infinite", color: "var(--text-3)" }}
             />
           </div>
         );
@@ -724,7 +724,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
     if (source === "parcel") {
       return (
         <div className="empty-state" style={{ marginTop: 48 }}>
-          <AlertTriangle size={28} style={{ color: "#f59e0b" }} />
+          <AlertTriangle size={28} style={{ color: "var(--color-high)" }} />
           <p className="empty-state__body" style={{ marginTop: 12, textAlign: "center" }}>
             County Auditor parcel search is currently unavailable (data source is offline).
           </p>
