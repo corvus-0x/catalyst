@@ -65,15 +65,18 @@ function DocFindingsView({ caseId, documentId }: { caseId: string; documentId: s
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     fetchAngles(caseId, { limit: 100 })
       .then((resp) => {
+        if (cancelled) return;
         const citing = resp.results.filter((f) =>
           f.document_links?.some((dl) => dl.document_id === documentId)
         );
         setFindings(citing);
       })
-      .catch(() => setFindings([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setFindings([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [caseId, documentId]);
 
   if (loading) {
