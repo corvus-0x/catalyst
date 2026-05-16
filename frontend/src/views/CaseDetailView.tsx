@@ -94,7 +94,12 @@ export default function CaseDetailView() {
 
   function refetchCase() {
     if (!id) return;
-    fetchCase(id).then(setCaseData).catch(console.error);
+    fetchCase(id)
+      .then(setCaseData)
+      .catch((err) => {
+        console.error(err);
+        toast.error("Failed to reload case data.");
+      });
   }
 
   if (!id) return <div style={{ padding: 24 }}>Invalid case ID.</div>;
