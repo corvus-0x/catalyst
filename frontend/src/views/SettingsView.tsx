@@ -76,16 +76,18 @@ function SosCsvSection() {
       </h2>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted, #9ca3af)" }}>
         The Ohio Secretary of State connector searches from locally uploaded CSV files.
-        Download the files from{" "}
+        Download the monthly bulk data files from{" "}
         <a
-          href="https://www.ohiosos.gov/businesses/business-filings/filing-statistics/"
+          href="https://publicfiles.ohiosos.gov"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "var(--primary, #6366f1)" }}
         >
           publicfiles.ohiosos.gov
-        </a>{" "}
-        and upload them here.
+        </a>
+        . You need <strong style={{ color: "inherit" }}>WI0070R.TXT</strong> (Nonprofit Corps)
+        and <strong style={{ color: "inherit" }}>WI0100R.TXT</strong> (Domestic LLCs).
+        Published on the second Saturday of each month.
       </p>
 
       {/* Status table */}
