@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { fetchCase, generateReferralPdf, fetchAngle, updateAngle } from "../api";
 import type { CaseDetailResponse, TimelineEvent } from "../types";
 import InvestigateTab from "./InvestigateTab";
+import DocumentDrawer from "../components/DocumentDrawer";
 
 /* ─── Lazy-load heavy tabs ────────────────────────────────────────────────── */
 const ResearchTab   = lazy(() => import("./ResearchTab"));
@@ -91,6 +92,11 @@ export default function CaseDetailView() {
       .finally(() => setLoadingCase(false));
   }, [id]);
 
+  function refetchCase() {
+    if (!id) return;
+    fetchCase(id).then(setCaseData).catch(console.error);
+  }
+
   if (!id) return <div style={{ padding: 24 }}>Invalid case ID.</div>;
 
   const tabLabels = [
@@ -118,6 +124,16 @@ export default function CaseDetailView() {
             </h1>
             <div className="case-shell-header__right">
               {caseData && <StatusPill status={caseData.status} />}
+              {caseData && id && (
+                <DocumentDrawer
+                  caseId={id}
+                  documents={caseData.documents}
+                  onDocumentsChanged={refetchCase}
+                  onViewDocument={(_docId, _docName) => {
+                    setActiveTab("investigate");
+                  }}
+                />
+              )}
             </div>
           </>
         )}
@@ -127,7 +143,7 @@ export default function CaseDetailView() {
       <Tabs.Root
         value={activeTab}
         onValueChange={setActiveTab}
-        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}
       >
         <Tabs.List className="tabs-list">
           {tabLabels.map(({ value, label }) => (
