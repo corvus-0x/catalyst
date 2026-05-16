@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { uploadDocuments, processPendingDocuments, deleteDocument } from "../api";
 import type { DocumentItem } from "../types";
@@ -140,6 +140,14 @@ export default function DocumentDrawer({
   const [optimisticDeleted, setOptimisticDeleted] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (progressRef.current) clearInterval(progressRef.current);
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    };
+  }, []);
 
   const visibleDocs = documents.filter((d) => !optimisticDeleted.has(d.id));
   const pendingDocs = visibleDocs.filter(
@@ -161,11 +169,12 @@ export default function DocumentDrawer({
   function stopFakeProgress() {
     if (progressRef.current) clearInterval(progressRef.current);
     setUploadPct(100);
-    setTimeout(() => { setUploading(false); setUploadPct(0); }, 600);
+    stopTimerRef.current = setTimeout(() => { setUploading(false); setUploadPct(0); }, 600);
   }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    if (uploading) return;
     const formData = new FormData();
     Array.from(files).forEach((f) => formData.append("files", f));
     startFakeProgress(files.length);
@@ -228,7 +237,7 @@ export default function DocumentDrawer({
         multiple
         accept=".pdf,.PDF"
         style={{ display: "none" }}
-        onChange={(e) => handleFiles(e.target.files)}
+        onChange={(e) => { handleFiles(e.target.files); e.currentTarget.value = ""; }}
       />
 
       <button type="button" className="doc-trigger-btn doc-trigger-btn--open" onClick={() => setOpen(false)}>
@@ -263,7 +272,11 @@ export default function DocumentDrawer({
         <div
           className={`doc-dropzone${dragging ? " doc-dropzone--drag" : ""}`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setDragging(false);
+            }
+          }}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
