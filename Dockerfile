@@ -53,8 +53,11 @@ COPY backend/ .
 # WhiteNoise will serve these files in production
 COPY --from=frontend-build /frontend/dist/ /app/static/frontend/
 
-# Create directories for static files and uploads
-RUN mkdir -p /app/staticfiles /app/media
+# Pre-populate staticfiles/frontend so WhiteNoise serves assets immediately.
+# collectstatic runs again at startup (adding compressed versions), but this
+# guarantees the files exist even if collectstatic has a transient failure.
+RUN mkdir -p /app/staticfiles/frontend /app/media && \
+    cp -r /app/static/frontend/. /app/staticfiles/frontend/
 
 EXPOSE 8000
 
