@@ -22,8 +22,8 @@ import { useEffect, useRef, useState } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ArrowLeft, Search, X, Loader2 } from "lucide-react";
 
-import type { DocumentItem, SearchResult, SearchResponse } from "../types";
-import { fetchDocument, searchAll, createNote, fetchAngle, updateAngle } from "../api";
+import type { DocumentItem, SearchResult, SearchResponse, FindingItem } from "../types";
+import { fetchDocument, searchAll, createNote, fetchAngle, updateAngle, fetchAngles } from "../api";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -49,27 +49,70 @@ function formatBytes(bytes: number): string {
 }
 
 function OcrChip({ status }: { status: DocumentItem["ocr_status"] }) {
-  const map: Record<DocumentItem["ocr_status"], { label: string; style: React.CSSProperties }> = {
-    COMPLETED: { label: "Text extracted", style: { background: "#dcfce7", color: "#14532d" } },
-    PENDING: { label: "Processing…", style: { background: "#fef9c3", color: "#713f12" } },
-    IN_PROGRESS: { label: "Processing…", style: { background: "#fef9c3", color: "#713f12" } },
-    FAILED: { label: "Extraction failed", style: { background: "#fee2e2", color: "#991b1b" } },
-    SKIPPED: { label: "Skipped", style: { background: "#f3f4f6", color: "#6b7280" } },
+  const map: Record<DocumentItem["ocr_status"], { label: string; cls: string }> = {
+    COMPLETED:   { label: "Text extracted",    cls: "ocr-chip--done" },
+    PENDING:     { label: "Processing…",       cls: "ocr-chip--pending" },
+    IN_PROGRESS: { label: "Processing…",       cls: "ocr-chip--pending" },
+    FAILED:      { label: "Extraction failed", cls: "ocr-chip--failed" },
+    SKIPPED:     { label: "Skipped",           cls: "ocr-chip--skipped" },
   };
-  const { label, style } = map[status] ?? map.SKIPPED;
+  const { label, cls } = map[status] ?? map.SKIPPED;
+  return <span className={`ocr-chip ${cls}`}>{label}</span>;
+}
+
+function DocFindingsView({ caseId, documentId }: { caseId: string; documentId: string }) {
+  const [findings, setFindings] = useState<FindingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAngles(caseId, { limit: 100 })
+      .then((resp) => {
+        const citing = resp.results.filter((f) =>
+          f.document_links?.some((dl) => dl.document_id === documentId)
+        );
+        setFindings(citing);
+      })
+      .catch(() => setFindings([]))
+      .finally(() => setLoading(false));
+  }, [caseId, documentId]);
+
+  if (loading) {
+    return (
+      <div className="doc-findings-view">
+        <div className="skeleton" style={{ width: "100%", height: 60, borderRadius: 6 }} />
+        <div className="skeleton" style={{ width: "100%", height: 60, borderRadius: 6 }} />
+      </div>
+    );
+  }
+
+  if (findings.length === 0) {
+    return (
+      <div className="doc-findings-view">
+        <div className="empty-state">
+          <p className="empty-state__title">No angles cite this document yet</p>
+          <p className="empty-state__body">
+            Navigate to an angle and use "+ Cite document" to link this document as evidence.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <span
-      style={{
-        ...style,
-        fontSize: 11,
-        fontWeight: 600,
-        borderRadius: 9999,
-        padding: "1px 8px",
-        display: "inline-block",
-      }}
-    >
-      {label}
-    </span>
+    <div className="doc-findings-view">
+      {findings.map((f) => (
+        <div key={f.id} className="doc-finding-card">
+          <div className={`doc-finding-card__bar doc-finding-card__bar--${f.severity}`} />
+          <div className="doc-finding-card__body">
+            <div className="doc-finding-card__title">{f.title}</div>
+            <div className="doc-finding-card__meta">
+              {f.rule_id && `${f.rule_id} · `}{f.status}
+            </div>
+          </div>
+          <span className={`severity-badge severity-badge--${f.severity}`}>{f.severity}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -111,6 +154,7 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
 
   // --- Context menu / quick capture state ---
   const [capturedBanner, setCapturedBanner] = useState(false);
+  const [docView, setDocView] = useState<"full" | "findings">("full");
 
   // --- Load document on mount ---
   useEffect(() => {
@@ -278,35 +322,59 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
             {doc.doc_type.replace(/_/g, " ")}
           </span>
 
-          <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {displayName}
-          </span>
-
+          <span className="doc-view__header-name">{displayName}</span>
           <OcrChip status={doc.ocr_status} />
-
-          <span style={{ fontSize: 11, color: "#6b7280", flexShrink: 0 }}>
-            {formatBytes(doc.file_size)}
-          </span>
+          <span className="doc-view__header-meta">{formatBytes(doc.file_size)}</span>
         </div>
 
         {/* Captured banner */}
         {capturedBanner && (
-          <div
-            role="status"
-            style={{
-              background: "#d1fae5",
-              color: "#065f46",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "6px 16px",
-              flexShrink: 0,
-            }}
-          >
+          <div role="status" className="doc-capture-banner">
             {activeAngleId ? "Added to angle." : "Captured!"}
           </div>
         )}
 
+        {/* Intake legend + view toggle */}
+        <div className="doc-view__toolbar">
+          <div className="intake-legend">
+            <span className="intake-legend__label">Intake:</span>
+            <span className="intake-legend__item">
+              <span className="intake-legend__dot intake-legend__dot--entity" />
+              Entity
+            </span>
+            <span className="intake-legend__item">
+              <span className="intake-legend__dot intake-legend__dot--date" />
+              Date
+            </span>
+            <span className="intake-legend__item">
+              <span className="intake-legend__dot intake-legend__dot--amount" />
+              Amount
+            </span>
+            <span className="intake-legend__item">
+              <span className="intake-legend__dot intake-legend__dot--flag" />
+              Flag
+            </span>
+          </div>
+          <div className="doc-view-toggle">
+            <button
+              type="button"
+              className={`doc-view-toggle__btn${docView === "full" ? " doc-view-toggle__btn--active" : ""}`}
+              onClick={() => setDocView("full")}
+            >
+              Full document
+            </button>
+            <button
+              type="button"
+              className={`doc-view-toggle__btn${docView === "findings" ? " doc-view-toggle__btn--active" : ""}`}
+              onClick={() => setDocView("findings")}
+            >
+              Intake findings
+            </button>
+          </div>
+        </div>
+
         {/* Document content — wrapped in context menu */}
+        {docView === "full" ? (
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild>
             <div className="doc-view__content">
@@ -316,62 +384,32 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
 
           <ContextMenu.Portal>
             <ContextMenu.Content
-              style={{
-                background: "#fff",
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                padding: "4px 0",
-                minWidth: 180,
-                zIndex: 200,
-                fontSize: 13,
-              }}
+              className="doc-ctx-menu"
+              style={{ zIndex: 200 }}
             >
-              <ContextMenu.Item
-                onSelect={handleSearchSelection}
-                style={{
-                  padding: "6px 14px",
-                  cursor: "pointer",
-                  outline: "none",
-                }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#f3f4f6")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-              >
+              <ContextMenu.Item onSelect={handleSearchSelection} className="doc-ctx-item">
                 Search docs for selection
               </ContextMenu.Item>
               {activeAngleId && (
-                <ContextMenu.Item
-                  onSelect={handleCiteInAngle}
-                  style={{ padding: "6px 14px", cursor: "pointer", outline: "none" }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#f3f4f6")}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-                >
+                <ContextMenu.Item onSelect={handleCiteInAngle} className="doc-ctx-item">
                   Cite in angle
                 </ContextMenu.Item>
               )}
-              <ContextMenu.Item
-                onSelect={handleQuickCapture}
-                style={{
-                  padding: "6px 14px",
-                  cursor: "pointer",
-                  outline: "none",
-                }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#f3f4f6")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-              >
+              <ContextMenu.Item onSelect={handleQuickCapture} className="doc-ctx-item">
                 Quick capture this
               </ContextMenu.Item>
             </ContextMenu.Content>
           </ContextMenu.Portal>
         </ContextMenu.Root>
+        ) : (
+          <DocFindingsView caseId={caseId} documentId={documentId} />
+        )}
       </div>
 
       {/* ── RAG panel ── */}
       <div className="rag-panel">
         <div className="rag-panel__header">
-          <p className="panel-section__title" style={{ marginBottom: 6 }}>
-            SEARCH
-          </p>
+          <p className="panel-section__title">Search</p>
           <div style={{ position: "relative" }}>
             <Search
               size={12}
@@ -380,7 +418,7 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
                 left: 7,
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#9ca3af",
+                color: "var(--text-3)",
                 pointerEvents: "none",
               }}
             />
@@ -413,8 +451,8 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
             )}
           </div>
           {ragLoading && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, color: "#6b7280", fontSize: 11 }}>
-              <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />
+            <div className="doc-rag-searching">
+              <Loader2 size={11} className="spin" />
               Searching…
             </div>
           )}
@@ -422,20 +460,7 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
 
         {/* Jump banner */}
         {jumpBanner && (
-          <div
-            role="status"
-            style={{
-              background: "#eff6ff",
-              color: "#1d4ed8",
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "5px 12px",
-              flexShrink: 0,
-              borderBottom: "1px solid #dbeafe",
-            }}
-          >
-            {jumpBanner}
-          </div>
+          <div role="status" className="doc-jump-banner">{jumpBanner}</div>
         )}
 
         <div className="rag-results">
