@@ -515,9 +515,9 @@ export default function AngleView({
     <div className="angle-view" style={{ flex: 1 }}>
 
       {/* ── Panel header ─────────────────────────────────────────────────── */}
-      <div className="panel-header" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+      <div className="panel-header panel-header--angle">
         {/* Top row: back + title + badges */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+        <div className="panel-header__top-row">
           <button type="button" className="back-btn" onClick={onBack} aria-label="Back to web">
             <ArrowLeft size={14} aria-hidden="true" />
           </button>

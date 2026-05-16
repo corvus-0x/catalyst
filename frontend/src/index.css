@@ -1648,3 +1648,18 @@ body {
 .entity-pill--property { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
 .entity-pill-arrow { color: var(--text-3); font-size: 11px; }
+
+/* ─── Angle header — two-row layout with entity pills ──────────────────────── */
+
+.panel-header--angle {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.panel-header__top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
