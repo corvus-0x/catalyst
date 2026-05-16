@@ -515,27 +515,48 @@ export default function AngleView({
     <div className="angle-view" style={{ flex: 1 }}>
 
       {/* ── Panel header ─────────────────────────────────────────────────── */}
-      <div className="panel-header">
-        <button type="button" className="back-btn" onClick={onBack} aria-label="Back to web">
-          <ArrowLeft size={14} aria-hidden="true" />
-        </button>
+      <div className="panel-header" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+        {/* Top row: back + title + badges */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+          <button type="button" className="back-btn" onClick={onBack} aria-label="Back to web">
+            <ArrowLeft size={14} aria-hidden="true" />
+          </button>
 
-        <span className="angle-view__title">ANGLE: {finding.title}</span>
+          <span className="angle-view__title">{finding.title}</span>
 
-        <span className={`angle-badge angle-badge--${finding.status}`}>
-          {STATUS_LABEL[finding.status] ?? finding.status}
-        </span>
+          <span className={`angle-badge angle-badge--${finding.status}`}>
+            {STATUS_LABEL[finding.status] ?? finding.status}
+          </span>
 
-        <span className={`severity-badge severity-badge--${finding.severity}`}>
-          {finding.severity}
-        </span>
+          <span className={`severity-badge severity-badge--${finding.severity}`}>
+            {finding.severity}
+          </span>
 
-        <span className={`weight-badge weight-badge--${finding.evidence_weight}`}>
-          {WEIGHT_LABEL[finding.evidence_weight] ?? finding.evidence_weight}
-        </span>
+          <span className={`weight-badge weight-badge--${finding.evidence_weight}`}>
+            {WEIGHT_LABEL[finding.evidence_weight] ?? finding.evidence_weight}
+          </span>
 
-        {savedFlash && (
-          <span className="angle-view__saved-flash">✓ Saved</span>
+          {savedFlash && (
+            <span className="angle-view__saved-flash">✓ Saved</span>
+          )}
+        </div>
+
+        {/* Entity pills row — only shown when entity_links exist */}
+        {finding.entity_links && finding.entity_links.length > 0 && (
+          <div className="angle-entity-row">
+            {finding.entity_links.map((link, i) => (
+              <span key={link.entity_id}>
+                {i > 0 && <span className="entity-pill-arrow">↔</span>}
+                <span
+                  className={`entity-pill entity-pill--${
+                    link.entity_type === "organization" ? "org" : link.entity_type
+                  }`}
+                >
+                  {link.context_note || link.entity_id.slice(0, 8)}
+                </span>
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
