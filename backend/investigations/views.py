@@ -29,6 +29,7 @@ from .models import (
     Finding,
     FindingEntity,
     FindingStatus,
+    InvestigationStep,
     InvestigatorNote,
     JobStatus,
     JobType,
@@ -1897,6 +1898,95 @@ def api_case_financials(request, pk):
                 curr[f"{field}_yoy_pct"] = round((cv - pv) / abs(pv) * 100, 1)
 
     return JsonResponse({"count": len(results), "results": results})
+
+
+@require_http_methods(["GET", "POST"])
+def api_case_investigation_steps(request, pk):
+    """List or create investigation steps for a case."""
+
+    case = get_object_or_404(Case, pk=pk)
+
+    if request.method == "GET":
+        steps = InvestigationStep.objects.filter(case=case).select_related(
+            "triggered_finding"
+        ).order_by("step_number")
+
+        results = []
+        for s in steps:
+            tf = s.triggered_finding
+            results.append({
+                "id": str(s.pk),
+                "step_number": s.step_number,
+                "question": s.question,
+                "source": s.source,
+                "what_was_found": s.what_was_found,
+                "who_originated": s.who_originated,
+                "triggered_finding": {
+                    "id": str(tf.pk),
+                    "title": tf.title,
+                    "severity": tf.severity,
+                    "status": tf.status,
+                } if tf else None,
+                "triggered_question": s.triggered_question,
+                "status": s.status,
+                "created_at": s.created_at.isoformat(),
+            })
+
+        return JsonResponse({"count": len(results), "results": results})
+
+    # POST — create a step
+    import json as _json
+
+    try:
+        body = _json.loads(request.body)
+    except (_json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    step_number = body.get("step_number")
+    question = body.get("question", "").strip()
+    if not question:
+        return JsonResponse({"error": "question is required"}, status=400)
+    if step_number is None:
+        return JsonResponse({"error": "step_number is required"}, status=400)
+
+    triggered_finding_id = body.get("triggered_finding_id")
+    triggered_finding = None
+    if triggered_finding_id:
+        from .models import Finding
+        triggered_finding = Finding.objects.filter(
+            pk=triggered_finding_id, case=case
+        ).first()
+
+    step = InvestigationStep.objects.create(
+        case=case,
+        step_number=int(step_number),
+        question=question,
+        source=body.get("source", ""),
+        what_was_found=body.get("what_was_found", ""),
+        who_originated=body.get("who_originated", "T"),
+        triggered_finding=triggered_finding,
+        triggered_question=body.get("triggered_question", ""),
+        status=body.get("status", "RESOLVED"),
+    )
+
+    tf = step.triggered_finding
+    return JsonResponse({
+        "id": str(step.pk),
+        "step_number": step.step_number,
+        "question": step.question,
+        "source": step.source,
+        "what_was_found": step.what_was_found,
+        "who_originated": step.who_originated,
+        "triggered_finding": {
+            "id": str(tf.pk),
+            "title": tf.title,
+            "severity": tf.severity,
+            "status": tf.status,
+        } if tf else None,
+        "triggered_question": step.triggered_question,
+        "status": step.status,
+        "created_at": step.created_at.isoformat(),
+    }, status=201)
 
 
 # ---------------------------------------------------------------------------

@@ -992,6 +992,85 @@ class FinancialSnapshot(UUIDPrimaryKeyModel):
         return f"990 {self.tax_year} — {self.ein or 'no EIN'}"
 
 
+class InvestigationStep(UUIDPrimaryKeyModel):
+    """
+    One step in the chronological investigation replay for a case.
+    Records the question asked, source consulted, what was found,
+    and which Finding (Angle) it triggered.
+    """
+
+    WHO_CHOICES = [
+        ("T", "Tyler"),
+        ("C", "Claude"),
+        ("X", "External tip"),
+    ]
+
+    STATUS_CHOICES = [
+        ("RESOLVED", "Resolved"),
+        ("OPEN", "Open"),
+        ("DEAD_END", "Dead end"),
+    ]
+
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        related_name="investigation_steps",
+    )
+    step_number = models.IntegerField(
+        help_text="Display order within the case (1-based, investigator-assigned)",
+    )
+    question = models.TextField(
+        help_text="The question that triggered this investigation step",
+    )
+    source = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Source consulted — e.g. 'IRS TEOS', 'Ohio SOS', 'County Recorder'",
+    )
+    what_was_found = models.TextField(
+        blank=True,
+        default="",
+        help_text="Narrative of what was discovered at this step",
+    )
+    who_originated = models.CharField(
+        max_length=10,
+        choices=WHO_CHOICES,
+        default="T",
+        help_text="T = Tyler, C = Claude, X = External tip",
+    )
+    triggered_finding = models.ForeignKey(
+        "Finding",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="investigation_steps",
+        help_text="Angle (Finding) this step produced, if any",
+    )
+    triggered_question = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="The follow-on question this step opened",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="RESOLVED",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "investigation_steps"
+        ordering = ["step_number"]
+        indexes = [
+            models.Index(fields=["case", "step_number"], name="idx_inv_step_case_num"),
+        ]
+
+    def __str__(self):
+        return f"Step {self.step_number} — {self.question[:60]}"
+
+
 class Finding(UUIDPrimaryKeyModel):
     """
     Consolidated finding model — replaces the old Signal → Detection → Finding
