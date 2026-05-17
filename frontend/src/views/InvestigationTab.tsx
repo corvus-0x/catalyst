@@ -48,11 +48,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const SEVERITY_CLASS: Record<string, string> = {
-  CRITICAL:      "angle-severity angle-severity--critical",
-  HIGH:          "angle-severity angle-severity--high",
-  MEDIUM:        "angle-severity angle-severity--medium",
-  LOW:           "angle-severity angle-severity--low",
-  INFORMATIONAL: "angle-severity angle-severity--info",
+  CRITICAL:      "severity-badge severity-badge--CRITICAL",
+  HIGH:          "severity-badge severity-badge--HIGH",
+  MEDIUM:        "severity-badge severity-badge--MEDIUM",
+  LOW:           "severity-badge severity-badge--LOW",
+  INFORMATIONAL: "severity-badge severity-badge--INFORMATIONAL",
 };
 
 // ---------------------------------------------------------------------------

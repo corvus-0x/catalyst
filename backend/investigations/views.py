@@ -1948,6 +1948,29 @@ def api_case_investigation_steps(request, pk):
         return JsonResponse({"error": "question is required"}, status=400)
     if step_number is None:
         return JsonResponse({"error": "step_number is required"}, status=400)
+    try:
+        step_number = int(step_number)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "step_number must be an integer"}, status=400)
+    if step_number < 1:
+        return JsonResponse({"error": "step_number must be >= 1"}, status=400)
+
+    VALID_WHO = {"T", "C", "X"}
+    VALID_STATUS = {"RESOLVED", "OPEN", "DEAD_END"}
+
+    who_originated = body.get("who_originated", "T")
+    status = body.get("status", "RESOLVED")
+
+    if who_originated not in VALID_WHO:
+        return JsonResponse(
+            {"error": f"Invalid who_originated: {who_originated!r}. Must be T, C, or X."},
+            status=400,
+        )
+    if status not in VALID_STATUS:
+        return JsonResponse(
+            {"error": f"Invalid status: {status!r}. Must be RESOLVED, OPEN, or DEAD_END."},
+            status=400,
+        )
 
     triggered_finding_id = body.get("triggered_finding_id")
     triggered_finding = None
@@ -1959,14 +1982,14 @@ def api_case_investigation_steps(request, pk):
 
     step = InvestigationStep.objects.create(
         case=case,
-        step_number=int(step_number),
+        step_number=step_number,
         question=question,
         source=body.get("source", ""),
         what_was_found=body.get("what_was_found", ""),
-        who_originated=body.get("who_originated", "T"),
+        who_originated=who_originated,
         triggered_finding=triggered_finding,
         triggered_question=body.get("triggered_question", ""),
-        status=body.get("status", "RESOLVED"),
+        status=status,
     )
 
     tf = step.triggered_finding
