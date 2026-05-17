@@ -460,6 +460,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   const [irsMode, setIrsMode] = useState<"ein" | "name">("name");
   const [irsEin, setIrsEin] = useState("");
   const [irsName, setIrsName] = useState("");
+  // Direct fetch state — used when search returns 0 results
+  const [directFetching, setDirectFetching] = useState(false);
+  const [directFetchMsg, setDirectFetchMsg] = useState<string | null>(null);
 
   // Ohio SOS query state
   const [sosQuery, setSosQuery] = useState("");
@@ -512,7 +515,28 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   function handleIrsSearch() {
     const query = irsMode === "ein" ? irsEin.trim() : irsName.trim();
     if (!query) return;
+    setDirectFetchMsg(null);
     void irsJob.run(() => searchIrs(caseId, { query }));
+  }
+
+  async function handleDirectFetch990s() {
+    const ein = irsEin.trim();
+    if (!ein) return;
+    setDirectFetching(true);
+    setDirectFetchMsg(null);
+    try {
+      const result = await fetch990s(caseId, { ein });
+      const fetched = (result as { fetched?: number })?.fetched ?? 0;
+      setDirectFetchMsg(
+        fetched > 0
+          ? `Fetched ${fetched} year${fetched !== 1 ? "s" : ""} → check the Financials tab.`
+          : "No new filings found in IRS XML index for that EIN."
+      );
+    } catch {
+      setDirectFetchMsg("Fetch failed. Check that the EIN is correct.");
+    } finally {
+      setDirectFetching(false);
+    }
   }
 
   async function handleSosSearch() {
@@ -636,6 +660,37 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
         );
       }
       if (irsJob.status === "SUCCESS" && irsJob.result) {
+        // When search returns 0 results in EIN mode, offer a direct XML fetch
+        if (irsJob.result.count === 0 && irsMode === "ein" && irsEin.trim()) {
+          return (
+            <div className="empty-state" style={{ marginTop: 48 }}>
+              <p className="empty-state__body" style={{ textAlign: "center" }}>
+                IRS search returned no results for that EIN.
+              </p>
+              <p className="empty-state__body" style={{ textAlign: "center", marginTop: 6, fontSize: 12 }}>
+                Try fetching directly from the IRS XML filing index:
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ marginTop: 14 }}
+                onClick={handleDirectFetch990s}
+                disabled={directFetching}
+              >
+                {directFetching ? (
+                  <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Fetching…</>
+                ) : (
+                  "Fetch 990s → Financials"
+                )}
+              </button>
+              {directFetchMsg && (
+                <p className="empty-state__body" style={{ marginTop: 10, color: directFetchMsg.startsWith("Fetched") ? "var(--color-medium, #34d399)" : "var(--color-high, #fbbf24)" }}>
+                  {directFetchMsg}
+                </p>
+              )}
+            </div>
+          );
+        }
         return (
           <IrsResultsTable
             results={irsJob.result.results}

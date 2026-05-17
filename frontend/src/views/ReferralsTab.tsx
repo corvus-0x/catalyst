@@ -264,7 +264,7 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
     setLoading(true);
     Promise.all([
       getReferralTargets(caseId),
-      fetchAngles(caseId, { status: "CONFIRMED", limit: 200 }),
+      fetchAngles(caseId, { status: "CONFIRMED", limit: 100 }),
     ])
       .then(([targetsRes, anglesRes]) => {
         setTargets(targetsRes.results);

@@ -262,11 +262,18 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
   // "Fetch new 990s" action
   // -------------------------------------------------------------------------
 
-  async function handleFetch990s() {
+  async function handleFetch990s(einOverride?: string) {
     setFetching990(true);
     setFetch990Error(null);
+    // Backend requires an EIN — use override, then first snapshot's EIN
+    const ein = einOverride ?? snapshots[0]?.ein ?? (response?.results?.[0]?.ein);
+    if (!ein) {
+      setFetch990Error("No EIN available. Search IRS 990 in Research tab first.");
+      setFetching990(false);
+      return;
+    }
     try {
-      await fetch990s(caseId);
+      await fetch990s(caseId, { ein });
       await loadFinancials();
     } catch (err) {
       setFetch990Error(err instanceof Error ? err.message : "Fetch failed.");
@@ -350,7 +357,7 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
             <button
               type="button"
               className="btn-primary"
-              onClick={handleFetch990s}
+              onClick={() => handleFetch990s()}
               disabled={fetching990}
             >
               {fetching990 ? (
@@ -397,7 +404,7 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
         <button
           type="button"
           className="toolbar-btn btn-secondary"
-          onClick={handleFetch990s}
+          onClick={() => handleFetch990s()}
           disabled={fetching990}
         >
           {fetching990 ? (
