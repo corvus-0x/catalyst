@@ -1893,7 +1893,7 @@ def api_case_financials(request, pk):
         prev, curr = results[i - 1], results[i]
         for field in ["total_revenue", "total_expenses", "total_assets_eoy", "net_assets_eoy"]:
             pv, cv = prev.get(field), curr.get(field)
-            if pv and cv and pv != 0:
+            if pv is not None and cv is not None and pv != 0:
                 curr[f"{field}_yoy_pct"] = round((cv - pv) / abs(pv) * 100, 1)
 
     return JsonResponse({"count": len(results), "results": results})

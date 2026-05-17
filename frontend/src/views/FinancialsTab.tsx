@@ -91,9 +91,10 @@ function zeroCompTitle(s: FinancialSnapshot): string | undefined {
  * every subsequent year where it flips to false.
  */
 function detectSr025FlipYears(snapshots: FinancialSnapshot[]): Set<number> {
+  const sorted = [...snapshots].sort((a, b) => a.tax_year - b.tax_year);
   const flipped = new Set<number>();
   let firstYesYear: number | null = null;
-  for (const s of snapshots) {
+  for (const s of sorted) {
     if (s.related_party_disclosed === true && firstYesYear === null) {
       firstYesYear = s.tax_year;
     } else if (s.related_party_disclosed === false && firstYesYear !== null) {
@@ -112,7 +113,7 @@ function dominantSourceLabel(snapshots: FinancialSnapshot[]): string {
   const counts: Record<string, number> = {};
   for (const s of snapshots) counts[s.source] = (counts[s.source] ?? 0) + 1;
   const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  return dominant === "IRS_XML" ? "IRS Form 990" : "Intake-extracted";
+  return dominant === "IRS_TEOS_XML" ? "IRS Form 990" : "Intake-extracted";
 }
 
 // ---------------------------------------------------------------------------
@@ -215,14 +216,14 @@ function AnomalyCell({ value, ruleId, ruleLabel, explanation, onStartAngle }: An
 // GovernanceCell — boolean governance indicator (Yes / No / unknown)
 // ---------------------------------------------------------------------------
 
-function GovernanceCell({ value, year }: { value: boolean | null; year: number }) {
+function GovernanceCell({ value }: { value: boolean | null }) {
   if (value === null || value === undefined) {
-    return <td key={year} style={{ color: "var(--text-3)", textAlign: "right" }}>—</td>;
+    return <td style={{ color: "var(--text-3)", textAlign: "right" }}>—</td>;
   }
   if (value) {
-    return <td key={year} className="cell--gov-pass" style={{ textAlign: "right" }}>Yes</td>;
+    return <td className="cell--gov-pass" style={{ textAlign: "right" }}>Yes</td>;
   }
-  return <td key={year} className="cell--gov-fail" style={{ textAlign: "right" }}>No</td>;
+  return <td className="cell--gov-fail" style={{ textAlign: "right" }}>No</td>;
 }
 
 // ---------------------------------------------------------------------------
@@ -571,21 +572,21 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
             <tr>
               <td>COI policy</td>
               {snapshots.map((s) => (
-                <GovernanceCell key={s.tax_year} value={s.has_coi_policy} year={s.tax_year} />
+                <GovernanceCell key={s.tax_year} value={s.has_coi_policy} />
               ))}
             </tr>
 
             <tr>
               <td>Whistleblower policy</td>
               {snapshots.map((s) => (
-                <GovernanceCell key={s.tax_year} value={s.has_whistleblower_policy} year={s.tax_year} />
+                <GovernanceCell key={s.tax_year} value={s.has_whistleblower_policy} />
               ))}
             </tr>
 
             <tr>
               <td>Document retention</td>
               {snapshots.map((s) => (
-                <GovernanceCell key={s.tax_year} value={s.has_document_retention_policy} year={s.tax_year} />
+                <GovernanceCell key={s.tax_year} value={s.has_document_retention_policy} />
               ))}
             </tr>
           </tbody>
@@ -619,7 +620,6 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                   <GovernanceCell
                     key={s.tax_year}
                     value={s.related_party_disclosed}
-                    year={s.tax_year}
                   />
                 );
               })}
