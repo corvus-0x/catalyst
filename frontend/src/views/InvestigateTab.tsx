@@ -502,11 +502,12 @@ export default function InvestigateTab({
   const isEmpty = !graph || graph.nodes.filter(n => n.type === "person" || n.type === "organization").length === 0;
   const showDocument = current.kind === "document";
 
-  const daysOpen = dashboard?.case.created_at
-    ? Math.floor(
-        (Date.now() - new Date(dashboard.case.created_at).getTime()) / 86_400_000
-      )
-    : null;
+  const daysOpen = (() => {
+    if (!dashboard?.case.created_at) return null;
+    const ms = Date.now() - new Date(dashboard.case.created_at).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return 0;
+    return Math.floor(ms / 86_400_000);
+  })();
 
   const fallback = (msg: string) => (
     <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>

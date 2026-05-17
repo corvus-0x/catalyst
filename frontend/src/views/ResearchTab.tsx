@@ -244,11 +244,21 @@ function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded
 
   function hasDeceasedSignatory(row: Record<string, unknown>): boolean {
     if (!deceasedNames || deceasedNames.size === 0) return false;
-    const allValues = Object.values(row)
-      .filter((v): v is string => typeof v === "string")
-      .map((v) => v.toLowerCase());
-    return allValues.some((val) =>
-      [...deceasedNames].some((name) => val.includes(name))
+    // Prefer signatory-relevant fields; fall back to all strings if none found
+    const SIGNATORY_KEYS = ["agent_name", "statutory_agent", "incorporator", "registered_agent", "organizer", "officer"];
+    const entries = Object.entries(row);
+    const signatoryValues = entries
+      .filter(([k]) => SIGNATORY_KEYS.some((sk) => k.toLowerCase().includes(sk)))
+      .map(([, v]) => (typeof v === "string" ? v.toLowerCase() : ""))
+      .filter(Boolean);
+    const valuesToCheck = signatoryValues.length > 0
+      ? signatoryValues
+      : entries.filter(([, v]) => typeof v === "string").map(([, v]) => (v as string).toLowerCase());
+    return valuesToCheck.some((val) =>
+      [...deceasedNames].some((name) => {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`\\b${escaped}\\b`).test(val);
+      })
     );
   }
 
@@ -466,9 +476,10 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   const [recorderLoading, setRecorderLoading] = useState(false);
 
   // Three async job hooks — one per async source
+  // parcelJob is kept to preserve React hook call order; parcel UI is a static banner (ODNR broken)
   const irsJob = useAsyncJob<IrsSearchJobResult>();
   const aosJob = useAsyncJob<unknown>();
-  const parcelJob = useAsyncJob<unknown>();
+  const parcelJob = useAsyncJob<unknown>(); void parcelJob;
 
   // Reattach-on-mount: resume any in-progress jobs from a previous session
   useEffect(() => {
@@ -544,8 +555,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
 
   const hasAnyJob =
     irsJob.status !== "idle" ||
-    aosJob.status !== "idle" ||
-    parcelJob.status !== "idle";
+    aosJob.status !== "idle";
 
   function jobRailLabel(
     jobState: ReturnType<typeof useAsyncJob>,
@@ -1060,7 +1070,6 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           </div>
           {jobRailLabel(irsJob, "IRS", irsQueryLabel)}
           {jobRailLabel(aosJob, "Ohio AOS", aosQueryLabel)}
-          {jobRailLabel(parcelJob, "Parcel", "")}
         </div>
       )}
 
