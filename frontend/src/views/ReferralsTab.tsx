@@ -61,7 +61,7 @@ const STATUS_CLASS: Record<ReferralStatus, string> = {
 interface ModalProps {
   caseId: string;
   target: ReferralTarget | null;  // null = add mode
-  onSaved: (t: ReferralTarget) => void;
+  onSaved: (t: ReferralTarget, wasEdit: boolean) => void;
   onDeleted: (id: string) => void;
   onClose: () => void;
 }
@@ -97,7 +97,7 @@ function ReferralTargetModal({ caseId, target, onSaved, onDeleted, onClose }: Mo
       } else {
         saved = await createReferralTarget(caseId, form as CreateReferralTargetParams);
       }
-      onSaved(saved);
+      onSaved(saved, isEdit);
       onClose();
     } catch {
       toast.error(isEdit ? "Failed to update agency." : "Failed to add agency.");
@@ -276,7 +276,7 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
 
   const uncitedCount = confirmedAngles.filter((a) => a.document_links.length === 0).length;
 
-  function handleSaved(saved: ReferralTarget) {
+  function handleSaved(saved: ReferralTarget, wasEdit: boolean) {
     setTargets((prev) => {
       const idx = prev.findIndex((t) => t.id === saved.id);
       if (idx >= 0) {
@@ -286,7 +286,7 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
       }
       return [...prev, saved];
     });
-    toast.success(editTarget ? "Agency updated." : "Agency added.");
+    toast.success(wasEdit ? "Agency updated." : "Agency added.");
   }
 
   function handleDeleted(id: string) {

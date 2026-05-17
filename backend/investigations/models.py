@@ -1129,6 +1129,12 @@ class ReferralTarget(UUIDPrimaryKeyModel):
     class Meta:
         db_table = "referral_targets"
         ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "agency_name"],
+                name="uniq_referral_target_case_agency",
+            )
+        ]
 
     def __str__(self):
         return f"{self.agency_name} ({self.status})"

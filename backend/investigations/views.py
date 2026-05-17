@@ -2081,15 +2081,23 @@ def api_case_referral_targets(request, pk):
             status=400,
         )
 
-    target = ReferralTarget.objects.create(
-        case=case,
-        agency_name=agency_name,
-        complaint_type=body.get("complaint_type", ""),
-        reference_number=body.get("reference_number", ""),
-        contact=body.get("contact", ""),
-        status=status_val,
-        notes=body.get("notes", ""),
-    )
+    from django.db import IntegrityError
+
+    try:
+        target = ReferralTarget.objects.create(
+            case=case,
+            agency_name=agency_name,
+            complaint_type=body.get("complaint_type", ""),
+            reference_number=body.get("reference_number", ""),
+            contact=body.get("contact", ""),
+            status=status_val,
+            notes=body.get("notes", ""),
+        )
+    except IntegrityError:
+        return JsonResponse(
+            {"error": f"Agency '{agency_name}' already exists for this case."},
+            status=409,
+        )
     return JsonResponse(_serialize_target(target), status=201)
 
 
@@ -2118,7 +2126,8 @@ def api_case_referral_target_detail(request, pk, target_id):
     updatable = ["agency_name", "complaint_type", "reference_number", "contact", "status", "notes"]
     for field in updatable:
         if field in body:
-            setattr(target, field, body[field])
+            value = body[field].strip() if field == "agency_name" else body[field]
+            setattr(target, field, value)
     target.save()
     return JsonResponse(_serialize_target(target))
 
