@@ -1816,6 +1816,12 @@ def api_case_document_detail(request, pk, document_id):
             "net_assets_eoy": s.net_assets_eoy,
             "officer_compensation_total": s.officer_compensation_total,
             "num_employees": s.num_employees,
+            "num_voting_members": s.num_voting_members,
+            "num_independent_members": s.num_independent_members,
+            "related_party_disclosed": s.related_party_disclosed,
+            "has_coi_policy": s.has_coi_policy,
+            "has_whistleblower_policy": s.has_whistleblower_policy,
+            "has_document_retention_policy": s.has_document_retention_policy,
             "source": s.source,
             "confidence": s.confidence,
         }
@@ -1871,6 +1877,12 @@ def api_case_financials(request, pk):
             "net_assets_eoy": s.net_assets_eoy,
             "officer_compensation_total": s.officer_compensation_total,
             "num_employees": s.num_employees,
+            "num_voting_members": s.num_voting_members,
+            "num_independent_members": s.num_independent_members,
+            "related_party_disclosed": s.related_party_disclosed,
+            "has_coi_policy": s.has_coi_policy,
+            "has_whistleblower_policy": s.has_whistleblower_policy,
+            "has_document_retention_policy": s.has_document_retention_policy,
             "source": s.source,
             "confidence": s.confidence,
         }
@@ -4040,6 +4052,13 @@ def api_case_fetch_990s(request, pk):
                 num_employees=parsed.num_employees,
                 num_voting_members=(parsed.governance.voting_members_governing_body),
                 num_independent_members=(parsed.governance.independent_voting_members),
+                # Governance — Part IV + Part VI (already parsed from XML)
+                related_party_disclosed=parsed.governance.schedule_l_required,
+                has_coi_policy=parsed.governance.conflict_of_interest_policy,
+                has_whistleblower_policy=parsed.governance.whistleblower_policy,
+                has_document_retention_policy=(
+                    parsed.governance.document_retention_policy
+                ),
                 # Metadata
                 source="IRS_TEOS_XML",
                 confidence=parsed.parse_quality,
