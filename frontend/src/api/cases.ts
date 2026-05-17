@@ -33,6 +33,7 @@ import type {
   InvestigationStep,
   InvestigationStepsResponse,
   CreateInvestigationStepParams,
+  DeceasedPersonsResponse,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -518,5 +519,18 @@ export async function createInvestigationStep(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
     }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deceased persons (SOS signatory flag)
+// ---------------------------------------------------------------------------
+
+/** Returns persons in the case with date_of_death set or DECEASED role tag. */
+export async function getDeceasedPersons(
+  caseId: string
+): Promise<DeceasedPersonsResponse> {
+  return fetchApi<DeceasedPersonsResponse>(
+    `/api/cases/${caseId}/persons/deceased/`
   );
 }

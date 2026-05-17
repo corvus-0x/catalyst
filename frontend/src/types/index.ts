@@ -567,6 +567,16 @@ export interface InvestigationStepsResponse {
   results: InvestigationStep[];
 }
 
+/** Minimal deceased person record for SOS signatory flag check */
+export interface DeceasedPerson {
+  full_name: string;
+  date_of_death: string | null;
+}
+
+export interface DeceasedPersonsResponse {
+  results: DeceasedPerson[];
+}
+
 export interface CreateInvestigationStepParams {
   step_number: number;
   question: string;

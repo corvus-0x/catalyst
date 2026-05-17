@@ -55,6 +55,7 @@ export {
   aiAsk,
   getInvestigationSteps,
   createInvestigationStep,
+  getDeceasedPersons,
 } from "./cases";
 
 // Param types exported from cases.ts
