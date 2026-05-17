@@ -86,6 +86,24 @@ function zeroCompTitle(s: FinancialSnapshot): string | undefined {
 }
 
 /**
+ * Returns the set of tax_years flagged SR-025 FALSE_DISCLOSURE.
+ * Finds the first year where related_party_disclosed === true, then flags
+ * every subsequent year where it flips to false.
+ */
+function detectSr025FlipYears(snapshots: FinancialSnapshot[]): Set<number> {
+  const flipped = new Set<number>();
+  let firstYesYear: number | null = null;
+  for (const s of snapshots) {
+    if (s.related_party_disclosed === true && firstYesYear === null) {
+      firstYesYear = s.tax_year;
+    } else if (s.related_party_disclosed === false && firstYesYear !== null) {
+      flipped.add(s.tax_year);
+    }
+  }
+  return flipped;
+}
+
+/**
  * Determine the source label to display in the header.
  * Pick the most common source across all snapshots.
  */
@@ -194,6 +212,20 @@ function AnomalyCell({ value, ruleId, ruleLabel, explanation, onStartAngle }: An
 }
 
 // ---------------------------------------------------------------------------
+// GovernanceCell — boolean governance indicator (Yes / No / unknown)
+// ---------------------------------------------------------------------------
+
+function GovernanceCell({ value, year }: { value: boolean | null; year: number }) {
+  if (value === null || value === undefined) {
+    return <td key={year} style={{ color: "var(--text-3)", textAlign: "right" }}>—</td>;
+  }
+  if (value) {
+    return <td key={year} className="cell--gov-pass" style={{ textAlign: "right" }}>Yes</td>;
+  }
+  return <td key={year} className="cell--gov-fail" style={{ textAlign: "right" }}>No</td>;
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -253,6 +285,7 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
   const years = snapshots.map((s) => s.tax_year);
   const orgName = snapshots[0]?.organization_name ?? "—";
   const sourceLabel = dominantSourceLabel(snapshots);
+  const sr025FlipYears = detectSr025FlipYears(snapshots);
 
   // -------------------------------------------------------------------------
   // Loading skeleton
@@ -498,6 +531,97 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                   );
                 }
                 return <td key={s.tax_year}>{cellValue}</td>;
+              })}
+            </tr>
+          </tbody>
+
+          <tbody>
+            <tr className="fin-section-header">
+              <td colSpan={years.length + 1}>Governance — Part VI</td>
+            </tr>
+
+            <tr>
+              <td>Board members</td>
+              {snapshots.map((s) => (
+                <td key={s.tax_year} style={{ textAlign: "right" }}>
+                  {s.num_voting_members ?? "—"}
+                </td>
+              ))}
+            </tr>
+
+            <tr>
+              <td>Independent members</td>
+              {snapshots.map((s) => {
+                const val = s.num_independent_members;
+                if (val === null || val === undefined) {
+                  return <td key={s.tax_year} style={{ textAlign: "right", color: "var(--text-3)" }}>—</td>;
+                }
+                return (
+                  <td
+                    key={s.tax_year}
+                    style={{ textAlign: "right" }}
+                    className={val === 0 ? "cell--gov-fail" : "cell--gov-pass"}
+                  >
+                    {val}
+                  </td>
+                );
+              })}
+            </tr>
+
+            <tr>
+              <td>COI policy</td>
+              {snapshots.map((s) => (
+                <GovernanceCell key={s.tax_year} value={s.has_coi_policy} year={s.tax_year} />
+              ))}
+            </tr>
+
+            <tr>
+              <td>Whistleblower policy</td>
+              {snapshots.map((s) => (
+                <GovernanceCell key={s.tax_year} value={s.has_whistleblower_policy} year={s.tax_year} />
+              ))}
+            </tr>
+
+            <tr>
+              <td>Document retention</td>
+              {snapshots.map((s) => (
+                <GovernanceCell key={s.tax_year} value={s.has_document_retention_policy} year={s.tax_year} />
+              ))}
+            </tr>
+          </tbody>
+
+          <tbody>
+            <tr className="fin-section-header">
+              <td colSpan={years.length + 1}>Part IV — Related-party disclosure</td>
+            </tr>
+
+            <tr>
+              <td>Line 28 — Related-party tx disclosed?</td>
+              {snapshots.map((s) => {
+                const isFlip = sr025FlipYears.has(s.tax_year);
+                if (isFlip) {
+                  return (
+                    <AnomalyCell
+                      key={s.tax_year}
+                      value="No"
+                      ruleId="SR-025"
+                      ruleLabel="FALSE_DISCLOSURE"
+                      explanation={
+                        `SR-025 · FALSE_DISCLOSURE — ${s.tax_year} 990 denies related-party ` +
+                        `transactions (Line 28 = No), but a prior year disclosed them ` +
+                        `(Line 28 = Yes). Transactions continued. This is not an accidental omission.`
+                      }
+                      onStartAngle={onStartAngle}
+                    />
+                  );
+                }
+                return (
+                  <GovernanceCell
+                    key={s.tax_year}
+                    value={s.related_party_disclosed}
+                    year={s.tax_year}
+                  />
+                );
               })}
             </tr>
           </tbody>

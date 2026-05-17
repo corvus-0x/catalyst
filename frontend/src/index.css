@@ -806,6 +806,24 @@ body {
 .fin-table tr:hover td { background: var(--bg-2); }
 .cell--spike { background: rgba(251,191,36,0.1) !important; }
 .cell--flag  { background: rgba(248,113,113,0.1) !important; }
+.cell--gov-pass {
+  color: var(--color-medium, #34d399);
+}
+.cell--gov-fail {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--color-critical, #f87171);
+  font-weight: 600;
+}
+.fin-section-header td {
+  background: var(--bg-1, #111827);
+  color: var(--text-3, #6b7280);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 12px 4px;
+  border-top: 1px solid var(--border-1, #374151);
+}
 .yoy-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 3px; border-radius: 2px; margin-left: 4px; vertical-align: middle; }
 .yoy-badge--up { color: var(--color-high); }
 .yoy-badge--down { color: var(--accent); }
