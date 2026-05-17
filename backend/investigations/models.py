@@ -940,6 +940,28 @@ class FinancialSnapshot(UUIDPrimaryKeyModel):
     num_voting_members = models.IntegerField(null=True, blank=True)
     num_independent_members = models.IntegerField(null=True, blank=True)
 
+    # Governance (Part IV checklist + Part VI indicators — from IRS XML)
+    related_party_disclosed = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Part IV Line 28 — org had related-party transactions (schedule_l_required)",
+    )
+    has_coi_policy = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Part VI Line 12a — conflict of interest policy exists",
+    )
+    has_whistleblower_policy = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Part VI Line 13 — whistleblower policy exists",
+    )
+    has_document_retention_policy = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Part VI Line 14 — document retention policy exists",
+    )
+
     # Source tracking
     source = models.CharField(
         max_length=20,
