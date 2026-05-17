@@ -83,7 +83,7 @@ export async function searchParcels(
  */
 export async function searchOhioSos(
   caseId: string,
-  params: { name?: string; ein?: string; entity_number?: string }
+  params: { query: string; fuzzy?: boolean }
 ): Promise<SyncResearchResponse> {
   return fetchApi<SyncResearchResponse>(`/api/cases/${caseId}/research/ohio-sos/`, {
     method: "POST",

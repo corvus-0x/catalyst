@@ -460,7 +460,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
     if (!sosQuery.trim()) return;
     setSosLoading(true);
     try {
-      const res = await searchOhioSos(caseId, { name: sosQuery.trim() });
+      const res = await searchOhioSos(caseId, { query: sosQuery.trim() });
       setSosResults(res);
     } catch {
       setSosResults({ results: [], count: 0, notes: ["Search failed."] });
