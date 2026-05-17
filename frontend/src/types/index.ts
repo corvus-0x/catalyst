@@ -533,6 +533,52 @@ export interface FinancialsResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Section 7 — Investigation Tab
+// ---------------------------------------------------------------------------
+
+/** Minimal finding reference embedded in an InvestigationStep */
+export interface StepFindingLink {
+  id: UUID;
+  title: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+}
+
+/**
+ * One step in the investigation replay.
+ * who_originated: "T" = investigator, "C" = Claude, "X" = external tip
+ * status: "RESOLVED" | "OPEN" | "DEAD_END"
+ */
+export interface InvestigationStep {
+  id: UUID;
+  step_number: number;
+  question: string;
+  source: string;
+  what_was_found: string;
+  who_originated: "T" | "C" | "X";
+  triggered_finding: StepFindingLink | null;
+  triggered_question: string;
+  status: "RESOLVED" | "OPEN" | "DEAD_END";
+  created_at: ISO8601;
+}
+
+export interface InvestigationStepsResponse {
+  count: number;
+  results: InvestigationStep[];
+}
+
+export interface CreateInvestigationStepParams {
+  step_number: number;
+  question: string;
+  source?: string;
+  what_was_found?: string;
+  who_originated?: "T" | "C" | "X";
+  triggered_finding_id?: string | null;
+  triggered_question?: string;
+  status?: "RESOLVED" | "OPEN" | "DEAD_END";
+}
+
+// ---------------------------------------------------------------------------
 // Section 6 — Pipeline Tab (Angles / Findings)
 // GET  /api/cases/:id/findings/
 // POST /api/cases/:id/findings/

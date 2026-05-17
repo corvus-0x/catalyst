@@ -30,6 +30,9 @@ import type {
   FindingSeverity,
   FindingStatus,
   FindingSource,
+  InvestigationStep,
+  InvestigationStepsResponse,
+  CreateInvestigationStepParams,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -488,4 +491,32 @@ export async function aiAsk(
     method: "POST",
     body: { question },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Investigation Steps
+// ---------------------------------------------------------------------------
+
+/** Fetch all investigation steps for a case, ordered by step_number. */
+export async function getInvestigationSteps(
+  caseId: string
+): Promise<InvestigationStepsResponse> {
+  return fetchApi<InvestigationStepsResponse>(
+    `/api/cases/${caseId}/investigation-steps/`
+  );
+}
+
+/** Create a new investigation step. */
+export async function createInvestigationStep(
+  caseId: string,
+  params: CreateInvestigationStepParams
+): Promise<InvestigationStep> {
+  return fetchApi<InvestigationStep>(
+    `/api/cases/${caseId}/investigation-steps/`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    }
+  );
 }
