@@ -2012,6 +2012,24 @@ def api_case_investigation_steps(request, pk):
     }, status=201)
 
 
+@require_http_methods(["GET"])
+def api_case_persons_deceased(request, pk):
+    """Return persons in this case who are deceased (have date_of_death or
+    DECEASED role tag)."""
+    case = get_object_or_404(Case, pk=pk)
+    persons = Person.objects.filter(case=case).order_by("full_name")
+    results = []
+    for p in persons:
+        if p.date_of_death is not None or "DECEASED" in (p.role_tags or []):
+            results.append({
+                "full_name": p.full_name,
+                "date_of_death": (
+                    p.date_of_death.isoformat() if p.date_of_death else None
+                ),
+            })
+    return JsonResponse({"results": results})
+
+
 # ---------------------------------------------------------------------------
 # Signal API endpoints
 # ---------------------------------------------------------------------------

@@ -131,6 +131,11 @@ urlpatterns = [
         name="api_case_investigation_steps",
     ),
     path(
+        "api/cases/<uuid:pk>/persons/deceased/",
+        views.api_case_persons_deceased,
+        name="api_case_persons_deceased",
+    ),
+    path(
         "api/cases/<uuid:pk>/findings/",
         views.api_case_finding_collection,
         name="api_case_finding_collection",
