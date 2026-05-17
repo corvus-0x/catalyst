@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as Tabs from "@radix-ui/react-tabs";
 import { toast } from "sonner";
-import { fetchCase, generateReferralPdf, fetchAngle, updateAngle } from "../api";
+import { fetchCase, fetchAngle, updateAngle } from "../api";
 import type { CaseDetailResponse, TimelineEvent } from "../types";
 import InvestigateTab from "./InvestigateTab";
 import DocumentDrawer from "../components/DocumentDrawer";
@@ -11,6 +11,7 @@ import DocumentDrawer from "../components/DocumentDrawer";
 const ResearchTab      = lazy(() => import("./ResearchTab"));
 const FinancialsTab    = lazy(() => import("./FinancialsTab"));
 const TimelineTab      = lazy(() => import("./TimelineTab"));
+const ReferralsTab     = lazy(() => import("./ReferralsTab"));
 const InvestigationTab = lazy(() => import("./InvestigationTab"));
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
@@ -20,55 +21,6 @@ function StatusPill({ status }: { status: string }) {
     <span className={`status-pill status-pill--${status.toLowerCase()}`}>
       {status}
     </span>
-  );
-}
-
-function ReferralsPanel({ caseId }: { caseId: string }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleGenerate() {
-    setLoading(true);
-    setError(null);
-    try {
-      const blob = await generateReferralPdf(caseId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `catalyst-referral-${caseId.slice(0, 8)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "PDF generation failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div style={{ padding: 32, maxWidth: 520 }}>
-      <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px" }}>
-        Referral Package
-      </h2>
-      <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
-        Generate a deterministic, citation-bearing PDF referral package for this case.
-        Confirmed angles with cited documents are included automatically. No AI generation —
-        every sentence traces back to a document in the case file.
-      </p>
-      <button
-        type="button"
-        className="btn-primary"
-        onClick={handleGenerate}
-        disabled={loading}
-      >
-        {loading ? "Generating…" : "Generate Referral Package (PDF)"}
-      </button>
-      {error && (
-        <p style={{ marginTop: 12, fontSize: 13, color: "#ef4444" }}>{error}</p>
-      )}
-    </div>
   );
 }
 
@@ -224,8 +176,10 @@ export default function CaseDetailView() {
         </Tabs.Content>
 
         {/* ── Referrals (deterministic PDF export) ── */}
-        <Tabs.Content value="referrals" className="tab-panel">
-          <ReferralsPanel caseId={id} />
+        <Tabs.Content value="referrals" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <Suspense fallback={TAB_FALLBACK}>
+            {id && <ReferralsTab caseId={id} />}
+          </Suspense>
         </Tabs.Content>
 
         {/* ── Investigation (angle replay + deep link into Investigate tab) ── */}
