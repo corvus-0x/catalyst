@@ -14,7 +14,7 @@
  *   Knot     = Person or Organization node
  */
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import {
   Search,
@@ -37,11 +37,13 @@ import {
   fetchCaseJobs,
   createNote,
   fetch990s,
+  getDeceasedPersons,
 } from "../api";
 import type {
   IrsSearchJobResult,
   IrsFilingResult,
   SyncResearchResponse,
+  DeceasedPerson,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -217,9 +219,11 @@ interface SyncResultsTableProps {
   source: string;           // used to namespace keys
   addedKeys: Set<string>;
   onAdded: (key: string) => void;
+  /** Set of lowercased deceased person names — checked for SOS results only */
+  deceasedNames?: Set<string>;
 }
 
-function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded }: SyncResultsTableProps) {
+function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded, deceasedNames }: SyncResultsTableProps) {
   async function handleCreateOrg(r: Record<string, unknown>, idx: number) {
     await addResearchToCase(caseId, {
       result_type: "organization",
@@ -236,6 +240,16 @@ function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded
       content: `Research result: ${label} — ${JSON.stringify(r).slice(0, 200)}`,
     });
     onAdded(`${source}_${idx}`);
+  }
+
+  function hasDeceasedSignatory(row: Record<string, unknown>): boolean {
+    if (!deceasedNames || deceasedNames.size === 0) return false;
+    const allValues = Object.values(row)
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.toLowerCase());
+    return allValues.some((val) =>
+      [...deceasedNames].some((name) => val.includes(name))
+    );
   }
 
   if (results.length === 0) {
@@ -260,51 +274,70 @@ function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded
         <tbody>
           {results.map((r, idx) => {
             const isDone = addedKeys.has(`${source}_${idx}`);
+            const isDeceased = hasDeceasedSignatory(r);
             return (
-              <tr key={idx}>
-                {columns.map((col) => (
-                  <td key={col}>{String(r[col] ?? "—")}</td>
-                ))}
-                <td style={{ width: 40, textAlign: "center" }}>
-                  {isDone ? (
-                    <span className="add-trigger add-trigger--done">
-                      <Check size={13} />
-                    </span>
-                  ) : (
-                    <Popover.Root>
-                      <Popover.Trigger asChild>
-                        <button type="button" className="add-trigger" aria-label="Add to case">
-                          <Plus size={13} />
-                        </button>
-                      </Popover.Trigger>
-                      <Popover.Portal>
-                        <Popover.Content className="add-popover" sideOffset={4}>
-                          <button
-                            type="button"
-                            className="add-option"
-                            onClick={() => handleCreateOrg(r, idx)}
-                          >
-                            Create Organization knot
-                            <span className="add-option__sub">
-                              Add as a knot in the Web
-                            </span>
+              <Fragment key={idx}>
+                {isDeceased && (
+                  <tr>
+                    <td
+                      colSpan={columns.length + 1}
+                      style={{
+                        background: "rgba(186,117,23,0.12)",
+                        color: "var(--color-high, #BA7517)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "4px 10px",
+                      }}
+                    >
+                      ⚠️ DECEASED SIGNATORY — name matches a deceased person in this case
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  {columns.map((col) => (
+                    <td key={col}>{String(r[col] ?? "—")}</td>
+                  ))}
+                  <td style={{ width: 40, textAlign: "center" }}>
+                    {isDone ? (
+                      <span className="add-trigger add-trigger--done">
+                        <Check size={13} />
+                      </span>
+                    ) : (
+                      <Popover.Root>
+                        <Popover.Trigger asChild>
+                          <button type="button" className="add-trigger" aria-label="Add to case">
+                            <Plus size={13} />
                           </button>
-                          <button
-                            type="button"
-                            className="add-option"
-                            onClick={() => handleSaveNote(r, idx)}
-                          >
-                            Save as note
-                            <span className="add-option__sub">
-                              Attach a quick capture to this case
-                            </span>
-                          </button>
-                        </Popover.Content>
-                      </Popover.Portal>
-                    </Popover.Root>
-                  )}
-                </td>
-              </tr>
+                        </Popover.Trigger>
+                        <Popover.Portal>
+                          <Popover.Content className="add-popover" sideOffset={4}>
+                            <button
+                              type="button"
+                              className="add-option"
+                              onClick={() => handleCreateOrg(r, idx)}
+                            >
+                              Create Organization knot
+                              <span className="add-option__sub">
+                                Add as a knot in the Web
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="add-option"
+                              onClick={() => handleSaveNote(r, idx)}
+                            >
+                              Save as note
+                              <span className="add-option__sub">
+                                Attach a quick capture to this case
+                              </span>
+                            </button>
+                          </Popover.Content>
+                        </Popover.Portal>
+                      </Popover.Root>
+                    )}
+                  </td>
+                </tr>
+              </Fragment>
             );
           })}
         </tbody>
@@ -396,6 +429,22 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   function markAdded(key: string) {
     setAddedKeys((prev) => new Set(prev).add(key));
   }
+
+  // Deceased persons cache for SOS signatory flag (Feature C)
+  const [deceasedNames, setDeceasedNames] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    getDeceasedPersons(caseId)
+      .then((res) => {
+        const names = new Set(
+          res.results.map((p: DeceasedPerson) => p.full_name.toLowerCase().trim())
+        );
+        setDeceasedNames(names);
+      })
+      .catch(() => {
+        // Non-critical — SOS flag simply won't show if this fails
+      });
+  }, [caseId]);
 
   // IRS query state
   const [irsMode, setIrsMode] = useState<"ein" | "name">("name");
@@ -636,6 +685,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
               source="sos"
               addedKeys={addedKeys}
               onAdded={markAdded}
+              deceasedNames={deceasedNames}
             />
           </>
         );
