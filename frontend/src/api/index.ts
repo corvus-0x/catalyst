@@ -53,6 +53,8 @@ export {
   aiConnections,
   aiNarrative,
   aiAsk,
+  getInvestigationSteps,
+  createInvestigationStep,
 } from "./cases";
 
 // Param types exported from cases.ts
