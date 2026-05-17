@@ -212,10 +212,11 @@ export async function fetchFinancials(
   return fetchApi<FinancialsResponse>(`/api/cases/${caseId}/financials/`);
 }
 
-/** Fetch 990 XML data from IRS TEOS and create FinancialSnapshots for the case. */
-export async function fetch990s(caseId: string): Promise<unknown> {
+/** Fetch 990 XML data from IRS TEOS and create FinancialSnapshots. Pass { ein } to target a specific org. */
+export async function fetch990s(caseId: string, params?: { ein?: string }): Promise<unknown> {
   return fetchApi<unknown>(`/api/cases/${caseId}/fetch-990s/`, {
     method: "POST",
+    body: params ?? {},
   });
 }
 

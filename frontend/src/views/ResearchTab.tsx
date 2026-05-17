@@ -36,6 +36,7 @@ import {
   addResearchToCase,
   fetchCaseJobs,
   createNote,
+  fetch990s,
 } from "../api";
 import type {
   IrsSearchJobResult,
@@ -56,18 +57,6 @@ interface ResearchTabProps {
 // ---------------------------------------------------------------------------
 
 type ResearchSource = "irs" | "sos" | "aos" | "recorder" | "parcel";
-
-// ---------------------------------------------------------------------------
-// Revenue formatting helper
-// ---------------------------------------------------------------------------
-
-function formatRevenue(n: number | null | undefined): string {
-  if (n == null) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
 
 // ---------------------------------------------------------------------------
 // Job status icon helper
@@ -105,11 +94,8 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
     return `${r.ein}_${r.tax_year}`;
   }
 
-  async function handleCreateOrg(r: IrsFilingResult) {
-    await addResearchToCase(caseId, {
-      result_type: "organization",
-      data: { name: r.organization_name, ein: r.ein },
-    });
+  async function handleFetch990s(r: IrsFilingResult) {
+    await fetch990s(caseId, { ein: r.ein });
     setDone((prev) => new Set(prev).add(rowKey(r)));
   }
 
@@ -117,7 +103,7 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
     await createNote(caseId, {
       target_type: "case",
       target_id: caseId,
-      content: `IRS: ${r.organization_name} EIN:${r.ein} ${r.tax_year}`,
+      content: `IRS: ${r.taxpayer_name} EIN:${r.ein} ${r.tax_year}`,
     });
     setDone((prev) => new Set(prev).add(rowKey(r)));
   }
@@ -139,7 +125,6 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
             <th>Organization</th>
             <th>Year</th>
             <th>Form</th>
-            <th>Revenue</th>
             <th></th>
           </tr>
         </thead>
@@ -150,14 +135,13 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
             return (
               <tr key={key}>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>{r.ein}</td>
-                <td>{r.organization_name}</td>
+                <td>{r.taxpayer_name}</td>
                 <td>{r.tax_year}</td>
                 <td>
-                  <span className={`doc-badge doc-badge--IRS_990`}>
-                    {r.form_type ?? "990"}
+                  <span className="doc-badge doc-badge--IRS_990">
+                    {r.return_type ?? "990"}
                   </span>
                 </td>
-                <td>{formatRevenue(r.total_revenue)}</td>
                 <td style={{ width: 40, textAlign: "center" }}>
                   {isDone ? (
                     <span className="add-trigger add-trigger--done">
@@ -175,11 +159,11 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
                           <button
                             type="button"
                             className="add-option"
-                            onClick={() => handleCreateOrg(r)}
+                            onClick={() => handleFetch990s(r)}
                           >
-                            Create Organization knot
+                            Fetch 990s → Financials
                             <span className="add-option__sub">
-                              Add {r.organization_name} as a knot in the Web
+                              Pull XML from IRS TEOS, populate the Financials tab
                             </span>
                           </button>
                           <button
@@ -191,15 +175,6 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
                             <span className="add-option__sub">
                               Attach a quick capture to this case
                             </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="add-option"
-                            disabled
-                            style={{ opacity: 0.5, cursor: "not-allowed" }}
-                          >
-                            Fetch and store 990 XML
-                            <span className="add-option__sub">Coming soon</span>
                           </button>
                         </Popover.Content>
                       </Popover.Portal>

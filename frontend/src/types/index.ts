@@ -963,23 +963,18 @@ export interface IrsSearchJobResult {
 }
 
 /**
- * A single IRS filing from the TEOS pipeline.
- * These are returned inside IrsSearchJobResult.results.
+ * A single IRS filing from the TEOS index search (IRS_NAME_SEARCH job result).
+ * Field names match what irs_connector.filing_to_dict() returns.
  */
 export interface IrsFilingResult {
   ein: string;
-  organization_name: string;
+  taxpayer_name: string;
+  return_type: string;
   tax_year: number;
-  form_type: string;
-  /** ISO date string of when the return was filed */
-  filing_date: string | null;
-  xml_url: string | null;
-  /** Summary financials extracted from Part I */
-  total_revenue: number | null;
-  total_expenses: number | null;
-  net_assets: number | null;
-  /** Part IV governance flags extracted from XML */
-  governance_flags: Record<string, unknown>;
+  tax_period: string | null;
+  object_id: string | null;
+  batch_id: string | null;
+  index_year: number | null;
 }
 
 /**
