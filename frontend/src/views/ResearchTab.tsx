@@ -85,18 +85,18 @@ function JobStatusIcon({ status }: { status: string }) {
 interface IrsResultsTableProps {
   results: IrsFilingResult[];
   caseId: string;
+  addedKeys: Set<string>;
+  onAdded: (key: string) => void;
 }
 
-function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
-  const [done, setDone] = useState<Set<string>>(new Set());
-
+function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTableProps) {
   function rowKey(r: IrsFilingResult) {
     return `${r.ein}_${r.tax_year}`;
   }
 
   async function handleFetch990s(r: IrsFilingResult) {
     await fetch990s(caseId, { ein: r.ein });
-    setDone((prev) => new Set(prev).add(rowKey(r)));
+    onAdded(rowKey(r));
   }
 
   async function handleSaveNote(r: IrsFilingResult) {
@@ -105,7 +105,7 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
       target_id: caseId,
       content: `IRS: ${r.taxpayer_name} EIN:${r.ein} ${r.tax_year}`,
     });
-    setDone((prev) => new Set(prev).add(rowKey(r)));
+    onAdded(rowKey(r));
   }
 
   if (results.length === 0) {
@@ -131,7 +131,7 @@ function IrsResultsTable({ results, caseId }: IrsResultsTableProps) {
         <tbody>
           {results.map((r) => {
             const key = rowKey(r);
-            const isDone = done.has(key);
+            const isDone = addedKeys.has(key);
             return (
               <tr key={key}>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>{r.ein}</td>
@@ -198,17 +198,18 @@ interface SyncResultsTableProps {
   results: Record<string, unknown>[];
   caseId: string;
   columns: string[];
+  source: string;           // used to namespace keys
+  addedKeys: Set<string>;
+  onAdded: (key: string) => void;
 }
 
-function SyncResultsTable({ results, caseId, columns }: SyncResultsTableProps) {
-  const [done, setDone] = useState<Set<number>>(new Set());
-
+function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded }: SyncResultsTableProps) {
   async function handleCreateOrg(r: Record<string, unknown>, idx: number) {
     await addResearchToCase(caseId, {
       result_type: "organization",
       data: r,
     });
-    setDone((prev) => new Set(prev).add(idx));
+    onAdded(`${source}_${idx}`);
   }
 
   async function handleSaveNote(r: Record<string, unknown>, idx: number) {
@@ -218,7 +219,7 @@ function SyncResultsTable({ results, caseId, columns }: SyncResultsTableProps) {
       target_id: caseId,
       content: `Research result: ${label} — ${JSON.stringify(r).slice(0, 200)}`,
     });
-    setDone((prev) => new Set(prev).add(idx));
+    onAdded(`${source}_${idx}`);
   }
 
   if (results.length === 0) {
@@ -242,7 +243,7 @@ function SyncResultsTable({ results, caseId, columns }: SyncResultsTableProps) {
         </thead>
         <tbody>
           {results.map((r, idx) => {
-            const isDone = done.has(idx);
+            const isDone = addedKeys.has(`${source}_${idx}`);
             return (
               <tr key={idx}>
                 {columns.map((col) => (
@@ -372,6 +373,13 @@ function RecorderResults({ results }: RecorderResultsProps) {
 export default function ResearchTab({ caseId }: ResearchTabProps) {
   // Source selection
   const [source, setSource] = useState<ResearchSource>("irs");
+
+  // Persistence of ✓ Added state across tab switches (Feature E)
+  const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+
+  function markAdded(key: string) {
+    setAddedKeys((prev) => new Set(prev).add(key));
+  }
 
   // IRS query state
   const [irsMode, setIrsMode] = useState<"ein" | "name">("name");
@@ -554,7 +562,12 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
       }
       if (irsJob.status === "SUCCESS" && irsJob.result) {
         return (
-          <IrsResultsTable results={irsJob.result.results} caseId={caseId} />
+          <IrsResultsTable
+            results={irsJob.result.results}
+            caseId={caseId}
+            addedKeys={addedKeys}
+            onAdded={markAdded}
+          />
         );
       }
       return null;
@@ -604,6 +617,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
               results={sosResults.results}
               caseId={caseId}
               columns={cols}
+              source="sos"
+              addedKeys={addedKeys}
+              onAdded={markAdded}
             />
           </>
         );
@@ -662,7 +678,14 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
             ? Object.keys(rows[0]).slice(0, 5)
             : ["name", "entity", "finding", "year", "amount"];
         return (
-          <SyncResultsTable results={rows} caseId={caseId} columns={cols} />
+          <SyncResultsTable
+            results={rows}
+            caseId={caseId}
+            columns={cols}
+            source="aos"
+            addedKeys={addedKeys}
+            onAdded={markAdded}
+          />
         );
       }
       return null;
