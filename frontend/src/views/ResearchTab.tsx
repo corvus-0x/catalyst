@@ -169,6 +169,22 @@ function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTabl
                           <button
                             type="button"
                             className="add-option"
+                            onClick={async () => {
+                              await addResearchToCase(caseId, {
+                                result_type: "organization",
+                                data: r as unknown as Record<string, unknown>,
+                              });
+                              onAdded(rowKey(r));
+                            }}
+                          >
+                            Create Organization knot
+                            <span className="add-option__sub">
+                              Add as a knot in the Web
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="add-option"
                             onClick={() => handleSaveNote(r)}
                           >
                             Save as note
@@ -719,11 +735,32 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
 
     if (source === "parcel") {
       return (
-        <div className="empty-state" style={{ marginTop: 48 }}>
-          <AlertTriangle size={28} style={{ color: "var(--color-high)" }} />
-          <p className="empty-state__body" style={{ marginTop: 12, textAlign: "center" }}>
-            County Auditor parcel search is currently unavailable (data source is offline).
-          </p>
+        <div className="research-panel">
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            padding: "48px 32px",
+            textAlign: "center",
+          }}>
+            <AlertTriangle size={32} style={{ color: "var(--color-high, #BA7517)" }} />
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)", margin: 0 }}>
+              County Parcel Search — Currently Unavailable
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0, maxWidth: 380, lineHeight: 1.5 }}>
+              The ODNR ArcGIS parcel API is returning errors from Railway.
+              Use County Recorder to search property records and deeds directly.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setSource("recorder")}
+            >
+              Switch to County Recorder
+            </button>
+          </div>
         </div>
       );
     }
