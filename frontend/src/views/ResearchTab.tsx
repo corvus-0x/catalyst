@@ -451,11 +451,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   // ---------------------------------------------------------------------------
 
   function handleIrsSearch() {
-    if (irsMode === "ein" && !irsEin.trim()) return;
-    if (irsMode === "name" && !irsName.trim()) return;
-    const params =
-      irsMode === "ein" ? { ein: irsEin.trim() } : { name: irsName.trim() };
-    void irsJob.run(() => searchIrs(caseId, params));
+    const query = irsMode === "ein" ? irsEin.trim() : irsName.trim();
+    if (!query) return;
+    void irsJob.run(() => searchIrs(caseId, { query }));
   }
 
   async function handleSosSearch() {
@@ -473,7 +471,7 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
 
   function handleAosSearch() {
     if (!aosName.trim()) return;
-    void aosJob.run(() => searchOhioAos(caseId, { name: aosName.trim() }));
+    void aosJob.run(() => searchOhioAos(caseId, { query: aosName.trim() }));
   }
 
   async function handleRecorderSearch() {

@@ -29,12 +29,13 @@ export type AsyncJobEnvelope = AsyncJobEnqueuedResponse;
 
 /**
  * Search IRS TEOS for 990 filings by EIN or organization name.
+ * Backend accepts { query } and auto-detects EIN vs name.
  * This is a slow endpoint (30–120s) — always async.
  * Returns an AsyncJobEnvelope; poll fetchJob() for results.
  */
 export async function searchIrs(
   caseId: string,
-  params: { ein?: string; name?: string }
+  params: { query: string; fetch_xml?: boolean }
 ): Promise<AsyncJobEnqueuedResponse> {
   return fetchApi<AsyncJobEnqueuedResponse>(`/api/cases/${caseId}/research/irs/`, {
     method: "POST",
@@ -48,7 +49,7 @@ export async function searchIrs(
  */
 export async function searchOhioAos(
   caseId: string,
-  params: { name: string }
+  params: { query: string }
 ): Promise<AsyncJobEnqueuedResponse> {
   return fetchApi<AsyncJobEnqueuedResponse>(`/api/cases/${caseId}/research/ohio-aos/`, {
     method: "POST",
