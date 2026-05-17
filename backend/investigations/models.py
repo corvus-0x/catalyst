@@ -1071,6 +1071,69 @@ class InvestigationStep(UUIDPrimaryKeyModel):
         return f"Step {self.step_number} — {self.question[:60]}"
 
 
+class ReferralTarget(UUIDPrimaryKeyModel):
+    """
+    Tracks a referral submission to an investigative agency.
+    One row per agency per case.
+    """
+
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("SENT", "Sent"),
+        ("ACKNOWLEDGED", "Acknowledged"),
+        ("CLOSED", "Closed"),
+    ]
+
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        related_name="referral_targets",
+    )
+    agency_name = models.CharField(
+        max_length=200,
+        help_text=(
+            "Name of the receiving agency "
+            "(e.g. 'Ohio AG — Charitable Law Section')"
+        ),
+    )
+    complaint_type = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Type of complaint filed (e.g. 'Charitable fraud', 'Tax-exempt complaint')",
+    )
+    reference_number = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Agency-assigned reference or complaint number",
+    )
+    contact = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Contact name or unit at the receiving agency",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="DRAFT",
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Internal notes about this referral",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "referral_targets"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.agency_name} ({self.status})"
+
+
 class Finding(UUIDPrimaryKeyModel):
     """
     Consolidated finding model — replaces the old Signal → Detection → Finding
