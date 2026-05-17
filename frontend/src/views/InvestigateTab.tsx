@@ -302,9 +302,19 @@ interface InvestigateTabProps {
   caseId: string;
   documents: DocumentItem[];
   onAngleActive?: (angleId: string | undefined) => void;
+  /** Set by parent to request navigating to a specific angle from outside */
+  requestedAngle?: { id: string; title: string } | null;
+  /** Called after this component pushes the requested angle onto the nav stack */
+  onAngleConsumed?: () => void;
 }
 
-export default function InvestigateTab({ caseId, documents, onAngleActive }: InvestigateTabProps) {
+export default function InvestigateTab({
+  caseId,
+  documents,
+  onAngleActive,
+  requestedAngle,
+  onAngleConsumed,
+}: InvestigateTabProps) {
   const [graph, setGraph]           = useState<GraphResponse | null>(null);
   const [dashboard, setDashboard]   = useState<DashboardResponse | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -348,6 +358,14 @@ export default function InvestigateTab({ caseId, documents, onAngleActive }: Inv
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load graph"))
       .finally(() => setLoading(false));
   }, [caseId]);
+
+  /* ── External angle navigation (from Investigation tab deep link) ── */
+  useEffect(() => {
+    if (!requestedAngle) return;
+    navigate({ kind: "angle", angleId: requestedAngle.id, angleTitle: requestedAngle.title });
+    onAngleConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedAngle]);
 
   /* ── Navigation ── */
   function navigate(entry: NavEntry) {

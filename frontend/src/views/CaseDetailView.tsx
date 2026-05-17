@@ -8,9 +8,10 @@ import InvestigateTab from "./InvestigateTab";
 import DocumentDrawer from "../components/DocumentDrawer";
 
 /* ─── Lazy-load heavy tabs ────────────────────────────────────────────────── */
-const ResearchTab   = lazy(() => import("./ResearchTab"));
-const FinancialsTab = lazy(() => import("./FinancialsTab"));
-const TimelineTab   = lazy(() => import("./TimelineTab"));
+const ResearchTab      = lazy(() => import("./ResearchTab"));
+const FinancialsTab    = lazy(() => import("./FinancialsTab"));
+const TimelineTab      = lazy(() => import("./TimelineTab"));
+const InvestigationTab = lazy(() => import("./InvestigationTab"));
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -83,6 +84,7 @@ export default function CaseDetailView() {
   const [loadingCase, setLoadingCase] = useState(true);
   const [activeTab, setActiveTab] = useState("investigate");
   const [activeAngleId, setActiveAngleId] = useState<string | undefined>();
+  const [requestedAngle, setRequestedAngle] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -102,14 +104,20 @@ export default function CaseDetailView() {
       });
   }
 
+  function handleOpenAngle(angleId: string, angleTitle: string) {
+    setRequestedAngle({ id: angleId, title: angleTitle });
+    setActiveTab("investigate");
+  }
+
   if (!id) return <div style={{ padding: 24 }}>Invalid case ID.</div>;
 
   const tabLabels = [
-    { value: "investigate", label: "Investigate" },
-    { value: "research",    label: "Research" },
-    { value: "financials",  label: "Financials" },
-    { value: "timeline",    label: "Timeline" },
-    { value: "referrals",   label: "Referrals" },
+    { value: "investigate",   label: "Investigate" },
+    { value: "research",      label: "Research" },
+    { value: "financials",    label: "Financials" },
+    { value: "timeline",      label: "Timeline" },
+    { value: "referrals",     label: "Referrals" },
+    { value: "investigation", label: "Investigation" },
   ];
 
   return (
@@ -164,6 +172,8 @@ export default function CaseDetailView() {
             caseId={id}
             documents={caseData?.documents ?? []}
             onAngleActive={setActiveAngleId}
+            requestedAngle={requestedAngle}
+            onAngleConsumed={() => setRequestedAngle(null)}
           />
         </Tabs.Content>
 
@@ -216,6 +226,18 @@ export default function CaseDetailView() {
         {/* ── Referrals (deterministic PDF export) ── */}
         <Tabs.Content value="referrals" className="tab-panel">
           <ReferralsPanel caseId={id} />
+        </Tabs.Content>
+
+        {/* ── Investigation (angle replay + deep link into Investigate tab) ── */}
+        <Tabs.Content value="investigation" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <Suspense fallback={TAB_FALLBACK}>
+            {id && (
+              <InvestigationTab
+                caseId={id}
+                onOpenAngle={handleOpenAngle}
+              />
+            )}
+          </Suspense>
         </Tabs.Content>
       </Tabs.Root>
     </div>
