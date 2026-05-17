@@ -176,14 +176,14 @@ export default function CaseDetailView() {
         </Tabs.Content>
 
         {/* ── Referrals (deterministic PDF export) ── */}
-        <Tabs.Content value="referrals" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Tabs.Content value="referrals" className="tab-panel">
           <Suspense fallback={TAB_FALLBACK}>
             {id && <ReferralsTab caseId={id} />}
           </Suspense>
         </Tabs.Content>
 
         {/* ── Investigation (angle replay + deep link into Investigate tab) ── */}
-        <Tabs.Content value="investigation" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Tabs.Content value="investigation" className="tab-panel">
           <Suspense fallback={TAB_FALLBACK}>
             {id && (
               <InvestigationTab
