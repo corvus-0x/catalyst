@@ -56,6 +56,10 @@ export {
   getInvestigationSteps,
   createInvestigationStep,
   getDeceasedPersons,
+  getReferralTargets,
+  createReferralTarget,
+  updateReferralTarget,
+  deleteReferralTarget,
 } from "./cases";
 
 // Param types exported from cases.ts

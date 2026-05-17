@@ -34,6 +34,10 @@ import type {
   InvestigationStepsResponse,
   CreateInvestigationStepParams,
   DeceasedPersonsResponse,
+  ReferralTarget,
+  ReferralTargetsResponse,
+  CreateReferralTargetParams,
+  UpdateReferralTargetParams,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -532,5 +536,53 @@ export async function getDeceasedPersons(
 ): Promise<DeceasedPersonsResponse> {
   return fetchApi<DeceasedPersonsResponse>(
     `/api/cases/${caseId}/persons/deceased/`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Referral Targets
+// ---------------------------------------------------------------------------
+
+export async function getReferralTargets(
+  caseId: string
+): Promise<ReferralTargetsResponse> {
+  return fetchApi<ReferralTargetsResponse>(
+    `/api/cases/${caseId}/referral-targets/`
+  );
+}
+
+export async function createReferralTarget(
+  caseId: string,
+  params: CreateReferralTargetParams
+): Promise<ReferralTarget> {
+  return fetchApi<ReferralTarget>(`/api/cases/${caseId}/referral-targets/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+export async function updateReferralTarget(
+  caseId: string,
+  targetId: string,
+  params: UpdateReferralTargetParams
+): Promise<ReferralTarget> {
+  return fetchApi<ReferralTarget>(
+    `/api/cases/${caseId}/referral-targets/${targetId}/`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    }
+  );
+}
+
+export async function deleteReferralTarget(
+  caseId: string,
+  targetId: string
+): Promise<void> {
+  return fetchApi<void>(
+    `/api/cases/${caseId}/referral-targets/${targetId}/`,
+    { method: "DELETE" }
   );
 }

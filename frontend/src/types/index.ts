@@ -577,6 +577,46 @@ export interface DeceasedPersonsResponse {
   results: DeceasedPerson[];
 }
 
+// ---------------------------------------------------------------------------
+// Section 8 — Referrals Tab
+// ---------------------------------------------------------------------------
+
+export type ReferralStatus = "DRAFT" | "SENT" | "ACKNOWLEDGED" | "CLOSED";
+
+export interface ReferralTarget {
+  id: UUID;
+  agency_name: string;
+  complaint_type: string;
+  reference_number: string;
+  contact: string;
+  status: ReferralStatus;
+  notes: string;
+  created_at: ISO8601;
+}
+
+export interface ReferralTargetsResponse {
+  count: number;
+  results: ReferralTarget[];
+}
+
+export interface CreateReferralTargetParams {
+  agency_name: string;
+  complaint_type?: string;
+  reference_number?: string;
+  contact?: string;
+  status?: ReferralStatus;
+  notes?: string;
+}
+
+export interface UpdateReferralTargetParams {
+  agency_name?: string;
+  complaint_type?: string;
+  reference_number?: string;
+  contact?: string;
+  status?: ReferralStatus;
+  notes?: string;
+}
+
 export interface CreateInvestigationStepParams {
   step_number: number;
   question: string;
