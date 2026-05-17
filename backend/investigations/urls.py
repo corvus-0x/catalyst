@@ -136,6 +136,16 @@ urlpatterns = [
         name="api_case_persons_deceased",
     ),
     path(
+        "api/cases/<uuid:pk>/referral-targets/",
+        views.api_case_referral_targets,
+        name="api_case_referral_targets",
+    ),
+    path(
+        "api/cases/<uuid:pk>/referral-targets/<uuid:target_id>/",
+        views.api_case_referral_target_detail,
+        name="api_case_referral_target_detail",
+    ),
+    path(
         "api/cases/<uuid:pk>/findings/",
         views.api_case_finding_collection,
         name="api_case_finding_collection",

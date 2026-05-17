@@ -41,6 +41,7 @@ from .models import (
     PersonOrganization,
     Property,
     PropertyTransaction,
+    ReferralTarget,
     Relationship,
     SearchJob,
     Severity,
@@ -2028,6 +2029,98 @@ def api_case_persons_deceased(request, pk):
                 ),
             })
     return JsonResponse({"results": results})
+
+
+# ---------------------------------------------------------------------------
+# Referral Targets
+# ---------------------------------------------------------------------------
+
+
+def _serialize_target(t) -> dict:
+    return {
+        "id": str(t.pk),
+        "agency_name": t.agency_name,
+        "complaint_type": t.complaint_type,
+        "reference_number": t.reference_number,
+        "contact": t.contact,
+        "status": t.status,
+        "notes": t.notes,
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+@require_http_methods(["GET", "POST"])
+def api_case_referral_targets(request, pk):
+    """List or create referral targets for a case."""
+    case = get_object_or_404(Case, pk=pk)
+
+    if request.method == "GET":
+        targets = ReferralTarget.objects.filter(case=case).order_by("created_at")
+        return JsonResponse({
+            "count": targets.count(),
+            "results": [_serialize_target(t) for t in targets],
+        })
+
+    # POST
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    agency_name = body.get("agency_name", "").strip()
+    if not agency_name:
+        return JsonResponse({"error": "agency_name is required"}, status=400)
+
+    status_val = body.get("status", "DRAFT")
+    if status_val not in {"DRAFT", "SENT", "ACKNOWLEDGED", "CLOSED"}:
+        return JsonResponse(
+            {"error": (
+                f"Invalid status: {status_val!r}. "
+                "Must be DRAFT, SENT, ACKNOWLEDGED, or CLOSED."
+            )},
+            status=400,
+        )
+
+    target = ReferralTarget.objects.create(
+        case=case,
+        agency_name=agency_name,
+        complaint_type=body.get("complaint_type", ""),
+        reference_number=body.get("reference_number", ""),
+        contact=body.get("contact", ""),
+        status=status_val,
+        notes=body.get("notes", ""),
+    )
+    return JsonResponse(_serialize_target(target), status=201)
+
+
+@require_http_methods(["PATCH", "DELETE"])
+def api_case_referral_target_detail(request, pk, target_id):
+    """Update or delete a single referral target."""
+    case = get_object_or_404(Case, pk=pk)
+    target = get_object_or_404(ReferralTarget, pk=target_id, case=case)
+
+    if request.method == "DELETE":
+        target.delete()
+        return JsonResponse({}, status=204)
+
+    # PATCH
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    if "status" in body and body["status"] not in {"DRAFT", "SENT", "ACKNOWLEDGED", "CLOSED"}:
+        return JsonResponse({"error": f"Invalid status: {body['status']!r}"}, status=400)
+
+    if "agency_name" in body and not body["agency_name"].strip():
+        return JsonResponse({"error": "agency_name cannot be empty"}, status=400)
+
+    updatable = ["agency_name", "complaint_type", "reference_number", "contact", "status", "notes"]
+    for field in updatable:
+        if field in body:
+            setattr(target, field, body[field])
+    target.save()
+    return JsonResponse(_serialize_target(target))
 
 
 # ---------------------------------------------------------------------------
