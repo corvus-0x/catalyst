@@ -100,11 +100,27 @@ def run_irs_fetch_xml(job_id: str) -> None:
     if job is None:
         return
     try:
+        import hashlib as _hashlib
+
+        from investigations.models import (
+            Document,
+            DocumentType,
+            ExtractionStatus,
+            FinancialSnapshot,
+            OcrStatus,
+            Organization,
+        )
+
         query = job.query_params["query"].strip()
         cleaned = query.replace("-", "").replace(" ", "")
+        formatted_ein = f"{cleaned[:2]}-{cleaned[2:]}" if len(cleaned) >= 2 else cleaned
+        case = job.case
+
         search_result = irs_connector.search_990_by_ein(cleaned, years=irs_connector.INDEX_YEARS)
         records = []
         notes = []
+        snapshots_created = 0
+
         for filing in search_result.filings:
             record = irs_connector.filing_to_dict(filing)
             try:
@@ -113,6 +129,87 @@ def run_irs_fetch_xml(job_id: str) -> None:
                     xml_text, filing.object_id, filing.xml_batch_id
                 )
                 record["parsed"] = irs_connector.parsed_990_to_dict(parsed)
+
+                # ── Create FinancialSnapshot directly from parsed XML ──────────
+                if case:
+                    tax_year = parsed.tax_year or filing.tax_year
+                    existing = FinancialSnapshot.objects.filter(
+                        case=case,
+                        ein__in=[cleaned, formatted_ein],
+                        tax_year=tax_year,
+                    ).first()
+                    if not existing:
+                        # Minimal Document record for chain-of-custody
+                        xml_doc, _ = Document.objects.get_or_create(
+                            case=case,
+                            filename=f"irs_990_xml_{formatted_ein}_{tax_year}.xml",
+                            defaults={
+                                "display_name": (
+                                    f"IRS Form 990 XML — "
+                                    f"{parsed.taxpayer_name or formatted_ein} ({tax_year})"
+                                ),
+                                "doc_type": DocumentType.IRS_990,
+                                "file_path": "",
+                                "sha256_hash": _hashlib.sha256(
+                                    filing.object_id.encode()
+                                ).hexdigest(),
+                                "file_size": len(xml_text.encode()),
+                                "ocr_status": OcrStatus.SKIPPED,
+                                "extraction_status": ExtractionStatus.COMPLETED,
+                                "extracted_text": xml_text[:50000],
+                                "is_generated": True,
+                            },
+                        )
+                        # Find or create Organization
+                        org = Organization.objects.filter(
+                            case=case, ein__in=[cleaned, formatted_ein]
+                        ).first()
+                        if not org and parsed.taxpayer_name:
+                            org = Organization.objects.filter(
+                                case=case,
+                                name__iexact=parsed.taxpayer_name,
+                            ).first()
+
+                        fin = parsed.financials
+                        gov = parsed.governance
+                        FinancialSnapshot.objects.create(
+                            case=case,
+                            document=xml_doc,
+                            organization=org,
+                            ein=formatted_ein,
+                            tax_year=tax_year,
+                            form_type=parsed.return_type or filing.return_type,
+                            total_contributions=fin.total_contributions,
+                            program_service_revenue=fin.program_service_revenue,
+                            investment_income=fin.investment_income,
+                            other_revenue=fin.other_revenue,
+                            total_revenue=fin.total_revenue,
+                            grants_paid=fin.grants_paid,
+                            salaries_and_compensation=fin.salaries_and_compensation,
+                            professional_fundraising=fin.professional_fundraising,
+                            other_expenses=fin.other_expenses,
+                            total_expenses=fin.total_expenses,
+                            revenue_less_expenses=fin.revenue_less_expenses,
+                            total_assets_boy=fin.total_assets_boy,
+                            total_assets_eoy=fin.total_assets_eoy,
+                            total_liabilities_boy=fin.total_liabilities_boy,
+                            total_liabilities_eoy=fin.total_liabilities_eoy,
+                            net_assets_boy=fin.net_assets_boy,
+                            net_assets_eoy=fin.net_assets_eoy,
+                            officer_compensation_total=parsed.total_reportable_comp_from_org,
+                            num_employees=parsed.num_employees,
+                            num_voting_members=gov.voting_members_governing_body,
+                            num_independent_members=gov.independent_voting_members,
+                            related_party_disclosed=gov.schedule_l_required,
+                            has_coi_policy=gov.conflict_of_interest_policy,
+                            has_whistleblower_policy=gov.whistleblower_policy,
+                            has_document_retention_policy=gov.document_retention_policy,
+                            source="IRS_TEOS_XML",
+                            confidence=parsed.parse_quality,
+                            raw_extraction=irs_connector.parsed_990_to_dict(parsed),
+                        )
+                        snapshots_created += 1
+
             except (
                 irs_connector.IRSNetworkError,
                 irs_connector.IRSParseError,
@@ -130,10 +227,24 @@ def run_irs_fetch_xml(job_id: str) -> None:
                 f"e-filing threshold."
             )
 
+        # Run signal rules against newly-created snapshots
+        if snapshots_created > 0 and case:
+            try:
+                from investigations.signal_rules import (
+                    _run_case_scoped_rules,
+                    evaluate_xml_financial_snapshots,
+                )
+                snapshots = FinancialSnapshot.objects.filter(case=case).order_by("tax_year")
+                evaluate_xml_financial_snapshots(case, snapshots)
+                _run_case_scoped_rules(case)
+            except Exception:  # noqa: BLE001
+                logger.exception("signal_rules_failed_after_xml_fetch", extra={"job_id": job_id})
+
         result = {
             "source": "irs_teos_xml",
             "results": records,
             "count": len(records),
+            "snapshots_created": snapshots_created,
             "notes": notes,
         }
         _mark_success(job, result)

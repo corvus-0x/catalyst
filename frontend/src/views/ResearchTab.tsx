@@ -516,7 +516,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
     const query = irsMode === "ein" ? irsEin.trim() : irsName.trim();
     if (!query) return;
     setDirectFetchMsg(null);
-    void irsJob.run(() => searchIrs(caseId, { query }));
+    // EIN mode: fetch full XML and create FinancialSnapshots automatically (async job)
+    // Name mode: search the index for matching orgs
+    void irsJob.run(() => searchIrs(caseId, { query, fetch_xml: irsMode === "ein" }));
   }
 
   async function handleDirectFetch990s() {
