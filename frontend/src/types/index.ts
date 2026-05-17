@@ -505,8 +505,18 @@ export interface FinancialSnapshot {
   net_assets_eoy: number | null;
   officer_compensation_total: number | null;
   num_employees: number | null;
-  /** "IRS_XML" for TEOS pipeline data, "AI_EXTRACTED" for OCR-parsed documents */
-  source: "IRS_XML" | "AI_EXTRACTED";
+  num_voting_members: number | null;
+  num_independent_members: number | null;
+  /** Part IV Line 28 — org disclosed related-party transactions. null if not parsed. */
+  related_party_disclosed: boolean | null;
+  /** Part VI Line 12a — conflict of interest policy. null if not parsed. */
+  has_coi_policy: boolean | null;
+  /** Part VI Line 13 — whistleblower policy. null if not parsed. */
+  has_whistleblower_policy: boolean | null;
+  /** Part VI Line 14 — document retention policy. null if not parsed. */
+  has_document_retention_policy: boolean | null;
+  /** Backend returns "IRS_TEOS_XML" for TEOS pipeline data, "EXTRACTED" for OCR-parsed */
+  source: string;
   /** Confidence score 0.0–1.0 */
   confidence: number;
   /** Only present on rows[1..n] — undefined on the first (oldest) row */
