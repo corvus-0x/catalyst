@@ -97,6 +97,39 @@ function edgeToElement(edge: GraphEdge): cytoscape.ElementDefinition {
   };
 }
 
+/* ─── WebStatsBar ─────────────────────────────────────────────────────────────── */
+
+interface WebStatsBarProps {
+  findings: number | null;
+  documents: number | null;
+  entities: number | null;
+  daysOpen: number | null;
+}
+
+function WebStatsBar({ findings, documents, entities, daysOpen }: WebStatsBarProps) {
+  const fmt = (n: number | null) => (n === null ? "—" : String(n));
+  return (
+    <div className="web-stats-bar">
+      <span className="web-stats-chip">
+        <span className="web-stats-chip__value">{fmt(findings)}</span>
+        <span className="web-stats-chip__label">Angles</span>
+      </span>
+      <span className="web-stats-chip">
+        <span className="web-stats-chip__value">{fmt(documents)}</span>
+        <span className="web-stats-chip__label">Documents</span>
+      </span>
+      <span className="web-stats-chip">
+        <span className="web-stats-chip__value">{fmt(entities)}</span>
+        <span className="web-stats-chip__label">Entities</span>
+      </span>
+      <span className="web-stats-chip">
+        <span className="web-stats-chip__value">{fmt(daysOpen)}</span>
+        <span className="web-stats-chip__label">Days open</span>
+      </span>
+    </div>
+  );
+}
+
 /* ─── Toolbar ─────────────────────────────────────────────────────────────────── */
 
 interface ToolbarProps {
@@ -469,6 +502,12 @@ export default function InvestigateTab({
   const isEmpty = !graph || graph.nodes.filter(n => n.type === "person" || n.type === "organization").length === 0;
   const showDocument = current.kind === "document";
 
+  const daysOpen = dashboard?.case.created_at
+    ? Math.floor(
+        (Date.now() - new Date(dashboard.case.created_at).getTime()) / 86_400_000
+      )
+    : null;
+
   const fallback = (msg: string) => (
     <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>
   );
@@ -491,6 +530,16 @@ export default function InvestigateTab({
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
       {/* Breadcrumb */}
       <Breadcrumb stack={navStack} onNavigateTo={navigateTo} />
+
+      {/* KPI stats bar — Web Level 1 only */}
+      {current.kind === "web" && (
+        <WebStatsBar
+          findings={dashboard?.findings.total ?? null}
+          documents={dashboard?.documents.total ?? null}
+          entities={dashboard?.entities.total ?? null}
+          daysOpen={daysOpen}
+        />
+      )}
 
       {/* Main row: toolbar + canvas + panels */}
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>

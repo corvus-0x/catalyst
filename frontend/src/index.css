@@ -1071,6 +1071,37 @@ body {
   border-top: 1px solid var(--border-1);
 }
 
+/* ── Web KPI stats bar ─────────────────────────────────── */
+.web-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 16px;
+  height: 36px;
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  background: var(--bg-0);
+}
+.web-stats-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 14px;
+  border-right: 1px solid var(--border-1);
+}
+.web-stats-chip:last-child { border-right: none; }
+.web-stats-chip__value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.web-stats-chip__label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* ─── Timeline tab ───────────────────────────────────────────────────────────── */
 
 .timeline-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--bg-0); }
