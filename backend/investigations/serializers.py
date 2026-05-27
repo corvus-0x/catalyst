@@ -87,7 +87,8 @@ class CaseIntakeSerializer:
             self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -147,7 +148,8 @@ class CaseUpdateSerializer:
         self.validated_data = {}
 
         if self.instance is None:
-            self._errors = {"non_field_errors": ["A case instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A case instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
@@ -160,7 +162,8 @@ class CaseUpdateSerializer:
             }
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -195,7 +198,8 @@ class CaseUpdateSerializer:
         if not self.validated_data:
             raise ValueError("Call is_valid() before save().")
         self.instance.updated_at = timezone.now()
-        self.instance.save(update_fields=["status", "notes", "referral_ref", "updated_at"])
+        self.instance.save(
+            update_fields=["status", "notes", "referral_ref", "updated_at"])
         return self.instance
 
 
@@ -235,14 +239,16 @@ class DocumentIntakeSerializer:
         self.validated_data = {}
 
         if self.case is None:
-            self._errors = {"non_field_errors": ["A case instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A case instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
             self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -268,7 +274,8 @@ class DocumentIntakeSerializer:
 
         sha256_hash = self.validated_data["sha256_hash"]
         if not isinstance(sha256_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256_hash):
-            self._errors = {"sha256_hash": ["Enter a valid 64-character hexadecimal SHA-256 hash."]}
+            self._errors = {"sha256_hash": [
+                "Enter a valid 64-character hexadecimal SHA-256 hash."]}
             return False
 
         self.validated_data["sha256_hash"] = sha256_hash.lower()
@@ -297,7 +304,8 @@ class DocumentIntakeSerializer:
     def save(self) -> Document:
         if not self.validated_data:
             raise ValueError("Call is_valid() before save().")
-        self.instance = Document.objects.create(case=self.case, **self.validated_data)
+        self.instance = Document.objects.create(
+            case=self.case, **self.validated_data)
         return self.instance
 
 
@@ -332,7 +340,8 @@ class DocumentUpdateSerializer:
         self.validated_data = {}
 
         if self.instance is None:
-            self._errors = {"non_field_errors": ["A document instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A document instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
@@ -345,7 +354,8 @@ class DocumentUpdateSerializer:
             }
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -541,14 +551,16 @@ class NoteIntakeSerializer:
         self.validated_data = {}
 
         if self.case is None:
-            self._errors = {"non_field_errors": ["A case instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A case instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
             self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -596,7 +608,8 @@ class NoteIntakeSerializer:
             raise ValueError("Call is_valid() before save().")
         from .models import InvestigatorNote
 
-        self.instance = InvestigatorNote.objects.create(case=self.case, **self.validated_data)
+        self.instance = InvestigatorNote.objects.create(
+            case=self.case, **self.validated_data)
         return self.instance
 
 
@@ -626,7 +639,8 @@ class NoteUpdateSerializer:
         self.validated_data = {}
 
         if self.instance is None:
-            self._errors = {"non_field_errors": ["A note instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A note instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
@@ -639,7 +653,8 @@ class NoteUpdateSerializer:
             }
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -665,7 +680,8 @@ class NoteUpdateSerializer:
         self.instance.content = self.validated_data["content"]
         self.instance.created_by = self.validated_data["created_by"]
         self.instance.updated_at = timezone.now()
-        self.instance.save(update_fields=["content", "created_by", "updated_at"])
+        self.instance.save(
+            update_fields=["content", "created_by", "updated_at"])
         return self.instance
 
 
@@ -717,7 +733,7 @@ def serialize_finding(finding) -> dict:
                 "page_reference": link.page_reference,
                 "context_note": link.context_note,
             }
-            for link in finding.document_links.select_related("document")
+            for link in finding.document_links.all()
         ],
     }
 
@@ -761,14 +777,16 @@ class FindingIntakeSerializer:
         self.validated_data = {}
 
         if self.case is None:
-            self._errors = {"non_field_errors": ["A case instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A case instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
             self._errors = {"non_field_errors": ["Expected a JSON object."]}
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -783,10 +801,12 @@ class FindingIntakeSerializer:
         severity = (self.initial_data.get("severity") or "").strip()
         if severity not in _VALID_SEVERITIES:
             valid_list = ", ".join(sorted(_VALID_SEVERITIES))
-            self._errors = {"severity": [f"Invalid severity. Expected one of: {valid_list}."]}
+            self._errors = {"severity": [
+                f"Invalid severity. Expected one of: {valid_list}."]}
             return False
 
-        evidence_weight = self.initial_data.get("evidence_weight", EvidenceWeight.SPECULATIVE)
+        evidence_weight = self.initial_data.get(
+            "evidence_weight", EvidenceWeight.SPECULATIVE)
         if evidence_weight not in _VALID_EVIDENCE_WEIGHTS:
             valid_list = ", ".join(sorted(_VALID_EVIDENCE_WEIGHTS))
             self._errors = {
@@ -796,7 +816,8 @@ class FindingIntakeSerializer:
 
         legal_refs = self.initial_data.get("legal_refs", [])
         if not isinstance(legal_refs, list):
-            self._errors = {"legal_refs": ["legal_refs must be a list of strings."]}
+            self._errors = {"legal_refs": [
+                "legal_refs must be a list of strings."]}
             return False
 
         self.validated_data = {
@@ -853,7 +874,8 @@ class FindingUpdateSerializer:
         self.validated_data = {}
 
         if self.instance is None:
-            self._errors = {"non_field_errors": ["A finding instance is required."]}
+            self._errors = {"non_field_errors": [
+                "A finding instance is required."]}
             return False
 
         if not isinstance(self.initial_data, dict):
@@ -866,7 +888,8 @@ class FindingUpdateSerializer:
             }
             return False
 
-        unexpected_fields = sorted(set(self.initial_data.keys()) - self.allowed_fields)
+        unexpected_fields = sorted(
+            set(self.initial_data.keys()) - self.allowed_fields)
         if unexpected_fields:
             self._errors = {
                 "non_field_errors": [f"Unexpected field(s): {', '.join(unexpected_fields)}"]
@@ -876,10 +899,12 @@ class FindingUpdateSerializer:
         new_status = self.initial_data.get("status", self.instance.status)
         if new_status not in _VALID_FINDING_STATUSES:
             valid_list = ", ".join(sorted(_VALID_FINDING_STATUSES))
-            self._errors = {"status": [f"Invalid status. Expected one of: {valid_list}."]}
+            self._errors = {"status": [
+                f"Invalid status. Expected one of: {valid_list}."]}
             return False
 
-        new_note = self.initial_data.get("investigator_note", self.instance.investigator_note)
+        new_note = self.initial_data.get(
+            "investigator_note", self.instance.investigator_note)
 
         if new_status == FindingStatus.DISMISSED and not (new_note or "").strip():
             self._errors = {
@@ -904,7 +929,8 @@ class FindingUpdateSerializer:
             sev = self.initial_data["severity"]
             if sev not in _VALID_SEVERITIES:
                 valid_list = ", ".join(sorted(_VALID_SEVERITIES))
-                self._errors = {"severity": [f"Invalid severity. Expected one of: {valid_list}."]}
+                self._errors = {"severity": [
+                    f"Invalid severity. Expected one of: {valid_list}."]}
                 return False
             self.validated_data["severity"] = sev
 
@@ -921,7 +947,8 @@ class FindingUpdateSerializer:
         if "legal_refs" in self.initial_data:
             lr = self.initial_data["legal_refs"]
             if not isinstance(lr, list):
-                self._errors = {"legal_refs": ["legal_refs must be a list of strings."]}
+                self._errors = {"legal_refs": [
+                    "legal_refs must be a list of strings."]}
                 return False
             self.validated_data["legal_refs"] = lr
 
