@@ -970,6 +970,23 @@ class FinancialSnapshot(UUIDPrimaryKeyModel):
     )
     confidence = models.FloatField(default=1.0, help_text="0.0–1.0 extraction confidence")
     raw_extraction = models.JSONField(default=dict, blank=True)
+    schedule_r_orgs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Schedule R related organizations extracted from IRS XML. "
+            "List of dicts: [{name, ein, org_type, description}]"
+        ),
+    )
+    schedule_o_explanations = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Schedule O supplemental explanations from IRS XML. "
+            "List of dicts: [{form_line_reference, explanation_text}] "
+            "Contains the org's own written disclosures — most candid text on the filing."
+        ),
+    )
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
@@ -990,6 +1007,67 @@ class FinancialSnapshot(UUIDPrimaryKeyModel):
 
     def __str__(self) -> str:
         return f"990 {self.tax_year} — {self.ein or 'no EIN'}"
+
+
+class ScheduleLTransaction(UUIDPrimaryKeyModel):
+    """
+    One related-party transaction row from IRS Form 990 Schedule L.
+
+    Schedule L (Transactions with Interested Persons) discloses loans,
+    grants, business arrangements, and other transactions between the
+    organization and its officers, directors, or family members.
+
+    Stored as a normalized table (not JSONField) so SR-025 can query
+    by ORM: ScheduleLTransaction.objects.filter(case=case, amount__gt=0)
+    """
+
+    snapshot = models.ForeignKey(
+        FinancialSnapshot,
+        on_delete=models.CASCADE,
+        related_name="schedule_l_transactions",
+    )
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.RESTRICT,
+        related_name="schedule_l_transactions",
+        help_text=(
+            "Denormalized from snapshot.case for direct case-level queries "
+            "without an extra join through FinancialSnapshot."
+        ),
+    )
+    tax_year = models.IntegerField(
+        help_text="Denormalized from snapshot.tax_year for query convenience.",
+    )
+    party_name = models.CharField(
+        max_length=500,
+        help_text="Name of the interested person as listed on Schedule L.",
+    )
+    relationship_description = models.TextField(
+        blank=True,
+        default="",
+        help_text='Relationship to the org (e.g. "officer", "family member of director").',
+    )
+    transaction_description = models.TextField(
+        blank=True,
+        default="",
+        help_text="What the transaction was (e.g. 'Lease agreement', 'Loan').",
+    )
+    amount = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Dollar amount of the transaction. Nullable — some Schedule L entries omit it.",
+    )
+
+    class Meta:
+        db_table = "schedule_l_transactions"
+        indexes = [
+            models.Index(fields=["case"],     name="idx_sched_l_case"),
+            models.Index(fields=["snapshot"], name="idx_sched_l_snapshot"),
+            models.Index(fields=["amount"],   name="idx_sched_l_amount"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Schedule L: {self.party_name} ({self.tax_year}) ${self.amount or '?'}"
 
 
 class InvestigationStep(UUIDPrimaryKeyModel):
@@ -1588,6 +1666,7 @@ class JobType(models.TextChoices):
     OHIO_AOS = "OHIO_AOS", "Ohio Auditor of State"
     COUNTY_PARCEL = "COUNTY_PARCEL", "County Parcel Search"
     AI_PATTERN_ANALYSIS = "AI_PATTERN_ANALYSIS", "AI Pattern Analysis"
+    AI_ASK = "AI_ASK", "AI Ask Question"
 
 
 class JobStatus(models.TextChoices):
