@@ -116,12 +116,72 @@ If you find no patterns, return {"patterns": []}. No prose outside JSON.
 """
 
 
+def _format_990_snapshot(snap: FinancialSnapshot) -> str:
+    """Serialize a FinancialSnapshot as structured text for AI context.
+
+    Used instead of raw OCR text for IRS_990 documents that have a linked
+    snapshot. Structured data is more token-efficient (~600 chars) and covers
+    governance flags and compensation figures that appear 15-30 pages into
+    the PDF — well beyond the 2000-char OCR excerpt limit.
+    """
+
+    def _money(val: int | None) -> str:
+        return f"${val:,}" if val is not None else "unknown"
+
+    def _flag(val: bool | None) -> str:
+        return "YES" if val is True else ("NO" if val is False else "unknown")
+
+    return "\n".join([
+        "[IRS Form 990 — Structured Data]",
+        (
+            f"EIN: {snap.ein or 'unknown'}  "
+            f"Tax Year: {snap.tax_year or 'unknown'}  "
+            f"Form: {snap.form_type or 'unknown'}"
+        ),
+        "--- REVENUE (Part I) ---",
+        f"Total contributions: {_money(snap.total_contributions)}",
+        f"Program service revenue: {_money(snap.program_service_revenue)}",
+        f"Investment income: {_money(snap.investment_income)}",
+        f"Other revenue: {_money(snap.other_revenue)}",
+        f"Total revenue: {_money(snap.total_revenue)}",
+        "--- EXPENSES (Part I) ---",
+        f"Grants paid: {_money(snap.grants_paid)}",
+        f"Salaries & compensation: {_money(snap.salaries_and_compensation)}",
+        f"Professional fundraising: {_money(snap.professional_fundraising)}",
+        f"Other expenses: {_money(snap.other_expenses)}",
+        f"Total expenses: {_money(snap.total_expenses)}",
+        f"Net (revenue less expenses): {_money(snap.revenue_less_expenses)}",
+        "--- BALANCE SHEET (Part X) ---",
+        (
+            f"Total assets BOY/EOY: {_money(snap.total_assets_boy)}"
+            f" / {_money(snap.total_assets_eoy)}"
+        ),
+        (
+            f"Total liabilities BOY/EOY: {_money(snap.total_liabilities_boy)}"
+            f" / {_money(snap.total_liabilities_eoy)}"
+        ),
+        f"Net assets BOY/EOY: {_money(snap.net_assets_boy)} / {_money(snap.net_assets_eoy)}",
+        "--- GOVERNANCE & COMPENSATION ---",
+        f"Voting members: {snap.num_voting_members or 'unknown'}  "
+        f"Independent: {snap.num_independent_members or 'unknown'}",
+        f"Employees: {snap.num_employees or 'unknown'}",
+        f"Officer compensation total: {_money(snap.officer_compensation_total)}",
+        f"Related-party txns disclosed (Part IV L28): {_flag(snap.related_party_disclosed)}",
+        f"Conflict of interest policy (Part VI Line 12a): {_flag(snap.has_coi_policy)}",
+        f"Whistleblower policy (Part VI Line 13): {_flag(snap.has_whistleblower_policy)}",
+        f"Document retention policy (Part VI Line 14): {_flag(snap.has_document_retention_policy)}",
+        f"Extraction confidence: {snap.confidence:.2f}  Source: {snap.source}",
+    ])
+
+
 def build_context(case: Case) -> dict[str, Any]:
-    ctx, _ = build_context_with_refs(case)
+    ctx, _, _em = build_context_with_refs(case)
     return ctx
 
 
-def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]:
+def build_context_with_refs(
+    case: Case,
+) -> tuple[dict[str, Any], dict[str, str], dict[str, str]]:
     persons = list(Person.objects.filter(case=case))
     orgs = list(Organization.objects.filter(case=case))
     properties = list(Property.objects.filter(case=case))
@@ -132,12 +192,30 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
     # Newest documents first — most likely to be relevant to the active
     # investigation. Cap at MAX_DOCUMENTS regardless.
     docs = list(Document.objects.filter(case=case).order_by("-uploaded_at")[:MAX_DOCUMENTS])
+
+    # Build a doc_id → FinancialSnapshot lookup from the snapshots already
+    # loaded above (no extra DB query). Used to substitute structured data
+    # for IRS_990 documents instead of the raw OCR excerpt.
+    snap_by_doc: dict[str, FinancialSnapshot] = {
+        str(s.document_id): s for s in snapshots
+    }
+
     doc_ref_map: dict[str, str] = {}
     doc_entries: list[dict[str, Any]] = []
     for i, d in enumerate(docs, start=1):
         ref = f"Doc-{i}"
         doc_ref_map[ref] = str(d.id)
-        excerpt = (d.extracted_text or "")[:MAX_EXCERPT_CHARS]
+
+        # IRS_990 docs with a linked snapshot get structured data instead of
+        # raw OCR. Structured data is ~600 chars of pure signal (revenue,
+        # expenses, governance flags, officer pay) vs. 2000 chars of OCR
+        # noise from the cover page that doesn't contain any of that.
+        doc_id_str = str(d.id)
+        if d.doc_type in ("IRS_990", "IRS_990T") and doc_id_str in snap_by_doc:
+            excerpt = _format_990_snapshot(snap_by_doc[doc_id_str])
+        else:
+            excerpt = (d.extracted_text or "")[:MAX_EXCERPT_CHARS]
+
         doc_entries.append(
             {
                 "ref": ref,
@@ -146,6 +224,18 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
                 "text_excerpt": excerpt,
             }
         )
+
+    # Build a UUID → entity_type lookup so FindingEntity rows get the correct
+    # type label ("person", "organization", "property") instead of "UNKNOWN".
+    # Only the three types included in the context are covered; anything else
+    # falls back to "UNKNOWN" at write time.
+    entity_ref_map: dict[str, str] = {}
+    for p in persons:
+        entity_ref_map[str(p.id)] = "person"
+    for o in orgs:
+        entity_ref_map[str(o.id)] = "organization"
+    for pr in properties:
+        entity_ref_map[str(pr.id)] = "property"
 
     ctx: dict[str, Any] = {
         "case": {
@@ -214,7 +304,7 @@ def build_context_with_refs(case: Case) -> tuple[dict[str, Any], dict[str, str]]
         "documents": doc_entries,
     }
     _enforce_context_budget(ctx, doc_ref_map)
-    return ctx, doc_ref_map
+    return ctx, doc_ref_map, entity_ref_map
 
 
 def _enforce_context_budget(
@@ -387,7 +477,7 @@ def analyze_case(case_id: Any, job: Any = None) -> dict[str, Any]:
         into evidence_snapshot for chain-of-custody.
     """
     case = Case.objects.get(pk=case_id)
-    context, doc_ref_map = build_context_with_refs(case)
+    context, doc_ref_map, entity_ref_map = build_context_with_refs(case)
     raw = call_claude(context)
     patterns = parse_response(raw)
     kept, dropped = validate_patterns(patterns, doc_ref_map)
@@ -396,8 +486,22 @@ def analyze_case(case_id: Any, job: Any = None) -> dict[str, Any]:
     # so the referral package can cite exactly which run produced each angle.
     job_id_str = str(job.id) if job else None
 
+    # Build a normalized-title set for existing AI findings so we can skip
+    # duplicates when the investigator runs pattern analysis more than once.
+    # Normalization strips punctuation/case so minor wording differences don't
+    # sneak past the check.
+    existing_ai_titles = {
+        re.sub(r"\W+", "", f.title.lower())
+        for f in Finding.objects.filter(case=case, source=FindingSource.AI)
+    }
+
     created = 0
     for p in kept:
+        normalized = re.sub(r"\W+", "", p["title"].lower())
+        if normalized in existing_ai_titles:
+            logger.info("Skipping duplicate AI finding: %r", p["title"][:80])
+            dropped += 1
+            continue
         # Each finding gets its own savepoint — one bad pattern (e.g. a
         # duplicate doc_ref from the LLM that trips FindingDocument's
         # UNIQUE(finding, document) constraint) must not roll back the
@@ -464,7 +568,11 @@ def analyze_case(case_id: Any, job: Any = None) -> dict[str, Any]:
                             FindingEntity.objects.create(
                                 finding=finding,
                                 entity_id=entity_id,
-                                entity_type="UNKNOWN",
+                                # Resolve from the context map; fall back to
+                                # "UNKNOWN" only for entity types not included
+                                # in the pattern analysis context (e.g. financial
+                                # instruments, which Claude never references).
+                                entity_type=entity_ref_map.get(entity_id, "UNKNOWN"),
                             )
                     except Exception:
                         logger.info("Skipping invalid entity_ref %s", entity_id)

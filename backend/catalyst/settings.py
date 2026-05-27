@@ -247,6 +247,20 @@ CATALYST_API_TOKENS = [
 CATALYST_REQUIRE_AUTH = os.getenv("CATALYST_REQUIRE_AUTH", "True").lower() == "true"
 
 # ---------------------------------------------------------------------------
+# Django Cache — AI response cache + cross-process rate limiter
+# ---------------------------------------------------------------------------
+# DatabaseCache uses the existing Postgres DB — no Redis required.
+# Run `python manage.py createcachetable` once on the target environment
+# (Railway) to create the backing table before deploying.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "catalyst_cache_table",
+        "TIMEOUT": 600,  # 10-min default TTL — matches old AI proxy CACHE_TTL
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Django-Q2 Background Job Queue
 # ---------------------------------------------------------------------------
 # Uses the built-in ORM broker — tasks are stored in the existing Postgres

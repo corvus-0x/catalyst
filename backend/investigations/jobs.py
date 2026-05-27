@@ -109,6 +109,7 @@ def run_irs_fetch_xml(job_id: str) -> None:
             FinancialSnapshot,
             OcrStatus,
             Organization,
+            ScheduleLTransaction,
         )
 
         query = job.query_params["query"].strip()
@@ -172,7 +173,7 @@ def run_irs_fetch_xml(job_id: str) -> None:
 
                         fin = parsed.financials
                         gov = parsed.governance
-                        FinancialSnapshot.objects.create(
+                        fin = FinancialSnapshot.objects.create(
                             case=case,
                             document=xml_doc,
                             organization=org,
@@ -208,6 +209,36 @@ def run_irs_fetch_xml(job_id: str) -> None:
                             confidence=parsed.parse_quality,
                             raw_extraction=irs_connector.parsed_990_to_dict(parsed),
                         )
+
+                        # --- Persist Schedule L transaction rows ---
+                        # Each row links to both the snapshot and case for
+                        # efficient signal-rule queries without extra joins.
+                        if parsed.schedule_l_transactions:
+                            ScheduleLTransaction.objects.bulk_create([
+                                ScheduleLTransaction(
+                                    snapshot=fin,
+                                    case=case,
+                                    tax_year=tax_year,
+                                    party_name=t.get("party_name", ""),
+                                    relationship_description=t.get(
+                                        "relationship_description", ""
+                                    ),
+                                    transaction_description=t.get(
+                                        "transaction_description", ""
+                                    ),
+                                    amount=t.get("amount"),
+                                )
+                                for t in parsed.schedule_l_transactions
+                            ])
+
+                        # --- Persist Schedule R and O as JSON fields ---
+                        if parsed.schedule_r_orgs or parsed.schedule_o_explanations:
+                            fin.schedule_r_orgs = parsed.schedule_r_orgs
+                            fin.schedule_o_explanations = parsed.schedule_o_explanations
+                            fin.save(
+                                update_fields=["schedule_r_orgs", "schedule_o_explanations"]
+                            )
+
                         snapshots_created += 1
 
             except (
@@ -227,16 +258,16 @@ def run_irs_fetch_xml(job_id: str) -> None:
                 f"e-filing threshold."
             )
 
-        # Run signal rules against newly-created snapshots
+        # Run signal rules against newly-created snapshots and persist findings.
+        # evaluate_case() runs all case-scoped rules including the new XML
+        # snapshot rules (SR-025 modes, SR-028 enrichment, SR-030, SR-031).
+        # persist_signals() deduplicates and writes Finding rows to the DB.
         if snapshots_created > 0 and case:
             try:
-                from investigations.signal_rules import (
-                    _run_case_scoped_rules,
-                    evaluate_xml_financial_snapshots,
-                )
-                snapshots = FinancialSnapshot.objects.filter(case=case).order_by("tax_year")
-                evaluate_xml_financial_snapshots(case, snapshots)
-                _run_case_scoped_rules(case)
+                from investigations.signal_rules import evaluate_case, persist_signals
+
+                triggers = evaluate_case(case)
+                persist_signals(case, triggers)
             except Exception:  # noqa: BLE001
                 logger.exception("signal_rules_failed_after_xml_fetch", extra={"job_id": job_id})
 
@@ -364,5 +395,62 @@ def run_ai_pattern_analysis(job_id: str) -> None:
         # run and stamp the model version into evidence_snapshot.
         summary = ai_pattern_augmentation.analyze_case(case_id, job=job)
         _mark_success(job, summary)
+    except Exception as exc:  # noqa: BLE001
+        _mark_failed(job, exc)
+
+
+# ---------------------------------------------------------------------------
+# AI Ask — free-form case question (tool-use loop, up to 6 Claude calls)
+# ---------------------------------------------------------------------------
+
+
+def run_ai_ask(job_id: str) -> None:
+    """Process a free-form investigator question about a case.
+
+    Runs ai_ask() in the background so the 10–40 second tool-use loop
+    doesn't block a Django web worker. The frontend polls
+    GET /api/jobs/<id>/ for status; on SUCCESS the result dict carries
+    the same shape ai_ask() previously returned synchronously:
+    {"answer": str, "sources": [...], "tool_calls_made": [...], ...}
+    """
+    job = _load_and_mark_running(job_id)
+    if job is None:
+        return
+    try:
+        from django.core.cache import cache as _cache
+
+        from investigations.ai_proxy import ai_ask
+        from investigations.models import Case
+
+        case = Case.objects.get(id=job.query_params["case_id"])
+
+        # Retrieve conversation history from the shared cache — the full
+        # transcript is never stored in query_params (security: job params
+        # are readable via the public jobs API).
+        history_ref = job.query_params.get("history_ref", "")
+        if history_ref:
+            conversation_history = _cache.get(f"ai_ask_history:{history_ref}")
+            if conversation_history is None:
+                # Cache entry expired or was evicted before the worker ran.
+                # Fail fast so the caller knows the session context was lost
+                # rather than silently answering without conversation history.
+                raise ValueError(
+                    f"Conversation history cache miss: history_ref={history_ref!r} "
+                    f"has expired or been evicted. The session must be restarted."
+                )
+        else:
+            conversation_history = []
+
+        result = ai_ask(
+            case,
+            question=job.query_params["question"],
+            conversation_history=conversation_history,
+        )
+        # ai_ask returns {"error": "..."} on rate-limit or API failure —
+        # surface that as a FAILED job so the frontend can render it clearly.
+        if "error" in result:
+            _mark_failed(job, ValueError(result["error"]))
+        else:
+            _mark_success(job, result)
     except Exception as exc:  # noqa: BLE001
         _mark_failed(job, exc)

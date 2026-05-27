@@ -12,8 +12,8 @@ Architecture:
     - Builds a structured prompt with the evidence context
     - Calls Claude API via the same SDK pattern as ai_extraction.py
     - Returns structured JSON response
-    - Simple in-memory cache (10 min TTL) to avoid redundant calls
-    - Rate limiting: 10 calls per minute per case
+    - Shared Django DatabaseCache (10 min TTL) — cross-process, survives restarts
+    - Rate limiting: 10 calls per minute per case (shared across all workers)
 
 Cost controls:
     - Summarize uses Haiku (fast, ~10x cheaper)
@@ -30,6 +30,9 @@ import os
 import re
 import time
 from typing import Any
+
+import anthropic
+from django.core.cache import cache
 
 logger = logging.getLogger("catalyst.ai_proxy")
 
@@ -68,9 +71,13 @@ def _strip_id_prefix(prefixed_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 MODEL_HAIKU = "claude-haiku-4-5-20251001"
-MODEL_SONNET = "claude-sonnet-4-20250514"
+MODEL_SONNET = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 MAX_CONTEXT_CHARS = 24000  # ~6K tokens — leaves room for prompt + response
+
+# Retry config for transient Anthropic errors — mirrors ai_pattern_augmentation.py
+PROXY_MAX_ATTEMPTS = 3
+PROXY_BACKOFF_BASE = 2.0  # seconds; sleeps 2, 4 before the final attempt
 
 # ---------------------------------------------------------------------------
 # Shared client (lazy init, same pattern as ai_extraction.py)
@@ -97,55 +104,47 @@ def _get_client():
 
 
 # ---------------------------------------------------------------------------
-# Simple in-memory cache (TTL = 10 minutes)
+# Shared cache — backed by Django's DatabaseCache (settings.py CACHES dict)
 # ---------------------------------------------------------------------------
-
-_cache: dict[str, tuple[float, Any]] = {}
-CACHE_TTL = 600  # 10 minutes
-
+# DatabaseCache uses the existing Postgres DB so no extra service is needed.
+# It is shared across all processes (web workers + qcluster workers), which
+# means the rate limiter and response cache actually work in production.
+# Run `python manage.py createcachetable` once on Railway to create the table.
+#
+# TTL is set in settings.py CACHES["default"]["TIMEOUT"] (600 s = 10 min).
+# Individual cache.set() calls can override the TTL with an explicit timeout.
 
 def _cache_key(prefix: str, *args: str) -> str:
+    """Generate a stable, collision-resistant cache key."""
     raw = f"{prefix}:{'|'.join(args)}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def _cache_get(key: str) -> Any | None:
-    if key in _cache:
-        ts, val = _cache[key]
-        if time.time() - ts < CACHE_TTL:
-            return val
-        del _cache[key]
-    return None
-
-
-def _cache_set(key: str, val: Any) -> None:
-    # Evict stale entries if cache grows large
-    if len(_cache) > 200:
-        now = time.time()
-        stale = [k for k, (ts, _) in _cache.items() if now - ts > CACHE_TTL]
-        for k in stale:
-            del _cache[k]
-    _cache[key] = (time.time(), val)
-
-
 # ---------------------------------------------------------------------------
-# Rate limiting (10 calls/min per case, in-memory)
+# Rate limiting (10 calls/min per case, cross-process fixed-window counter)
 # ---------------------------------------------------------------------------
 
-_rate_buckets: dict[str, list[float]] = {}
 RATE_LIMIT = 10
 RATE_WINDOW = 60  # seconds
 
 
 def _check_rate_limit(case_id: str) -> bool:
-    """Return True if the call is allowed, False if rate-limited."""
-    now = time.time()
-    bucket = _rate_buckets.setdefault(case_id, [])
-    # Purge old timestamps
-    bucket[:] = [t for t in bucket if now - t < RATE_WINDOW]
-    if len(bucket) >= RATE_LIMIT:
+    """Return True if the call is allowed, False if rate-limited.
+
+    Uses a fixed-window counter in the shared Django cache so all processes
+    (web workers, qcluster) share the same limit. The window resets every
+    RATE_WINDOW seconds. Slightly more lenient than a sliding window but
+    sufficient for cost-control and abuse prevention.
+    """
+    key = f"ai_rate:{case_id}"
+    count = cache.get(key, 0)
+    if count >= RATE_LIMIT:
         return False
-    bucket.append(now)
+    # On the first call in a new window, set the TTL; otherwise just increment.
+    if count == 0:
+        cache.set(key, 1, RATE_WINDOW)
+    else:
+        cache.set(key, count + 1, RATE_WINDOW)
     return True
 
 
@@ -407,44 +406,77 @@ def _call_ai(
     temperature: float = 0.2,
     max_tokens: int = MAX_TOKENS,
 ) -> dict:
-    """Make a Claude API call and return parsed JSON response."""
-    raw = ""
-    try:
-        client = _get_client()
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        raw = response.content[0].text or ""
+    """Make a Claude API call and return parsed JSON response.
 
-        # Try to parse JSON (may be wrapped in code fences)
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            # Strip markdown fences
-            lines = cleaned.split("\n")
-            lines = [line for line in lines if not line.strip().startswith("```")]
-            cleaned = "\n".join(lines).strip()
+    Retries up to PROXY_MAX_ATTEMPTS on transient errors (rate-limit, network
+    blip, server overload). Permanent errors (auth, bad request, JSON decode)
+    return {"error": ...} immediately without retrying.
+    """
+    client = _get_client()
+    last_exc: Exception | None = None
 
-        result = json.loads(cleaned)
-        result["_model"] = model
-        result["_usage"] = {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        }
-        return result
+    for attempt in range(1, PROXY_MAX_ATTEMPTS + 1):
+        raw = ""
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            raw = response.content[0].text or ""
 
-    except json.JSONDecodeError:
-        # Log the raw response for debugging, but don't include it in the
-        # API response — the frontend would surface arbitrary model output
-        # to the user, which can include PII or content-policy refusals.
-        logger.warning("AI returned non-JSON response: %s", raw[:200])
-        return {"error": "AI returned non-JSON response"}
-    except Exception as e:
-        logger.exception("AI call failed: %s", e)
-        return {"error": str(e)}
+            # Strip markdown fences if the model wrapped the JSON
+            cleaned = raw.strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                lines = [line for line in lines if not line.strip().startswith("```")]
+                cleaned = "\n".join(lines).strip()
+
+            result = json.loads(cleaned)
+            result["_model"] = model
+            result["_usage"] = {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            }
+            return result
+
+        except json.JSONDecodeError:
+            # Permanent — malformed JSON won't improve on retry.
+            # Don't surface raw text: may contain PII or refusal language.
+            logger.warning("AI returned non-JSON response: %s", raw[:200])
+            return {"error": "AI returned non-JSON response"}
+
+        except (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        ) as exc:
+            # Transient — retry with exponential backoff.
+            last_exc = exc
+            if attempt < PROXY_MAX_ATTEMPTS:
+                sleep_for = PROXY_BACKOFF_BASE ** attempt
+                logger.warning(
+                    "Transient Claude error on attempt %d/%d: %s; retrying in %.1fs",
+                    attempt,
+                    PROXY_MAX_ATTEMPTS,
+                    exc,
+                    sleep_for,
+                )
+                time.sleep(sleep_for)
+                continue
+
+        except Exception as exc:
+            # Permanent (auth failure, bad request, content policy, etc.)
+            logger.exception("AI call failed: %s", exc)
+            return {"error": str(exc)}
+
+    logger.error(
+        "AI call failed after %d attempts: %s", PROXY_MAX_ATTEMPTS, last_exc
+    )
+    return {"error": f"Claude API unavailable after {PROXY_MAX_ATTEMPTS} attempts"}
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +498,7 @@ Rules:
 def ai_summarize(case, target_type: str, target_id: str) -> dict:
     """Summarize evidence for a signal or entity. Uses Haiku for speed."""
     ck = _cache_key("summarize", str(case.pk), target_type, target_id)
-    cached = _cache_get(ck)
+    cached = cache.get(ck)
     if cached:
         cached["_cached"] = True
         return cached
@@ -501,7 +533,7 @@ def ai_summarize(case, target_type: str, target_id: str) -> dict:
     )
 
     if "error" not in result:
-        _cache_set(ck, result)
+        cache.set(ck, result)
     return result
 
 
@@ -542,7 +574,7 @@ def ai_connections(case, entity_id: str | None = None) -> dict:
     if entity_id:
         entity_id = _strip_id_prefix(entity_id)
     ck = _cache_key("connections", str(case.pk), entity_id or "all")
-    cached = _cache_get(ck)
+    cached = cache.get(ck)
     if cached:
         cached["_cached"] = True
         return cached
@@ -575,7 +607,7 @@ def ai_connections(case, entity_id: str | None = None) -> dict:
     )
 
     if "error" not in result:
-        _cache_set(ck, result)
+        cache.set(ck, result)
     return result
 
 
@@ -611,7 +643,7 @@ def ai_narrative(case, finding_ids: list[str], tone: str = "formal") -> dict:
     finding_ids = [_strip_id_prefix(fid) for fid in finding_ids]
     sorted_ids = sorted(finding_ids)
     ck = _cache_key("narrative", str(case.pk), ",".join(sorted_ids), tone)
-    cached = _cache_get(ck)
+    cached = cache.get(ck)
     if cached:
         cached["_cached"] = True
         return cached
@@ -658,7 +690,7 @@ def ai_narrative(case, finding_ids: list[str], tone: str = "formal") -> dict:
     )
 
     if "error" not in result:
-        _cache_set(ck, result)
+        cache.set(ck, result)
     return result
 
 
@@ -776,6 +808,60 @@ or 990 line numbers you referenced.
 """
 
 
+def _trim_history(history: list[dict], char_budget: int = 64_000) -> list[dict]:
+    """Return the most recent messages that fit within char_budget characters.
+
+    Rough estimate: 1 token ≈ 4 chars, so 64K chars ≈ 16K tokens — a safe
+    slice of Sonnet's context that leaves plenty of room for the case
+    summary, question, and tool results.  Always keeps at least the most
+    recent message so a single very long turn doesn't produce an empty list.
+    """
+    total = 0
+    kept: list[dict] = []
+    for msg in reversed(history):
+        chunk = len(str(msg.get("content", "")))
+        if total + chunk > char_budget and kept:
+            break
+        kept.insert(0, msg)
+        total += chunk
+    return kept
+
+
+def _call_with_retry(client, **kwargs) -> Any:
+    """Wrapper around client.messages.create() with transient-error retry.
+
+    Used by ai_ask()'s tool-use loop where _call_ai() can't be used (the
+    loop manages its own messages list and needs raw response objects, not
+    parsed JSON dicts). Raises the exception after exhausting retries so
+    the caller can handle it.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, PROXY_MAX_ATTEMPTS + 1):
+        try:
+            return client.messages.create(**kwargs)
+        except (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        ) as exc:
+            last_exc = exc
+            if attempt < PROXY_MAX_ATTEMPTS:
+                sleep_for = PROXY_BACKOFF_BASE ** attempt
+                logger.warning(
+                    "Transient Claude error in ai_ask (attempt %d/%d): %s; retrying in %.1fs",
+                    attempt,
+                    PROXY_MAX_ATTEMPTS,
+                    exc,
+                    sleep_for,
+                )
+                time.sleep(sleep_for)
+                continue
+        except Exception:
+            raise  # permanent error — bubble up immediately
+    raise last_exc  # type: ignore[misc]  # exhausted retries on transient error
+
+
 def ai_ask(
     case,
     question: str,
@@ -807,7 +893,7 @@ def ai_ask(
 
     messages: list[dict] = []
     if conversation_history:
-        for msg in conversation_history[-6:]:
+        for msg in _trim_history(conversation_history):
             messages.append({"role": msg["role"], "content": msg["content"]})
 
     user_content = f"CASE DATA:\n{case_ctx}\n\nQUESTION: {question}"
@@ -822,7 +908,8 @@ def ai_ask(
         client = _get_client()
         tools_param = [SEARCH_DOCS_TOOL]
 
-        response = client.messages.create(
+        response = _call_with_retry(
+            client,
             model=MODEL_SONNET,
             max_tokens=MAX_TOKENS,
             temperature=0.3,
@@ -891,7 +978,8 @@ def ai_ask(
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_result_blocks})
 
-            response = client.messages.create(
+            response = _call_with_retry(
+                client,
                 model=MODEL_SONNET,
                 max_tokens=MAX_TOKENS,
                 temperature=0.3,

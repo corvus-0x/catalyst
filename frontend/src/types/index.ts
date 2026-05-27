@@ -119,7 +119,8 @@ export type JobType =
   | "IRS_FETCH_XML"
   | "OHIO_AOS"
   | "COUNTY_PARCEL"
-  | "AI_PATTERN_ANALYSIS";
+  | "AI_PATTERN_ANALYSIS"
+  | "AI_ASK";
 
 /** Async job lifecycle status */
 export type JobStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
@@ -1057,6 +1058,23 @@ export interface AsyncJobEnqueuedResponse {
 export interface AiPatternJobResult {
   findings_created: number;
   patterns_dropped: number;
+}
+
+/**
+ * result shape for a completed AI_ASK job.
+ * Same fields the old synchronous endpoint returned directly.
+ */
+export interface AiAskJobResult {
+  /** Prose answer from Claude (four-section format: data / assessment / exculpatory / thread). */
+  answer: string;
+  /** Documents Claude cited via the search_case_documents tool. */
+  sources: Array<{ type: string; id: string; label: string }>;
+  /** Raw tool call records for debugging / transparency. */
+  tool_calls_made: Array<{ name: string; input: Record<string, unknown>; match_count?: number; error?: string }>;
+  /** True if Claude hit the tool-use budget before finishing (up to 6 Claude API calls: 1 initial + 5 tool iterations). */
+  tool_budget_exceeded: boolean;
+  _model: string;
+  _usage: { input_tokens: number; output_tokens: number };
 }
 
 /**

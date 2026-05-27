@@ -861,12 +861,15 @@ def _process_uploaded_file(
                             "ai_model": extraction_result.get("meta", {}).get("ai_model", ""),
                         },
                     )
-            except Exception:
+            except Exception as exc:
+                # Trim to 500 chars — Anthropic SDK errors can include full
+                # request bodies; we want the message, not the payload.
+                failure_reason = str(exc)[:500]
                 logger.warning(
                     "ai_extraction_skipped",
                     extra={
                         "document_id": str(document.pk),
-                        "reason": "AI extraction failed, using regex only",
+                        "reason": failure_reason,
                     },
                 )
                 AuditLog.log(
@@ -874,7 +877,7 @@ def _process_uploaded_file(
                     table_name="documents",
                     record_id=document.pk,
                     case_id=document.case_id,
-                    after_state={"doc_type": doc_type, "reason": "AI extraction failed"},
+                    after_state={"doc_type": doc_type, "reason": failure_reason},
                     success=False,
                 )
 
@@ -1822,7 +1825,11 @@ def api_case_document_detail(request, pk, document_id):
 
     # Financial snapshots (for 990s)
 
-    snapshots = FinancialSnapshot.objects.filter(document=document).order_by("tax_year")
+    snapshots = (
+        FinancialSnapshot.objects.filter(document=document)
+        .prefetch_related("schedule_l_transactions")
+        .order_by("tax_year")
+    )
     data["financial_snapshots"] = [
         {
             "id": str(s.pk),
@@ -1855,6 +1862,18 @@ def api_case_document_detail(request, pk, document_id):
             "has_document_retention_policy": s.has_document_retention_policy,
             "source": s.source,
             "confidence": s.confidence,
+            "schedule_r_orgs": s.schedule_r_orgs,
+            "schedule_o_explanations": s.schedule_o_explanations,
+            "schedule_l_transactions": [
+                {
+                    "party_name": t.party_name,
+                    "relationship_description": t.relationship_description,
+                    "transaction_description": t.transaction_description,
+                    "amount": t.amount,
+                    "tax_year": t.tax_year,
+                }
+                for t in s.schedule_l_transactions.all()
+            ],
         }
         for s in snapshots
     ]
@@ -1875,6 +1894,7 @@ def api_case_financials(request, pk):
     snapshots = (
         FinancialSnapshot.objects.filter(case=case)
         .select_related("document", "organization")
+        .prefetch_related("schedule_l_transactions")
         .order_by("tax_year")
     )
 
@@ -1916,6 +1936,18 @@ def api_case_financials(request, pk):
             "has_document_retention_policy": s.has_document_retention_policy,
             "source": s.source,
             "confidence": s.confidence,
+            "schedule_r_orgs": s.schedule_r_orgs,
+            "schedule_o_explanations": s.schedule_o_explanations,
+            "schedule_l_transactions": [
+                {
+                    "party_name": t.party_name,
+                    "relationship_description": t.relationship_description,
+                    "transaction_description": t.transaction_description,
+                    "amount": t.amount,
+                    "tax_year": t.tax_year,
+                }
+                for t in s.schedule_l_transactions.all()
+            ],
         }
         results.append(row)
 
@@ -5570,11 +5602,24 @@ def api_ai_narrative(request, pk):
 
 @require_http_methods(["POST"])
 def api_ai_ask(request, pk):
-    """Free-form AI question about a case, with multi-turn conversation support.
+    """Enqueue a free-form AI question job; return 202 with job_id to poll.
+
+    The tool-use loop inside ai_ask() can make up to 6 Claude API calls and
+    run 10–40 seconds. Running it synchronously would block a web worker for
+    that entire duration — so it's enqueued as a SearchJob just like the
+    other research endpoints. The frontend polls GET /api/jobs/<id>/ every
+    2 s and renders the answer when status == "SUCCESS".
 
     POST body (JSON):
-        question:             the user's question string
+        question:             the user's question string (required)
         conversation_history: (optional) list of {"role": "user"|"assistant", "content": "..."}
+
+    Response (202):
+        {"job_id": "<uuid>", "status_url": "/api/jobs/<uuid>/"}
+
+    Result shape on SUCCESS (same as the old synchronous response):
+        {"answer": str, "sources": [...], "tool_calls_made": [...],
+         "tool_budget_exceeded": bool, "_model": str, "_usage": {...}}
     """
     case = get_object_or_404(Case, pk=pk)
     try:
@@ -5586,15 +5631,69 @@ def api_ai_ask(request, pk):
     if not question:
         return JsonResponse({"error": "question is required"}, status=400)
 
-    conversation_history = body.get("conversation_history", [])
+    # Validate conversation_history schema to prevent arbitrary data from being
+    # stored in SearchJob.query_params (job params are readable via the jobs API).
+    raw_history = body.get("conversation_history", [])
+    if not isinstance(raw_history, list):
+        return JsonResponse({"error": "conversation_history must be a list"}, status=400)
 
-    from .ai_proxy import ai_ask
+    _MAX_HISTORY_ENTRIES = 20
+    _MAX_CONTENT_CHARS = 4000
 
-    result = ai_ask(case, question, conversation_history)
-    if "error" in result:
-        status = 429 if "Rate limit" in result["error"] else 500
-        return JsonResponse(result, status=status)
-    return JsonResponse(result)
+    history_errors = []
+    for i, entry in enumerate(raw_history[-_MAX_HISTORY_ENTRIES:]):
+        if not isinstance(entry, dict):
+            history_errors.append(f"entry {i}: must be an object")
+            continue
+        if set(entry.keys()) - {"role", "content"}:
+            history_errors.append(f"entry {i}: only 'role' and 'content' are allowed")
+        if entry.get("role") not in ("user", "assistant"):
+            history_errors.append(f"entry {i}: role must be 'user' or 'assistant'")
+        if not isinstance(entry.get("content", ""), str):
+            history_errors.append(f"entry {i}: content must be a string")
+        elif len(entry.get("content", "")) > _MAX_CONTENT_CHARS:
+            history_errors.append(
+                f"entry {i}: content exceeds {_MAX_CONTENT_CHARS} character limit"
+            )
+
+    if history_errors:
+        return JsonResponse(
+            {"error": "Invalid conversation_history", "details": history_errors},
+            status=400,
+        )
+
+    # Store history in the shared cache (backed by Postgres — not the job params)
+    # so full transcripts are never persisted into SearchJob.query_params which
+    # is readable via the public jobs API.
+    # TTL: 2 hours — enough for a long investigation session.
+    import uuid as _uuid  # noqa: PLC0415
+
+    from django.core.cache import cache as _cache  # noqa: PLC0415
+
+    sanitized_history = [
+        {"role": e["role"], "content": e["content"]}
+        for e in raw_history[-_MAX_HISTORY_ENTRIES:]
+    ]
+    history_ref = str(_uuid.uuid4())
+    _cache.set(f"ai_ask_history:{history_ref}", sanitized_history, timeout=7200)
+
+    with transaction.atomic():
+        job = SearchJob.objects.create(
+            case=case,
+            job_type=JobType.AI_ASK,
+            query_params={
+                "case_id": str(case.id),
+                "question": question,
+                # Store only the cache reference, never the full transcript.
+                "history_ref": history_ref,
+            },
+        )
+        async_task("investigations.jobs.run_ai_ask", str(job.id))
+
+    return JsonResponse(
+        {"job_id": str(job.id), "status_url": f"/api/jobs/{job.id}/"},
+        status=202,
+    )
 
 
 @require_http_methods(["POST"])
