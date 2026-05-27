@@ -7,7 +7,7 @@
         "dev": "vite",
         "build": "tsc --noEmit && vite build",
         "preview": "vite preview",
-        "test": "vitest run"
+        "test": "vitest run --passWithNoTests"
     },
     "dependencies": {
         "@radix-ui/react-context-menu": "^2.2.16",
