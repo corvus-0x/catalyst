@@ -1,0 +1,409 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tabs{display:flex;gap:4px;padding:0 0 20px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:24px}
+.tab-btn{padding:6px 14px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.tab-btn.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.panel{display:none}
+.panel.active{display:block}
+.sect-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:14px 0}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-danger{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge-success{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-neutral{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-purple{background:#EEEDFE;color:#3C3489}
+.issue-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;margin-bottom:8px}
+.issue-card.red{border-left:3px solid #E24B4A}
+.issue-card.amber{border-left:3px solid #BA7517}
+.issue-card.green{border-left:3px solid #1D9E75}
+.issue-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.issue-body{font-size:11px;color:var(--color-text-secondary);line-height:1.5}
+.fix-pill{display:inline-block;font-size:10px;padding:2px 6px;background:var(--color-background-secondary);border-radius:3px;color:var(--color-text-secondary);margin-top:5px}
+
+.tab-row{display:flex;gap:2px;margin-bottom:3px}
+.wf-tab{padding:4px 10px;border-radius:4px 4px 0 0;font-size:11px;color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-bottom:none;background:var(--color-background-secondary)}
+.wf-tab.active{background:var(--color-background-primary);color:var(--color-text-primary)}
+.wf-tab.new{background:#E1F5EE;color:#0F6E56;border-color:#1D9E75}
+.wf-tab.changed{background:#FAEEDA;color:#854F0B;border-color:#BA7517}
+
+.arch-box{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;font-size:11px}
+.arch-box h4{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px}
+.arch-box ul{padding-left:14px;display:flex;flex-direction:column;gap:3px;color:var(--color-text-secondary)}
+
+.flow-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.flow-box{padding:5px 10px;border-radius:4px;font-size:11px;font-weight:500;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-primary);white-space:nowrap}
+.flow-box.trigger{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.flow-box.action{background:#EEEDFE;color:#3C3489;border-color:#AFA9EC}
+.flow-box.result{background:var(--color-background-success);color:var(--color-text-success);border-color:var(--color-border-success)}
+.flow-arrow{color:var(--color-text-secondary);font-size:12px;flex-shrink:0}
+
+.wf-chrome{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.wf-topbar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 12px;display:flex;align-items:center;gap:6px}
+.btn-sm{height:26px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);white-space:nowrap;cursor:pointer}
+.btn-sm.primary{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.btn-sm.teal{background:#E1F5EE;color:#0F6E56;border-color:#1D9E75}
+.callout{background:var(--color-background-secondary);border-left:2px solid var(--color-border-secondary);border-radius:0 4px 4px 0;padding:6px 10px;font-size:11px;color:var(--color-text-secondary);margin-bottom:10px;line-height:1.5}
+</style>
+
+<h2 class="sr-only">Catalyst UX audit and revised information architecture with document workspace and RAG search placement</h2>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showPanel('audit')">UX audit</button>
+  <button class="tab-btn" onclick="showPanel('ia')">Revised structure</button>
+  <button class="tab-btn" onclick="showPanel('docworkspace')">Document workspace</button>
+  <button class="tab-btn" onclick="showPanel('rag')">RAG search placement</button>
+</div>
+
+<div id="audit" class="panel active">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Honest assessment of what works and what doesn't in the current design, given that manual findings and notes will be the primary workflow for a while.</p>
+
+  <div class="issue-card red">
+    <div class="issue-title"><span class="badge badge-danger">friction</span> "Add finding" is buried</div>
+    <div class="issue-body">The button lives at the top of the center panel in the main case view — but only when you're on the Overview tab. If you're reading a document on the Documents tab and spot something suspicious, you have to navigate back to Overview to add a finding. That's one extra tab click every time you want to record something, which adds up fast.</div>
+    <div class="fix-pill">Fix: persistent "Add finding" shortcut visible from any tab</div>
+  </div>
+
+  <div class="issue-card red">
+    <div class="issue-title"><span class="badge badge-danger">friction</span> Notes and findings are two separate things right now</div>
+    <div class="issue-body">The current design has InvestigatorNote (informal, no signal rule) and Finding (formal, citable). But in practice, the investigator workflow is: notice something → jot a note → promote it to a finding when there's enough evidence. There's no clear path from note to finding in the current design. They live in different places and don't visually connect.</div>
+    <div class="fix-pill">Fix: notes as "draft findings" — same panel, lighter styling, one "Promote to finding" button</div>
+  </div>
+
+  <div class="issue-card amber">
+    <div class="issue-title"><span class="badge badge-warn">friction</span> 6 tabs is one too many</div>
+    <div class="issue-body">Overview, Documents, Research, Financials, Timeline, Referrals = 6 tabs. The cognitive load isn't the count, it's that "Overview" and "Documents" feel like they should be unified — right now Overview has the investigation workspace but no document viewer, and Documents has a file list but no investigation context. They need each other.</div>
+    <div class="fix-pill">Fix: merge Overview + Documents into one "Investigate" workspace (detailed below)</div>
+  </div>
+
+  <div class="issue-card amber">
+    <div class="issue-title"><span class="badge badge-warn">friction</span> No cross-document search anywhere in the flow</div>
+    <div class="issue-body">You're reading a 990 and you see "Baumer Construction." To find every other document that mentions Baumer, you have to navigate to the global search, type the name, get results, click back into a document. There's no way to search while staying in context of what you're reading. This is a real investigation workflow — you follow threads — and the current design breaks it.</div>
+    <div class="fix-pill">Fix: RAG search sidebar on any open document (detailed below)</div>
+  </div>
+
+  <div class="issue-card green">
+    <div class="issue-title"><span class="badge badge-success">works</span> Three-panel layout is the right foundation</div>
+    <div class="issue-body">The left rail / center / right panel structure is correct. The investigation context (who, what, connects to what) in the right panel is genuinely useful. Keep this — but it needs to be accessible from more places, especially from inside a document.</div>
+  </div>
+
+  <div class="issue-card green">
+    <div class="issue-title"><span class="badge badge-success">works</span> Research, Financials, Timeline as supporting tabs</div>
+    <div class="issue-body">These three tabs are correctly scoped — they're lookup/analysis surfaces, not the primary investigation workspace. The navigation to them is fine. The issue is getting back from them into the investigation flow (a finding you discover in Financials should have a one-click path back to the center panel).</div>
+  </div>
+</div>
+
+<div id="ia" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Proposed change: collapse 6 tabs to 5 by merging Overview + Documents into one "Investigate" tab. Everything else stays the same.</p>
+
+  <div style="margin-bottom:18px">
+    <div class="sect-label">Current tab structure (6 tabs)</div>
+    <div class="tab-row">
+      <div class="wf-tab active">Overview</div>
+      <div class="wf-tab">Documents</div>
+      <div class="wf-tab">Research</div>
+      <div class="wf-tab">Financials</div>
+      <div class="wf-tab">Timeline</div>
+      <div class="wf-tab">Referrals</div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-top:none;border-radius:0 0 6px 6px;padding:8px 12px;font-size:11px;color:var(--color-text-secondary)">
+      "Overview" = three-panel investigation workspace. "Documents" = file list + upload. These two are effectively the same workspace split across two tabs.
+    </div>
+  </div>
+
+  <div style="margin-bottom:18px">
+    <div class="sect-label">Proposed tab structure (5 tabs)</div>
+    <div class="tab-row">
+      <div class="wf-tab new active">Investigate</div>
+      <div class="wf-tab">Research</div>
+      <div class="wf-tab">Financials</div>
+      <div class="wf-tab">Timeline</div>
+      <div class="wf-tab">Referrals</div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-left:2px solid #1D9E75;border-top:none;border-radius:0 0 6px 6px;padding:8px 12px;font-size:11px;color:var(--color-text-secondary)">
+      "Investigate" combines the three-panel findings workspace with a full document viewer. Left rail = document list (+ upload). Center = document viewer OR findings list (toggle). Right = context panel (findings from this doc, or finding detail). RAG search lives here as a collapsible sidebar.
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+    <div class="arch-box">
+      <h4>Investigate tab — what lives here</h4>
+      <ul>
+        <li>All case documents (upload, view, OCR)</li>
+        <li>All findings + notes (list, add, promote)</li>
+        <li>Document viewer with inline finding highlights</li>
+        <li>RAG cross-document search sidebar</li>
+        <li>Entity-relationship graph (collapsed by default)</li>
+        <li>"Add finding" always accessible</li>
+      </ul>
+    </div>
+    <div class="arch-box">
+      <h4>Supporting tabs — unchanged scope</h4>
+      <ul>
+        <li><strong style="color:var(--color-text-primary)">Research</strong> — external data sources (IRS, AOS, SOS, Recorder)</li>
+        <li><strong style="color:var(--color-text-primary)">Financials</strong> — 990 year-over-year table + anomaly flags</li>
+        <li><strong style="color:var(--color-text-primary)">Timeline</strong> — chronological event view</li>
+        <li><strong style="color:var(--color-text-primary)">Referrals</strong> — export checklist + PDF generation</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">The key change: <strong style="color:var(--color-text-primary)">"Add finding" and the document list live in the same tab.</strong> You read a document, see something, click "Add finding" — without ever leaving the page. The note/finding distinction is handled by evidence weight, not by two separate UI objects.</div>
+
+  <div class="divider"></div>
+  <div class="sect-label">Note → Finding promotion path</div>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <div class="flow-row">
+      <div class="flow-box trigger">Reading doc in viewer</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Click "Add finding"</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box action">Drawer opens, doc pre-selected</div>
+    </div>
+    <div style="font-size:11px;color:var(--color-text-secondary);padding-left:4px;margin-bottom:4px">↓ investigator picks evidence weight:</div>
+    <div class="flow-row">
+      <div class="flow-box">Weight = Speculative</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box" style="background:#FAEEDA;color:#854F0B;border-color:#BA7517">Saved as "note" (gray card)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Promote button visible later</div>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box">Weight = Directional+</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box result">Saved as finding (colored card)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Appears in referral checklist</div>
+    </div>
+  </div>
+</div>
+
+<div id="docworkspace" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">The Investigate tab is a document-first workspace. All investigation activity flows from documents, not from findings. Here's what it looks like with a document open.</p>
+
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div style="display:flex;gap:2px;margin-left:auto">
+        <div class="wf-tab new active">Investigate</div>
+        <div class="wf-tab">Research</div>
+        <div class="wf-tab">Financials</div>
+        <div class="wf-tab">Timeline</div>
+        <div class="wf-tab">Referrals</div>
+      </div>
+    </div>
+    <div style="display:flex;min-height:480px">
+      <div style="width:165px;border-right:0.5px solid var(--color-border-tertiary);padding:10px;flex-shrink:0">
+        <div class="sect-label">Documents (7)</div>
+        <div style="margin-bottom:6px"><button class="btn-sm" style="width:100%;font-size:10px">Upload files</button></div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="padding:5px 7px;border-radius:4px;background:var(--color-background-info);font-size:10px;color:var(--color-text-info);border:0.5px solid var(--color-border-info)">
+            <div style="font-weight:500">990-EZ 2021.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">3 findings · IRS 990</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent">
+            <div style="font-weight:500">990-EZ 2020.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">1 finding · IRS 990</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent">
+            <div style="font-weight:500">Deed - 25 W Main.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">2 findings · Deed</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent">
+            <div style="font-weight:500">Building permit 2021.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">1 note · Permit</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:500">UCC filing Mar 2019.pdf</div>
+              <div style="opacity:0.8;margin-top:1px">no findings yet</div>
+            </div>
+            <span class="badge badge-warn" style="font-size:9px">!</span>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent">
+            <div style="font-weight:500">AOS audit 2021.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">1 finding · Audit</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid transparent">
+            <div style="font-weight:500">Ohio SOS filing.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">no findings yet</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="sect-label">All findings (9)</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #E24B4A;background:var(--color-background-secondary)">SR-013: Zero officer pay</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #E24B4A;background:var(--color-background-secondary)">SR-028: Material diversion</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #BA7517;background:var(--color-background-secondary)">SR-021: Revenue spike</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #888;background:var(--color-background-secondary);opacity:0.7">Note: Baumer connection?</div>
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;flex-direction:column;border-right:0.5px solid var(--color-border-tertiary)">
+        <div style="padding:8px 10px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:8px;background:var(--color-background-secondary)">
+          <span style="font-size:11px;font-weight:500">990-EZ 2021.pdf</span>
+          <span class="badge badge-info">IRS 990</span>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            <button class="btn-sm" style="font-size:10px">Search this doc</button>
+            <button class="btn-sm teal" style="font-size:10px">+ Add finding</button>
+          </div>
+        </div>
+        <div style="flex:1;padding:14px;font-size:11px;color:var(--color-text-secondary);line-height:1.7;overflow-y:auto">
+          <div style="font-size:10px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px">Part VII — Compensation of Officers</div>
+          <p style="margin-bottom:8px">The following persons are listed as officers of Do Good In His Name Inc for the tax year ending December 31, 2021:</p>
+          <div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:8px;margin-bottom:8px;font-family:var(--font-mono);font-size:10px">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);padding-bottom:4px;margin-bottom:4px">
+              <span>Name / Title</span><span>Avg hrs/wk</span><span>Compensation</span>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px">
+              <span>Karen Homan, Executive Director</span><span>40</span>
+              <span style="background:#FCEBEB;color:#E24B4A;padding:0 3px;border-radius:2px;font-weight:500">$0</span>
+            </div>
+          </div>
+          <div style="background:#FCEBEB;border:0.5px solid #F7C1C1;border-radius:4px;padding:6px 8px;margin-bottom:8px;font-size:10px;color:#A32D2D;display:flex;justify-content:space-between;align-items:center">
+            <span>Finding: SR-013 Zero officer pay — linked to this section</span>
+            <button class="btn-sm" style="font-size:9px;height:20px;border-color:#F7C1C1;color:#A32D2D">View</button>
+          </div>
+          <div style="font-size:10px;font-weight:500;color:var(--color-text-primary);margin:12px 0 6px">Part IV — Checklist of Required Schedules</div>
+          <p>Line 28: Did the organization make any reportable payments to or transactions with disqualified persons? <strong style="color:#E24B4A">Yes</strong></p>
+          <p style="margin-top:4px">Schedule L attached: <strong style="color:#E24B4A">No</strong></p>
+          <div style="background:#FAEEDA;border:0.5px solid #FAC775;border-radius:4px;padding:6px 8px;margin-top:6px;font-size:10px;color:#854F0B;display:flex;justify-content:space-between;align-items:center">
+            <span>Finding: SR-006 Schedule L missing</span>
+            <button class="btn-sm" style="font-size:9px;height:20px;border-color:#FAC775;color:#854F0B">View</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:175px;padding:10px;flex-shrink:0">
+        <div class="sect-label">This document</div>
+        <div style="font-size:11px;font-weight:500;margin-bottom:2px">990-EZ 2021</div>
+        <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:8px">Uploaded Mar 2, 2026 · 14 pages</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+          <span class="badge badge-danger">SR-013</span>
+          <span class="badge badge-warn">SR-006</span>
+          <span class="badge badge-warn">SR-029</span>
+        </div>
+        <div class="sect-label" style="margin-top:8px">Entities extracted</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--color-text-info)">Karen Homan</div>
+          <div style="font-size:11px;color:var(--color-text-success)">Do Good In His Name Inc</div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">EIN 82-4458479</div>
+        </div>
+        <div class="divider"></div>
+        <button class="btn-sm teal" style="width:100%;margin-bottom:5px;font-size:10px">+ Add finding</button>
+        <button class="btn-sm" style="width:100%;font-size:10px">Search across docs</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;font-size:11px;color:var(--color-text-secondary);line-height:1.6">
+    Left rail shows all documents with finding counts — documents with no findings yet get a warning badge so nothing gets overlooked. Findings are also listed at the bottom of the left rail so the full picture is always one glance away. The "Add finding" button lives in both the top toolbar and the right panel — always within reach.
+  </div>
+</div>
+
+<div id="rag" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">RAG search (searching other documents for related content while reading one document) lives as a collapsible sidebar within the Investigate tab. It does not require a new page.</p>
+
+  <div class="wf-chrome">
+    <div class="wf-topbar" style="font-size:11px">
+      <span style="font-weight:500;color:var(--color-text-secondary)">990-EZ 2021.pdf</span>
+      <span style="color:var(--color-text-secondary)">—</span>
+      <span style="color:var(--color-text-secondary)">searching other case documents for:</span>
+      <span style="font-weight:500;background:#EEEDFE;color:#3C3489;padding:2px 6px;border-radius:3px">"Baumer Construction"</span>
+      <button class="btn-sm" style="margin-left:auto;font-size:10px">✕ Close search</button>
+    </div>
+    <div style="display:flex;min-height:360px">
+      <div style="flex:1;padding:12px;border-right:0.5px solid var(--color-border-tertiary)">
+        <div class="sect-label">You are reading</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.7;border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:10px;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px">990-EZ 2021 · Part IV Line 26</div>
+          <p>Did the organization receive any goods or services from a company in which a person listed in Section A has a <span style="background:#EEEDFE;color:#3C3489;padding:0 2px;border-radius:2px">direct business relationship</span>? <strong>No</strong></p>
+          <p style="margin-top:6px;color:var(--color-text-secondary);font-size:10px">← You highlighted "direct business relationship" and searched for Baumer</p>
+        </div>
+        <div class="callout">How to trigger: select any text in the document viewer and right-click → "Search other docs for this" — or type freely in the search box above.</div>
+      </div>
+
+      <div style="width:260px;padding:12px;flex-shrink:0;display:flex;flex-direction:column;gap:0">
+        <div class="sect-label">Matches in other documents (3)</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;background:var(--color-background-primary)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+              <div style="font-size:11px;font-weight:500">Building permit 2021.pdf</div>
+              <span class="badge badge-warn">p. 2</span>
+            </div>
+            <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5;background:var(--color-background-secondary);border-radius:3px;padding:5px 7px">
+              Contractor of record: <strong style="color:var(--color-text-primary)">Baumer Construction LLC</strong>, 12 Main St, Greenville OH. Owner/applicant: Karen Homan.
+            </div>
+            <div style="margin-top:6px;display:flex;gap:4px">
+              <button class="btn-sm" style="font-size:10px">Open doc</button>
+              <button class="btn-sm teal" style="font-size:10px">+ Add finding</button>
+            </div>
+          </div>
+
+          <div style="border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:8px 10px;background:var(--color-background-primary)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+              <div style="font-size:11px;font-weight:500">AOS audit 2021.pdf</div>
+              <span class="badge badge-warn">p. 7</span>
+            </div>
+            <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5;background:var(--color-background-secondary);border-radius:3px;padding:5px 7px">
+              Questioned costs include $48,000 paid to <strong style="color:var(--color-text-primary)">Baumer Construction</strong> for unspecified renovation services with no competitive bid documentation.
+            </div>
+            <div style="margin-top:6px;display:flex;gap:4px">
+              <button class="btn-sm" style="font-size:10px">Open doc</button>
+              <button class="btn-sm teal" style="font-size:10px">+ Add finding</button>
+            </div>
+          </div>
+
+          <div style="border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:8px 10px;background:var(--color-background-primary)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+              <div style="font-size:11px;font-weight:500">Ohio SOS filing.pdf</div>
+              <span class="badge badge-neutral">p. 1</span>
+            </div>
+            <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5;background:var(--color-background-secondary);border-radius:3px;padding:5px 7px">
+              Registered agent: <strong style="color:var(--color-text-primary)">Baumer, T.</strong> — address matches 12 Main St, Greenville OH.
+            </div>
+            <div style="margin-top:6px;display:flex;gap:4px">
+              <button class="btn-sm" style="font-size:10px">Open doc</button>
+              <button class="btn-sm teal" style="font-size:10px">+ Add finding</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="arch-box">
+      <h4>How RAG search works here</h4>
+      <ul>
+        <li>Searches only documents uploaded to <em>this case</em> — not all cases</li>
+        <li>Highlight text → right-click → "Search other docs for this"</li>
+        <li>Or use the search bar at the top of the Investigate tab</li>
+        <li>Results show an excerpt with the matching passage + which document + which page</li>
+        <li>Each result has "Add finding" so you can act immediately without opening the doc</li>
+        <li>Results do NOT replace the document you're reading — sidebar only</li>
+      </ul>
+    </div>
+    <div class="arch-box">
+      <h4>What this requires on the backend</h4>
+      <ul>
+        <li>OCR must have run on all documents (already in the pipeline)</li>
+        <li>Each document's text needs to be chunked and indexed per case</li>
+        <li>Search can be keyword (fast, works now) or semantic/embedding (slower, more powerful)</li>
+        <li><strong style="color:var(--color-text-primary)">Start with keyword search</strong> — grep the extracted text. Ship that. Upgrade to embedding search later as a YELLOW decision.</li>
+        <li>Backend endpoint: <code>GET /api/cases/&lt;id&gt;/doc-search/?q=Baumer+Construction</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>

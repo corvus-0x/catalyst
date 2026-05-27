@@ -1,0 +1,343 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); font-size: 14px; color: var(--color-text-primary); }
+.tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--color-border-tertiary); margin-bottom: 0; }
+.tab { padding: 10px 20px; font-size: 13px; cursor: pointer; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab.active { color: var(--color-text-primary); font-weight: 500; border-bottom-color: #185FA5; }
+.tab:hover:not(.active) { color: var(--color-text-primary); background: var(--color-background-secondary); }
+.panel { display: none; padding: 20px; }
+.panel.active { display: block; }
+
+/* --- SPLIT THREAD --- */
+.split-context { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: var(--color-text-secondary); }
+.split-context strong { color: var(--color-text-primary); font-weight: 500; }
+.split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.split-col { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); overflow: hidden; }
+.split-col-head { padding: 8px 12px; background: var(--color-background-secondary); border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 8px; }
+.split-col-head input { flex: 1; font-size: 12px; font-weight: 500; background: transparent; border: none; outline: none; color: var(--color-text-primary); }
+.split-col-head input::placeholder { color: var(--color-text-tertiary); font-weight: 400; }
+.knot-selector { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); }
+.knot-selector label { font-size: 10px; color: var(--color-text-tertiary); white-space: nowrap; }
+.knot-selector select { flex: 1; font-size: 11px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-secondary); border-radius: 4px; padding: 3px 6px; color: var(--color-text-primary); outline: none; }
+.split-drop { min-height: 90px; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+.ev-chip { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 4px; padding: 5px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 6px; transition: background 0.1s; }
+.ev-chip:hover { background: var(--color-background-secondary); }
+.ev-chip .chip-name { flex: 1; color: var(--color-text-primary); font-weight: 500; }
+.ev-chip .chip-sub { font-size: 10px; color: var(--color-text-secondary); }
+.ev-chip .chip-flag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #FAECE7; color: #993C1D; border: 0.5px solid #F5C4B3; }
+.drop-hint { font-size: 11px; color: var(--color-text-tertiary); text-align: center; padding: 12px; }
+.split-parent-label { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 6px; text-align: center; }
+.evidence-pool { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.ev-chip-pool { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 4px; padding: 6px 10px; font-size: 11px; display: flex; align-items: center; gap: 8px; }
+.ev-chip-pool .chip-name { flex: 1; font-weight: 500; }
+.assign-btns { display: flex; gap: 4px; }
+.assign-btn { font-size: 10px; padding: 2px 7px; border-radius: 3px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); white-space: nowrap; }
+.assign-btn:hover { background: var(--color-background-secondary); }
+.assign-btn.a-assigned { background: #E6F1FB; color: #185FA5; border-color: #B5D4F4; }
+.assign-btn.b-assigned { background: #E1F5EE; color: #0F6E56; border-color: #9FE1CB; }
+.split-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; border-top: 0.5px solid var(--color-border-tertiary); }
+.btn-cancel { font-size: 12px; padding: 6px 14px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); }
+.btn-cancel:hover { background: var(--color-background-secondary); }
+.btn-confirm { font-size: 12px; padding: 6px 16px; border-radius: var(--border-radius-md); cursor: pointer; border: none; background: #185FA5; color: #E6F1FB; font-weight: 500; }
+.btn-confirm:hover { background: #0C447C; }
+
+/* --- CONNECT KNOTS --- */
+.connect-flow { display: flex; flex-direction: column; gap: 16px; }
+.connect-row { display: flex; align-items: flex-start; gap: 12px; }
+.connect-num { width: 22px; height: 22px; border-radius: 50%; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: var(--color-text-secondary); flex-shrink: 0; margin-top: 2px; }
+.connect-content { flex: 1; }
+.connect-label { font-size: 12px; font-weight: 500; margin-bottom: 6px; }
+.connect-sub { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 8px; }
+.knot-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+.knot-option { padding: 6px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); font-size: 12px; cursor: pointer; background: var(--color-background-primary); color: var(--color-text-primary); transition: all 0.1s; }
+.knot-option:hover { border-color: var(--color-border-secondary); background: var(--color-background-secondary); }
+.knot-option.selected-a { background: #E6F1FB; color: #185FA5; border-color: #B5D4F4; border-width: 1px; }
+.knot-option.selected-b { background: #E1F5EE; color: #0F6E56; border-color: #9FE1CB; border-width: 1px; }
+.knot-option.new-knot { border-style: dashed; color: var(--color-text-secondary); }
+.knot-option.new-knot:hover { color: var(--color-text-primary); }
+.thread-preview { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 14px; border: 0.5px solid var(--color-border-tertiary); display: none; }
+.thread-preview.show { display: block; }
+.preview-line { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 8px; }
+.preview-knot { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+.preview-knot.a { background: #E6F1FB; color: #185FA5; }
+.preview-knot.b { background: #E1F5EE; color: #0F6E56; }
+.preview-arrow { color: var(--color-text-tertiary); font-size: 14px; }
+.preview-name-row { display: flex; gap: 8px; align-items: center; }
+.preview-name-row input { flex: 1; font-size: 13px; padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); outline: none; }
+.preview-name-row input:focus { border-color: #378ADD; }
+.new-knot-form { background: #EEEDFE; border: 0.5px solid #AFA9EC; border-radius: var(--border-radius-md); padding: 10px 14px; display: none; }
+.new-knot-form.show { display: block; }
+.new-knot-form-title { font-size: 11px; font-weight: 500; color: #534AB7; margin-bottom: 8px; }
+.nkf-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.nkf-row input, .nkf-row select { flex: 1; font-size: 12px; padding: 6px 8px; border: 0.5px solid #AFA9EC; border-radius: 4px; background: var(--color-background-primary); color: var(--color-text-primary); outline: none; }
+.connect-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 0.5px solid var(--color-border-tertiary); }
+.success-banner { background: #EAF3DE; border: 0.5px solid #C0DD97; border-radius: var(--border-radius-md); padding: 10px 14px; font-size: 12px; color: #3B6D11; display: none; }
+.success-banner.show { display: block; }
+</style>
+
+<h2 class="sr-only">Thread splitting and knot connection flows for investigation wireframe</h2>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('split', this)">Split a thread</div>
+  <div class="tab" onclick="switchTab('connect', this)">Connect two knots</div>
+</div>
+
+<div class="panel active" id="panel-split">
+  <div class="split-context">
+    Splitting <strong>UCC filing timeline</strong> — Karen Homan ↔ Baumer Construction LLC. Assign each piece of evidence to Thread A, Thread B, or both.
+  </div>
+
+  <div class="split-parent-label">Evidence on this thread — assign to each child</div>
+  <div class="evidence-pool" id="ev-pool">
+    <div class="ev-chip-pool" data-ev="ucc-orig">
+      <div class="chip-name">UCC Filing 2019-0044123</div>
+      <div class="chip-sub">blanket lien · 03/14/2019</div>
+      <div class="assign-btns">
+        <button class="assign-btn" id="a-ucc-orig" onclick="assign('ucc-orig','a')">→ A</button>
+        <button class="assign-btn" id="b-ucc-orig" onclick="assign('ucc-orig','b')">→ B</button>
+      </div>
+    </div>
+    <div class="ev-chip-pool" data-ev="ucc-a1">
+      <div class="chip-name">UCC Amendment A1</div>
+      <div class="chip-sub">1204 Greenville Rd property · 03/14/2019</div>
+      <div class="assign-btns">
+        <button class="assign-btn" id="a-ucc-a1" onclick="assign('ucc-a1','a')">→ A</button>
+        <button class="assign-btn" id="b-ucc-a1" onclick="assign('ucc-a1','b')">→ B</button>
+      </div>
+    </div>
+    <div class="ev-chip-pool" data-ev="ucc-a2">
+      <div class="chip-name">UCC Amendment A2</div>
+      <div class="chip-sub">vehicle added to collateral · 03/14/2019</div>
+      <div class="assign-btns">
+        <button class="assign-btn" id="a-ucc-a2" onclick="assign('ucc-a2','a')">→ A</button>
+        <button class="assign-btn" id="b-ucc-a2" onclick="assign('ucc-a2','b')">→ B</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="split-grid">
+    <div class="split-col">
+      <div class="split-col-head" style="border-left: 3px solid #185FA5;">
+        <input type="text" placeholder="Name thread A…" value="Property collateral lien" />
+      </div>
+      <div class="knot-selector">
+        <label>Connects to</label>
+        <select>
+          <option>Karen Homan ↔ Baumer Construction LLC</option>
+          <option>Karen Homan ↔ Do Good Real Estate LLC</option>
+          <option>Karen Homan ↔ New knot…</option>
+        </select>
+      </div>
+      <div class="split-drop" id="drop-a">
+        <div class="drop-hint" id="hint-a">Assign evidence using → A buttons above</div>
+      </div>
+    </div>
+    <div class="split-col">
+      <div class="split-col-head" style="border-left: 3px solid #0F6E56;">
+        <input type="text" placeholder="Name thread B…" value="Vehicle asset transfer" />
+      </div>
+      <div class="knot-selector">
+        <label>Connects to</label>
+        <select>
+          <option>Karen Homan ↔ Baumer Construction LLC</option>
+          <option>Karen Homan ↔ Do Good In His Name Inc</option>
+          <option>Karen Homan ↔ New knot…</option>
+        </select>
+      </div>
+      <div class="split-drop" id="drop-b">
+        <div class="drop-hint" id="hint-b">Assign evidence using → B buttons above</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="split-footer">
+    <button class="btn-cancel">Cancel</button>
+    <button class="btn-confirm" onclick="confirmSplit()">Create both threads</button>
+  </div>
+
+  <div class="success-banner" id="split-success" style="margin-top:12px;">
+    Two threads created. Original thread archived. Evidence assigned and linked.
+  </div>
+</div>
+
+<div class="panel" id="panel-connect">
+  <div class="connect-flow">
+    <div class="connect-row">
+      <div class="connect-num">1</div>
+      <div class="connect-content">
+        <div class="connect-label">First knot</div>
+        <div class="connect-sub">Who or what is one end of this thread?</div>
+        <div class="knot-grid">
+          <div class="knot-option" onclick="selectKnot('a', 'Karen Homan', this)">Karen Homan</div>
+          <div class="knot-option" onclick="selectKnot('a', 'Do Good In His Name Inc', this)">Do Good In His Name Inc</div>
+          <div class="knot-option" onclick="selectKnot('a', 'Baumer Construction LLC', this)">Baumer Construction LLC</div>
+          <div class="knot-option" onclick="selectKnot('a', 'Hanes Law Group', this)">Hanes Law Group</div>
+          <div class="knot-option" onclick="selectKnot('a', 'Do Good Real Estate LLC', this)">Do Good Real Estate LLC</div>
+          <div class="knot-option new-knot" onclick="showNewKnot('a', this)">+ New knot</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="new-knot-form" id="new-knot-a">
+      <div class="new-knot-form-title">New knot — define the entity</div>
+      <div class="nkf-row">
+        <input type="text" placeholder="Name…" />
+        <select>
+          <option>Person</option>
+          <option>Organization</option>
+          <option>Nonprofit</option>
+          <option>Shell entity</option>
+          <option>Law firm</option>
+        </select>
+      </div>
+      <div class="nkf-row">
+        <input type="text" placeholder="EIN or entity number (optional)…" />
+      </div>
+    </div>
+
+    <div class="connect-row">
+      <div class="connect-num">2</div>
+      <div class="connect-content">
+        <div class="connect-label">Second knot</div>
+        <div class="connect-sub">Who or what is the other end?</div>
+        <div class="knot-grid">
+          <div class="knot-option" onclick="selectKnot('b', 'Karen Homan', this)">Karen Homan</div>
+          <div class="knot-option" onclick="selectKnot('b', 'Do Good In His Name Inc', this)">Do Good In His Name Inc</div>
+          <div class="knot-option" onclick="selectKnot('b', 'Baumer Construction LLC', this)">Baumer Construction LLC</div>
+          <div class="knot-option" onclick="selectKnot('b', 'Hanes Law Group', this)">Hanes Law Group</div>
+          <div class="knot-option" onclick="selectKnot('b', 'Do Good Real Estate LLC', this)">Do Good Real Estate LLC</div>
+          <div class="knot-option new-knot" onclick="showNewKnot('b', this)">+ New knot</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="new-knot-form" id="new-knot-b">
+      <div class="new-knot-form-title">New knot — define the entity</div>
+      <div class="nkf-row">
+        <input type="text" placeholder="Name…" />
+        <select>
+          <option>Person</option>
+          <option>Organization</option>
+          <option>Nonprofit</option>
+          <option>Shell entity</option>
+          <option>Law firm</option>
+        </select>
+      </div>
+      <div class="nkf-row">
+        <input type="text" placeholder="EIN or entity number (optional)…" />
+      </div>
+    </div>
+
+    <div class="thread-preview" id="thread-preview">
+      <div class="preview-line">
+        <span class="preview-knot a" id="preview-a">—</span>
+        <span class="preview-arrow">↔</span>
+        <span class="preview-knot b" id="preview-b">—</span>
+      </div>
+      <div class="preview-name-row">
+        <input type="text" id="thread-name-input" placeholder="Name this thread…" />
+      </div>
+    </div>
+
+    <div class="connect-footer">
+      <button class="btn-cancel">Cancel</button>
+      <button class="btn-confirm" onclick="confirmConnect()">Start pulling this thread</button>
+    </div>
+
+    <div class="success-banner" id="connect-success">
+      Thread created. It's now visible on the web view as a dashed blue line. Start attaching evidence to pull it.
+    </div>
+  </div>
+</div>
+
+<script>
+var selectedA = null, selectedB = null;
+var assignments = {};
+
+function switchTab(t, el) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + t).classList.add('active');
+}
+
+function assign(ev, side) {
+  var key = side + '-' + ev;
+  var btn = document.getElementById(key);
+  var isOn = btn.classList.contains(side + '-assigned');
+  if (isOn) {
+    btn.classList.remove(side + '-assigned');
+    if (assignments[ev]) assignments[ev] = assignments[ev].filter(s => s !== side);
+    var drop = document.getElementById('drop-' + side);
+    var chip = drop.querySelector('[data-ev="' + ev + '"]');
+    if (chip) chip.remove();
+    if (drop.querySelectorAll('.ev-chip').length === 0) {
+      document.getElementById('hint-' + side).style.display = 'block';
+    }
+  } else {
+    btn.classList.add(side + '-assigned');
+    if (!assignments[ev]) assignments[ev] = [];
+    assignments[ev].push(side);
+    var drop = document.getElementById('drop-' + side);
+    document.getElementById('hint-' + side).style.display = 'none';
+    var labels = { 'ucc-orig': 'UCC Filing 2019-0044123', 'ucc-a1': 'Amendment A1', 'ucc-a2': 'Amendment A2' };
+    var chip = document.createElement('div');
+    chip.className = 'ev-chip';
+    chip.setAttribute('data-ev', ev);
+    var col = side === 'a' ? '#185FA5' : '#0F6E56';
+    chip.innerHTML = '<span class="chip-name">' + labels[ev] + '</span>';
+    chip.style.borderColor = col;
+    drop.appendChild(chip);
+  }
+}
+
+function confirmSplit() {
+  document.getElementById('split-success').classList.add('show');
+}
+
+function selectKnot(side, name, el) {
+  document.querySelectorAll(side === 'a' ? '.knot-grid:nth-of-type(1) .knot-option' : '.knot-grid .knot-option.selected-b').forEach(x => {
+    x.classList.remove('selected-a', 'selected-b');
+  });
+  var rows = document.querySelectorAll('.connect-row');
+  var grid = rows[side === 'a' ? 0 : 1].querySelector('.knot-grid');
+  grid.querySelectorAll('.knot-option').forEach(x => x.classList.remove('selected-a', 'selected-b'));
+  el.classList.add('selected-' + side);
+  if (side === 'a') selectedA = name;
+  else selectedB = name;
+  updatePreview();
+}
+
+function showNewKnot(side, el) {
+  var rows = document.querySelectorAll('.connect-row');
+  var grid = rows[side === 'a' ? 0 : 1].querySelector('.knot-grid');
+  grid.querySelectorAll('.knot-option').forEach(x => x.classList.remove('selected-a', 'selected-b'));
+  el.classList.add('selected-' + side);
+  document.getElementById('new-knot-' + side).classList.add('show');
+  if (side === 'a') selectedA = '(new knot)';
+  else selectedB = '(new knot)';
+  updatePreview();
+}
+
+function updatePreview() {
+  if (selectedA && selectedB) {
+    var preview = document.getElementById('thread-preview');
+    preview.classList.add('show');
+    document.getElementById('preview-a').textContent = selectedA;
+    document.getElementById('preview-b').textContent = selectedB;
+    var a = selectedA.toLowerCase(), b = selectedB.toLowerCase();
+    var suggested = '';
+    if (a.includes('homan') && b.includes('do good')) suggested = 'Officer compensation — self-dealing';
+    else if (a.includes('homan') && b.includes('baumer')) suggested = 'UCC lien relationship';
+    else if (a.includes('do good') && b.includes('baumer')) suggested = 'Contractor relationship — Schedule I';
+    else if (a.includes('do good') && b.includes('hanes')) suggested = 'Legal fees — insider relationship';
+    else if (b.includes('real estate')) suggested = 'Property transfer pattern';
+    if (suggested) document.getElementById('thread-name-input').value = suggested;
+  }
+}
+
+function confirmConnect() {
+  document.getElementById('connect-success').classList.add('show');
+}
+</script>

@@ -1,0 +1,275 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.shell { display: grid; grid-template-rows: auto 1fr; height: 660px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-tertiary); position: relative; }
+.topbar { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
+.breadcrumb span { cursor: pointer; }
+.breadcrumb span:hover { color: var(--color-text-info); text-decoration: underline; }
+.breadcrumb .sep { color: var(--color-text-tertiary); }
+.breadcrumb .current { color: var(--color-text-primary); font-weight: 500; }
+.state-badge { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+.badge-pulling { background: #E6F1FB; color: #185FA5; border: 0.5px solid #B5D4F4; }
+.badge-confirmed { background: #EAF3DE; color: #3B6D11; border: 0.5px solid #C0DD97; }
+.badge-exhausted { background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+.state-btn { font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; background: transparent; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); }
+.state-btn:hover { background: var(--color-background-secondary); }
+.body { display: grid; grid-template-columns: 1fr 240px; overflow: hidden; }
+.left { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+.thread-header { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 12px 16px; }
+.thread-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.knot-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.knot-pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.pill-person { background: #E6F1FB; color: #185FA5; }
+.pill-org { background: #E1F5EE; color: #0F6E56; }
+.pill-shell { background: #FAECE7; color: #993C1D; }
+.pill-arrow { color: var(--color-text-tertiary); font-size: 12px; }
+.thread-meta { font-size: 12px; color: var(--color-text-secondary); margin-top: 6px; }
+.evidence-feed { overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.ev-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 12px; cursor: pointer; transition: border-color 0.15s; }
+.ev-card:hover { border-color: var(--color-border-secondary); }
+.ev-card.selected { border-color: #378ADD; border-width: 1px; }
+.ev-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.doc-icon { width: 18px; height: 18px; background: #E6F1FB; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 500; color: #185FA5; flex-shrink: 0; }
+.ev-doc-name { font-size: 12px; font-weight: 500; flex: 1; }
+.ev-page { font-size: 11px; color: var(--color-text-tertiary); }
+.ev-extract { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; border-left: 2px solid var(--color-border-tertiary); padding-left: 8px; margin-bottom: 6px; }
+.ev-facts { display: flex; gap: 4px; flex-wrap: wrap; }
+.fact-tag { font-size: 10px; padding: 2px 6px; border-radius: 3px; border: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); }
+.fact-tag.entity { background: #EEEDFE; color: #534AB7; border-color: #AFA9EC; }
+.fact-tag.date { background: #FAEEDA; color: #854F0B; border-color: #FAC775; }
+.fact-tag.flag { background: #FAECE7; color: #993C1D; border-color: #F5C4B3; }
+.intake-chip { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: var(--color-background-secondary); color: var(--color-text-tertiary); border: 0.5px solid var(--color-border-tertiary); }
+.add-evidence-bar { background: var(--color-background-primary); border-top: 0.5px solid var(--color-border-tertiary); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+.add-evidence-bar input { flex: 1; font-size: 12px; padding: 6px 10px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); outline: none; }
+.btn-sm { font-size: 12px; padding: 5px 12px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); white-space: nowrap; }
+.btn-sm:hover { background: var(--color-background-secondary); }
+.btn-primary { background: #185FA5; color: #E6F1FB; border-color: #185FA5; }
+.btn-primary:hover { background: #0C447C; }
+.btn-split { color: #185FA5; border-color: #B5D4F4; }
+.btn-split:hover { background: #E6F1FB; }
+.btn-tieit { color: #3B6D11; border-color: #C0DD97; }
+.btn-tieit:hover { background: #EAF3DE; }
+.right-panel { background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-tertiary); display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+.lead-header { padding: 10px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.lead-header-row { display: flex; align-items: center; gap: 6px; }
+.lead-dot { width: 7px; height: 7px; border-radius: 50%; background: #854F0B; }
+.lead-label { font-size: 12px; font-weight: 500; color: #854F0B; }
+.lead-sub { font-size: 10px; color: var(--color-text-tertiary); margin-top: 2px; }
+.lead-feed { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.lead-suggestion { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 8px 10px; border: 0.5px solid var(--color-border-tertiary); }
+.lead-tag { font-size: 10px; font-weight: 500; color: var(--color-text-tertiary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+.lead-text { font-size: 12px; color: var(--color-text-primary); line-height: 1.5; margin-bottom: 6px; }
+.lead-action { font-size: 11px; color: #185FA5; cursor: pointer; }
+.lead-action:hover { text-decoration: underline; }
+.lead-footer { padding: 8px 12px; border-top: 0.5px solid var(--color-border-tertiary); font-size: 11px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 6px; }
+.dot-run { width: 5px; height: 5px; border-radius: 50%; background: #854F0B; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+.modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; z-index: 10; border-radius: var(--border-radius-lg); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 20px; width: 360px; max-width: 90%; }
+.modal-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.modal-sub { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 16px; }
+.modal-section { font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.modal-evidence-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.modal-ev-row { display: flex; align-items: center; gap: 8px; font-size: 12px; background: var(--color-background-secondary); padding: 6px 8px; border-radius: var(--border-radius-md); }
+.modal-ev-icon { width: 16px; height: 16px; background: #E6F1FB; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 500; color: #185FA5; flex-shrink: 0; }
+.modal-ev-name { flex: 1; color: var(--color-text-primary); }
+.modal-ev-facts { font-size: 10px; color: var(--color-text-secondary); }
+.modal-rule { background: #FAECE7; border: 0.5px solid #F5C4B3; border-radius: var(--border-radius-md); padding: 8px 10px; margin-bottom: 14px; font-size: 12px; color: #993C1D; }
+.modal-rule strong { display: block; font-weight: 500; margin-bottom: 2px; }
+.modal-note { margin-bottom: 14px; }
+.modal-note textarea { width: 100%; font-size: 12px; padding: 8px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); font-family: var(--font-sans); resize: none; outline: none; }
+.modal-note textarea:focus { border-color: #378ADD; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-cancel { font-size: 12px; padding: 6px 14px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); }
+.btn-cancel:hover { background: var(--color-background-secondary); }
+.btn-confirm { font-size: 12px; padding: 6px 14px; border-radius: var(--border-radius-md); cursor: pointer; border: none; background: #3B6D11; color: #EAF3DE; font-weight: 500; }
+.btn-confirm:hover { background: #27500A; }
+</style>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <span>Investigation web</span>
+      <span class="sep">›</span>
+      <span>Karen Homan</span>
+      <span class="sep">›</span>
+      <span class="current">UCC filing timeline</span>
+    </div>
+    <div class="state-badge">
+      <span class="badge badge-pulling" id="state-badge">Pulling</span>
+      <button class="state-btn" onclick="setState('exhausted')">Mark exhausted</button>
+      <button class="btn-sm btn-tieit" onclick="openTieOff()">Tie it off →</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="left">
+      <div class="thread-header">
+        <div class="thread-title">UCC filing timeline</div>
+        <div class="knot-pills">
+          <span class="knot-pill pill-person">Karen Homan</span>
+          <span class="pill-arrow">↔</span>
+          <span class="knot-pill pill-shell">Baumer Construction LLC</span>
+        </div>
+        <div class="thread-meta">3 documents · 7 extracted facts · opened 4 days ago</div>
+      </div>
+
+      <div class="evidence-feed">
+        <div class="ev-card selected" onclick="selectCard(this)">
+          <div class="ev-card-header">
+            <div class="doc-icon">UCC</div>
+            <span class="ev-doc-name">UCC Filing 2019-0044123</span>
+            <span class="ev-page">p. 1</span>
+          </div>
+          <div class="ev-extract">"…secured party: Karen Homan, debtor: Baumer Construction LLC, blanket lien on all assets, filed 03/14/2019…"</div>
+          <div class="ev-facts">
+            <span class="fact-tag entity">Karen Homan</span>
+            <span class="fact-tag entity">Baumer Construction</span>
+            <span class="fact-tag date">03/14/2019</span>
+            <span class="fact-tag flag">Blanket lien</span>
+            <span class="intake-chip">Intake</span>
+          </div>
+        </div>
+
+        <div class="ev-card" onclick="selectCard(this)">
+          <div class="ev-card-header">
+            <div class="doc-icon">UCC</div>
+            <span class="ev-doc-name">UCC Amendment 2019-0044123-A1</span>
+            <span class="ev-page">p. 1</span>
+          </div>
+          <div class="ev-extract">"…amendment to collateral description, adds real property at 1204 Greenville Rd, Ansonia OH…"</div>
+          <div class="ev-facts">
+            <span class="fact-tag date">03/14/2019</span>
+            <span class="fact-tag entity">1204 Greenville Rd</span>
+            <span class="fact-tag flag">Same-day amendment</span>
+            <span class="intake-chip">Intake</span>
+          </div>
+        </div>
+
+        <div class="ev-card" onclick="selectCard(this)">
+          <div class="ev-card-header">
+            <div class="doc-icon">UCC</div>
+            <span class="ev-doc-name">UCC Amendment 2019-0044123-A2</span>
+            <span class="ev-page">p. 1</span>
+          </div>
+          <div class="ev-extract">"…second amendment same day, adds vehicle VIN 1GNSKJE33HR258901 to collateral…"</div>
+          <div class="ev-facts">
+            <span class="fact-tag date">03/14/2019</span>
+            <span class="fact-tag flag">3rd filing, same calendar day</span>
+            <span class="intake-chip">Intake</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="add-evidence-bar">
+        <input type="text" placeholder="Attach a document to this thread…" />
+        <button class="btn-sm btn-split" onclick="sendPrompt('Show me the thread splitting UX — I need to branch this thread into two')">Split thread</button>
+        <button class="btn-sm btn-primary">Attach</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="lead-header">
+        <div class="lead-header-row">
+          <div class="lead-dot"></div>
+          <span class="lead-label">Lead</span>
+        </div>
+        <div class="lead-sub">Watching for new evidence</div>
+      </div>
+
+      <div class="lead-feed">
+        <div class="lead-suggestion">
+          <div class="lead-tag">Look for next</div>
+          <div class="lead-text">Check if 1204 Greenville Rd was ever transferred by Do Good In His Name Inc. That address matches the charity's mailing address on the 2019 990.</div>
+          <div class="lead-action" onclick="sendPrompt('Search county recorder for 1204 Greenville Rd Ansonia Ohio property transfers')">→ Search Recorder</div>
+        </div>
+
+        <div class="lead-suggestion">
+          <div class="lead-tag">Pattern match</div>
+          <div class="lead-text">All 3 UCC filings share 03/14/2019. This satisfies SR-004 — UCC burst. This thread may be ready to confirm.</div>
+          <div class="lead-action" onclick="openTieOff()">→ Tie off this thread</div>
+        </div>
+
+        <div class="lead-suggestion">
+          <div class="lead-tag">New thread?</div>
+          <div class="lead-text">Baumer Construction appears on the Do Good 990 Schedule I as a sub-grantee. Did grant payments align with UCC collateral dates?</div>
+          <div class="lead-action" onclick="sendPrompt('Show me how to create a new thread between Do Good In His Name Inc and Baumer Construction around Schedule I grant payments')">→ Start new thread</div>
+        </div>
+      </div>
+
+      <div class="lead-footer">
+        <div class="dot-run"></div>
+        <span>Lead · auto-updates on evidence changes</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-title">Tie off this thread?</div>
+      <div class="modal-sub">This creates a confirmed finding. The evidence below will be packaged with it.</div>
+
+      <div class="modal-section">Evidence (3 documents)</div>
+      <div class="modal-evidence-list">
+        <div class="modal-ev-row">
+          <div class="modal-ev-icon">UCC</div>
+          <span class="modal-ev-name">UCC Filing 2019-0044123</span>
+          <span class="modal-ev-facts">p. 1 · 4 facts</span>
+        </div>
+        <div class="modal-ev-row">
+          <div class="modal-ev-icon">UCC</div>
+          <span class="modal-ev-name">Amendment A1</span>
+          <span class="modal-ev-facts">p. 1 · 2 facts</span>
+        </div>
+        <div class="modal-ev-row">
+          <div class="modal-ev-icon">UCC</div>
+          <span class="modal-ev-name">Amendment A2</span>
+          <span class="modal-ev-facts">p. 1 · 1 fact</span>
+        </div>
+      </div>
+
+      <div class="modal-rule">
+        <strong>SR-004 — UCC burst</strong>
+        3 UCC amendments filed on same calendar day (03/14/2019). Severity: HIGH.
+      </div>
+
+      <div class="modal-section">Investigator note (optional)</div>
+      <div class="modal-note">
+        <textarea rows="2" placeholder="Any additional context for this finding…"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-confirm" onclick="confirmTieOff()">Confirm finding</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function selectCard(el) {
+  document.querySelectorAll('.ev-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function setState(s) {
+  const badge = document.getElementById('state-badge');
+  badge.className = 'badge badge-exhausted';
+  badge.textContent = 'Exhausted';
+}
+function openTieOff() {
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+function confirmTieOff() {
+  closeModal();
+  const badge = document.getElementById('state-badge');
+  badge.className = 'badge badge-confirmed';
+  badge.textContent = 'Confirmed';
+}
+</script>

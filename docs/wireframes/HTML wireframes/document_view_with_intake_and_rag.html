@@ -1,0 +1,260 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); font-size: 14px; color: var(--color-text-primary); }
+.shell { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-tertiary); display: flex; flex-direction: column; height: 660px; }
+.topbar { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 10px 16px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); flex: 1; min-width: 0; }
+.breadcrumb span { cursor: pointer; white-space: nowrap; }
+.breadcrumb span:hover { color: var(--color-text-info); text-decoration: underline; }
+.breadcrumb .sep { color: var(--color-text-tertiary); }
+.breadcrumb .current { color: var(--color-text-primary); font-weight: 500; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.btn-sm { font-size: 12px; padding: 5px 12px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); white-space: nowrap; }
+.btn-sm:hover { background: var(--color-background-secondary); }
+.btn-primary { background: #185FA5; color: #E6F1FB; border-color: #185FA5; }
+.btn-primary:hover { background: #0C447C; }
+.intake-legend { display: flex; gap: 10px; align-items: center; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-secondary); }
+.legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+.body { display: grid; grid-template-columns: 1fr 280px; flex: 1; overflow: hidden; }
+
+.doc-panel { background: var(--color-background-primary); display: flex; flex-direction: column; overflow: hidden; }
+.doc-toolbar { padding: 8px 16px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.doc-title { font-size: 13px; font-weight: 500; flex: 1; }
+.doc-meta { font-size: 11px; color: var(--color-text-secondary); }
+.rag-toggle { font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); }
+.rag-toggle.active { background: #EEEDFE; color: #534AB7; border-color: #AFA9EC; }
+.doc-text { flex: 1; overflow-y: auto; padding: 20px 24px; line-height: 1.8; font-size: 13px; color: var(--color-text-primary); font-family: var(--font-mono); }
+.doc-text p { margin-bottom: 12px; }
+.hl-entity { background: #E6F1FB; color: #185FA5; border-radius: 2px; padding: 1px 3px; cursor: pointer; position: relative; }
+.hl-entity:hover { background: #B5D4F4; }
+.hl-date { background: #FAEEDA; color: #854F0B; border-radius: 2px; padding: 1px 3px; cursor: pointer; }
+.hl-date:hover { background: #FAC775; }
+.hl-amount { background: #EAF3DE; color: #3B6D11; border-radius: 2px; padding: 1px 3px; cursor: pointer; }
+.hl-amount:hover { background: #C0DD97; }
+.hl-flag { background: #FAECE7; color: #993C1D; border-radius: 2px; padding: 1px 3px; cursor: pointer; border-bottom: 1.5px solid #D85A30; }
+.hl-flag:hover { background: #F5C4B3; }
+.selection-tip { font-size: 11px; color: var(--color-text-tertiary); text-align: center; padding: 6px; border-top: 0.5px solid var(--color-border-tertiary); flex-shrink: 0; }
+
+.rag-panel { background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; overflow: hidden; }
+.rag-header { padding: 10px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); flex-shrink: 0; }
+.rag-header-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.rag-dot { width: 7px; height: 7px; border-radius: 50%; background: #534AB7; }
+.rag-label { font-size: 12px; font-weight: 500; color: #534AB7; }
+.rag-input-row { display: flex; gap: 6px; }
+.rag-input-row input { flex: 1; font-size: 12px; padding: 6px 8px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); outline: none; }
+.rag-input-row input:focus { border-color: #534AB7; }
+.rag-input-row button { font-size: 11px; padding: 5px 10px; border-radius: var(--border-radius-md); border: none; background: #534AB7; color: #EEEDFE; cursor: pointer; white-space: nowrap; }
+.rag-input-row button:hover { background: #3C3489; }
+.rag-results { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.rag-empty { font-size: 12px; color: var(--color-text-tertiary); text-align: center; padding: 20px 8px; line-height: 1.6; }
+.rag-hit { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 8px 10px; border: 0.5px solid var(--color-border-tertiary); cursor: pointer; }
+.rag-hit:hover { border-color: var(--color-border-secondary); }
+.rag-hit-doc { font-size: 11px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+.rag-hit-excerpt { font-size: 11px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 4px; font-family: var(--font-mono); }
+.rag-hit-excerpt mark { background: #FAEEDA; color: #854F0B; border-radius: 2px; padding: 0 2px; }
+.rag-hit-action { font-size: 10px; color: #185FA5; cursor: pointer; }
+.rag-hit-action:hover { text-decoration: underline; }
+.rag-hint { font-size: 11px; color: var(--color-text-tertiary); padding: 8px 12px; border-top: 0.5px solid var(--color-border-tertiary); flex-shrink: 0; line-height: 1.5; }
+
+.tooltip { position: fixed; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 10px; font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 100; pointer-events: none; display: none; max-width: 200px; font-family: var(--font-sans); color: var(--color-text-primary); }
+.ctx-menu { position: fixed; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 4px; z-index: 100; display: none; min-width: 170px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.ctx-item { padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 4px; color: var(--color-text-primary); }
+.ctx-item:hover { background: var(--color-background-secondary); }
+</style>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <span>Investigation web</span>
+      <span class="sep">›</span>
+      <span>Karen Homan</span>
+      <span class="sep">›</span>
+      <span>UCC filing timeline</span>
+      <span class="sep">›</span>
+      <span class="current">UCC Filing 2019-0044123</span>
+    </div>
+    <div class="topbar-right">
+      <div class="intake-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#B5D4F4;"></div>Entity</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#FAC775;"></div>Date</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#C0DD97;"></div>Amount</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#F5C4B3; border-bottom:1.5px solid #D85A30;"></div>Flag</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="doc-panel">
+      <div class="doc-toolbar">
+        <span class="doc-title">UCC Filing 2019-0044123 · Ohio SOS</span>
+        <span class="doc-meta">Processed by Intake · 03/14/2019</span>
+        <button class="rag-toggle active" id="rag-btn" onclick="toggleRag()">Search docs</button>
+      </div>
+
+      <div class="doc-text" id="doc-text" onmouseup="checkSelection(event)">
+        <p>UNIFORM COMMERCIAL CODE FINANCING STATEMENT<br>
+        OHIO SECRETARY OF STATE · FILE NUMBER: <span class="hl-flag" title="Filing number">2019-0044123</span></p>
+
+        <p>DEBTOR: <span class="hl-entity" onclick="showTip(event,'Karen Homan — Person · PER-0001')">Baumer Construction LLC</span><br>
+        ADDRESS: 4412 State Route 118, Ansonia, OH 45303<br>
+        STATE OF ORGANIZATION: Ohio</p>
+
+        <p>SECURED PARTY: <span class="hl-entity" onclick="showTip(event,'Karen Homan — Person · PER-0001 · Also ED of Do Good Inc')">Karen Homan</span><br>
+        ADDRESS: 1204 Greenville Rd, Ansonia, OH 45303</p>
+
+        <p>COLLATERAL DESCRIPTION: <span class="hl-flag" onclick="showTip(event,'Blanket lien — all assets. SR-017 candidate.')">All assets of the debtor, including but not limited to accounts receivable, inventory, equipment, fixtures, and general intangibles.</span></p>
+
+        <p>DATE OF FILING: <span class="hl-date" onclick="showTip(event,'Date extracted · shared with Amendments A1 and A2 — same calendar day')">March 14, 2019</span></p>
+
+        <p>FILING FEE PAID: <span class="hl-amount" onclick="showTip(event,'Filing fee · not an asset value')">$20.00</span></p>
+
+        <p>FILING OFFICER CERTIFICATION: This financing statement was filed pursuant to the Ohio Uniform Commercial Code, Chapter 1309. The secured party asserts a perfected security interest in the described collateral as of the filing date. This document has been indexed by debtor name in the Ohio UCC records.</p>
+
+        <p>AMENDMENT RECORD: See related filings <span class="hl-flag" onclick="showTip(event,'A1 and A2 both filed same day — SR-004 UCC burst')">2019-0044123-A1 and 2019-0044123-A2, both filed March 14, 2019.</span></p>
+      </div>
+
+      <div class="selection-tip">Select any text → right-click → search other documents for it</div>
+    </div>
+
+    <div class="rag-panel" id="rag-panel">
+      <div class="rag-header">
+        <div class="rag-header-row">
+          <div class="rag-dot"></div>
+          <span class="rag-label">Document search</span>
+        </div>
+        <div class="rag-input-row">
+          <input type="text" id="rag-q" placeholder="Search across all 11 case docs…" onkeydown="if(event.key==='Enter')runSearch()" />
+          <button onclick="runSearch()">Search</button>
+        </div>
+      </div>
+
+      <div class="rag-results" id="rag-results">
+        <div class="rag-empty" id="rag-empty">
+          Select text in the document and right-click, or type a search above.<br><br>Results pull from all 11 documents in this case.
+        </div>
+      </div>
+
+      <div class="rag-hint" id="rag-hint">Keyword search across OCR text · semantic search coming later</div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="ctx-menu" id="ctx-menu">
+  <div class="ctx-item" id="ctx-search" onclick="searchSelected()">Search other docs for this</div>
+  <div class="ctx-item" onclick="addToThread()">Add passage to thread</div>
+  <div class="ctx-item" onclick="quickFlag()">Quick capture this</div>
+</div>
+
+<script>
+var ragOpen = true;
+var selectedText = '';
+
+function toggleRag() {
+  ragOpen = !ragOpen;
+  document.getElementById('rag-panel').style.display = ragOpen ? '' : 'none';
+  document.getElementById('rag-btn').classList.toggle('active', ragOpen);
+}
+
+function showTip(e, text) {
+  var tip = document.getElementById('tooltip');
+  tip.textContent = text;
+  tip.style.display = 'block';
+  tip.style.left = (e.clientX + 8) + 'px';
+  tip.style.top = (e.clientY - 30) + 'px';
+  setTimeout(function() { tip.style.display = 'none'; }, 2500);
+}
+
+function checkSelection(e) {
+  var sel = window.getSelection ? window.getSelection().toString().trim() : '';
+  if (sel.length > 3) {
+    selectedText = sel;
+  }
+}
+
+document.addEventListener('contextmenu', function(e) {
+  var sel = window.getSelection ? window.getSelection().toString().trim() : '';
+  if (sel.length > 3 && document.getElementById('doc-text').contains(e.target)) {
+    e.preventDefault();
+    selectedText = sel;
+    var menu = document.getElementById('ctx-menu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    document.getElementById('ctx-search').textContent = 'Search docs for "' + sel.slice(0,28) + (sel.length>28?'…':'') + '"';
+  }
+});
+
+document.addEventListener('click', function() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  document.getElementById('tooltip').style.display = 'none';
+});
+
+var mockResults = {
+  'Karen Homan': [
+    { doc: '2020 Form 990 — Do Good In His Name Inc', excerpt: '…<mark>Karen Homan</mark>, Executive Director, compensation reported: $0. Total program expenses: $412,000…', action: 'Opens SR-013 thread' },
+    { doc: 'Ohio SOS Filing — Do Good Real Estate LLC', excerpt: '…Registered Agent: <mark>Karen Homan</mark>, 1204 Greenville Rd, Ansonia OH 45303. Formation date: 11/2018…', action: 'Add to SR-005 thread' }
+  ],
+  'Baumer Construction': [
+    { doc: '2020 Form 990 Schedule I — Do Good', excerpt: '…Sub-grantee: <mark>Baumer Construction LLC</mark>, purpose: facility renovation, amount: $74,500…', action: 'Add to Schedule I thread' },
+    { doc: 'Darke County Recorder Search Results', excerpt: '…Grantor: Do Good In His Name Inc · Grantee: <mark>Baumer Construction LLC</mark> · Consideration: $0…', action: 'Add to SR-005 thread' }
+  ],
+  'blanket lien': [
+    { doc: 'UCC Amendment 2019-0044123-A1', excerpt: '…Amendment to <mark>blanket lien</mark> — collateral expanded to include real property at 1204 Greenville Rd…', action: 'Already in this thread' }
+  ],
+  'March 14, 2019': [
+    { doc: 'UCC Amendment 2019-0044123-A1', excerpt: '…Date of amendment: <mark>March 14, 2019</mark>. Filed same day as original UCC filing…', action: 'Already in this thread' },
+    { doc: 'UCC Amendment 2019-0044123-A2', excerpt: '…Date of amendment: <mark>March 14, 2019</mark>. Adds vehicle VIN to collateral…', action: 'Already in this thread' }
+  ],
+  '1204 Greenville': [
+    { doc: 'Darke County Recorder — Deed Transfer', excerpt: '…Property: <mark>1204 Greenville</mark> Rd, Ansonia OH · Grantor: Do Good In His Name Inc · $0 consideration…', action: 'Add to SR-005 thread' },
+    { doc: 'Ohio SOS Filing — Do Good Real Estate LLC', excerpt: '…Principal office: <mark>1204 Greenville</mark> Rd, Ansonia OH 45303…', action: 'View in document' }
+  ]
+};
+
+function runSearch() {
+  var q = document.getElementById('rag-q').value.trim();
+  if (!q) return;
+  showResults(q);
+}
+
+function searchSelected() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  if (!selectedText) return;
+  document.getElementById('rag-q').value = selectedText.slice(0, 40);
+  if (!ragOpen) toggleRag();
+  showResults(selectedText);
+}
+
+function addToThread() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  sendPrompt('Add the selected passage to the UCC filing timeline thread as a new evidence note');
+}
+
+function quickFlag() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  sendPrompt('Quick capture this passage from UCC Filing 2019-0044123');
+}
+
+function showResults(q) {
+  var results = document.getElementById('rag-results');
+  document.getElementById('rag-empty').style.display = 'none';
+  var key = Object.keys(mockResults).find(k => q.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(q.toLowerCase().slice(0,8)));
+  results.innerHTML = '';
+  var hits = key ? mockResults[key] : [];
+  if (hits.length === 0) {
+    results.innerHTML = '<div class="rag-empty">No matches found across case documents for "' + q.slice(0,30) + '".</div>';
+    return;
+  }
+  hits.forEach(function(h) {
+    var div = document.createElement('div');
+    div.className = 'rag-hit';
+    div.innerHTML = '<div class="rag-hit-doc">' + h.doc + '</div><div class="rag-hit-excerpt">' + h.excerpt + '</div><div class="rag-hit-action">' + h.action + '</div>';
+    results.appendChild(div);
+  });
+  document.getElementById('rag-hint').textContent = hits.length + ' match' + (hits.length>1?'es':'') + ' across case documents';
+}
+</script>

@@ -1,0 +1,383 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.label{font-size:11px;color:var(--color-text-tertiary);letter-spacing:.04em;text-transform:uppercase;font-weight:500;margin-bottom:6px}
+.concept{margin-bottom:2.5rem;padding-bottom:2.5rem;border-bottom:.5px solid var(--color-border-tertiary)}
+.concept:last-child{border-bottom:none;margin-bottom:0}
+.concept-header{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.concept-tag{font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:.5px solid var(--color-border-tertiary)}
+.concept-name{font-size:16px;font-weight:500;color:var(--color-text-primary)}
+.concept-desc{font-size:13px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.6}
+.frame{border:.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.topbar{background:var(--color-background-secondary);border-bottom:.5px solid var(--color-border-tertiary);padding:8px 14px;display:flex;align-items:center;gap:8px}
+.breadcrumb{font-size:11px;color:var(--color-text-secondary)}
+.breadcrumb b{color:var(--color-text-primary);font-weight:500}
+.stats-row{display:flex;gap:10px;padding:10px 14px;border-bottom:.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.stat{font-size:11px;color:var(--color-text-secondary);display:flex;align-items:center;gap:4px}
+.stat-val{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.dot{width:6px;height:6px;border-radius:50%}
+.dot-red{background:#E24B4A}
+.dot-amber{background:#EF9F27}
+.dot-green{background:#639922}
+.dot-gray{background:var(--color-border-secondary)}
+.btn-primary{font-size:11px;margin-left:auto;padding:4px 10px;border:.5px solid var(--color-border-secondary);border-radius:4px;color:var(--color-text-primary);background:var(--color-background-secondary)}
+
+/* CONCEPT A — Two panel */
+.two-panel{display:grid;grid-template-columns:180px 1fr;height:320px}
+.left-panel{border-right:.5px solid var(--color-border-tertiary);padding:10px 0;overflow:hidden}
+.panel-heading{font-size:10px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:.05em;padding:0 12px 6px;text-transform:uppercase}
+.doc-item{padding:6px 12px;display:flex;align-items:center;gap:6px;cursor:pointer}
+.doc-item:hover{background:var(--color-background-secondary)}
+.doc-item.active{background:var(--color-background-info)}
+.doc-name{font-size:11px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-type{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;white-space:nowrap}
+.type-990{background:#E6F1FB;color:#185FA5}
+.type-deed{background:#EAF3DE;color:#3B6D11}
+.type-ucc{background:#FAEEDA;color:#854F0B}
+.type-sos{background:#EEEDFE;color:#534AB7}
+.type-permit{background:#FAECE7;color:#993C1D}
+.right-panel{overflow:hidden;display:flex;flex-direction:column}
+.findings-list{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.finding-card{border:.5px solid var(--color-border-tertiary);border-radius:8px;padding:8px 10px;border-left:3px solid transparent}
+.finding-card.critical{border-left-color:#E24B4A}
+.finding-card.high{border-left-color:#EF9F27}
+.finding-card.medium{border-left-color:#639922}
+.finding-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.sev-badge{font-size:9px;font-weight:500;padding:1px 6px;border-radius:3px}
+.sev-critical{background:#FCEBEB;color:#A32D2D}
+.sev-high{background:#FAEEDA;color:#854F0B}
+.sev-medium{background:#EAF3DE;color:#3B6D11}
+.rule-id{font-size:9px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.finding-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+.finding-desc{font-size:11px;color:var(--color-text-secondary);line-height:1.4;margin-bottom:6px}
+.finding-docs{display:flex;gap:4px;flex-wrap:wrap}
+.doc-chip{font-size:10px;padding:2px 6px;border-radius:3px;background:var(--color-background-secondary);border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.finding-footer{display:flex;align-items:center;gap:6px;margin-top:6px}
+.status-chip{font-size:10px;padding:2px 6px;border-radius:3px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.weight-chip{font-size:10px;padding:2px 6px;border-radius:3px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+
+/* CONCEPT B — Three panel */
+.three-panel{display:grid;grid-template-columns:140px 1fr 200px;height:340px}
+.mid-panel{border-right:.5px solid var(--color-border-tertiary);padding:10px 12px;overflow:hidden;display:flex;flex-direction:column;gap:8px}
+.entity-panel{padding:10px 12px;overflow:hidden}
+.entity-section{margin-bottom:10px}
+.entity-section-head{font-size:10px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:5px}
+.entity-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 7px;border-radius:12px;margin:2px 2px 2px 0;border:.5px solid var(--color-border-tertiary);color:var(--color-text-primary);background:var(--color-background-secondary)}
+.e-dot{width:5px;height:5px;border-radius:50%;background:#7F77DD}
+.e-dot-org{background:#1D9E75}
+.e-dot-prop{background:#EF9F27}
+.next-action{border:.5px solid var(--color-border-tertiary);border-radius:6px;padding:6px 8px;background:var(--color-background-secondary)}
+.next-label{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary);margin-bottom:3px}
+.next-text{font-size:11px;color:var(--color-text-info)}
+
+/* CONCEPT C — Full width finding thread */
+.thread-panel{padding:10px 14px;overflow:hidden;display:flex;flex-direction:column;gap:0}
+.finding-thread-card{border:.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;margin-bottom:6px;border-left:3px solid transparent;position:relative}
+.finding-thread-card.critical{border-left-color:#E24B4A}
+.finding-thread-card.high{border-left-color:#EF9F27}
+.thread-connector{width:2px;height:12px;background:var(--color-border-tertiary);margin:0 auto 0 18px}
+.trigger-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.trigger-arrow{font-size:10px;color:var(--color-text-tertiary)}
+.trigger-text{font-size:10px;color:var(--color-text-info)}
+.filter-row{display:flex;gap:6px;padding:8px 14px;border-bottom:.5px solid var(--color-border-tertiary);overflow:hidden}
+.filter-chip{font-size:11px;padding:3px 10px;border-radius:12px;border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);background:var(--color-background-primary);white-space:nowrap}
+.filter-chip.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+</style>
+
+<h2 class="sr-only">Three wireframe layout concepts for the Catalyst case investigation view</h2>
+
+<div class="concept">
+  <div class="label">Concept A</div>
+  <div class="concept-header">
+    <span class="concept-name">Two-panel — findings + document rail</span>
+    <span class="concept-tag">findings center</span>
+  </div>
+  <div class="concept-desc">Documents listed on the left. Findings fill the right. Each finding card shows which documents triggered it inline — you can see the connection without leaving the screen. Clicking a finding highlights its source docs in the left rail.</div>
+  <div class="frame">
+    <div class="topbar">
+      <span class="breadcrumb">Cases / <b>Do Good In His Name Inc</b></span>
+      <div class="btn-primary">Generate referral package</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat"><div class="dot dot-red"></div><span class="stat-val">4</span>&nbsp;critical</div>
+      <div class="stat"><div class="dot dot-amber"></div><span class="stat-val">7</span>&nbsp;high</div>
+      <div class="stat"><div class="dot dot-gray"></div><span class="stat-val">3</span>&nbsp;dismissed</div>
+      <div class="stat" style="margin-left:8px"><span class="stat-val">14</span>&nbsp;documents</div>
+      <div class="stat"><span class="stat-val">6</span>&nbsp;entities</div>
+    </div>
+    <div class="two-panel">
+      <div class="left-panel">
+        <div class="panel-heading">Documents</div>
+        <div class="doc-item active">
+          <div class="doc-type type-990">990</div>
+          <div class="doc-name">990-2018.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-990">990</div>
+          <div class="doc-name">990-2022.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-deed">deed</div>
+          <div class="doc-name">deed-25main.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-deed">deed</div>
+          <div class="doc-name">deed-47pat.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-ucc">ucc</div>
+          <div class="doc-name">ucc-fc-burst.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-sos">sos</div>
+          <div class="doc-name">dgre-4059181.pdf</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-permit">permit</div>
+          <div class="doc-name">bldg-permits.xlsx</div>
+        </div>
+        <div style="padding:6px 12px;margin-top:2px;border-top:.5px solid var(--color-border-tertiary)">
+          <div class="panel-heading" style="margin-top:6px">External sources</div>
+          <div class="doc-item"><div class="doc-name" style="color:var(--color-text-secondary)">IRS TEOS</div></div>
+          <div class="doc-item"><div class="doc-name" style="color:var(--color-text-secondary)">Ohio SOS</div></div>
+        </div>
+      </div>
+      <div class="right-panel">
+        <div class="filter-row">
+          <div class="filter-chip active">All (11)</div>
+          <div class="filter-chip">Critical (4)</div>
+          <div class="filter-chip">Confirmed</div>
+          <div class="filter-chip">Needs evidence</div>
+          <div class="filter-chip">AI</div>
+        </div>
+        <div class="findings-list">
+          <div class="finding-card critical">
+            <div class="finding-top">
+              <span class="sev-badge sev-critical">Critical</span>
+              <span class="rule-id">SR-025</span>
+            </div>
+            <div class="finding-title">False disclosure — related-party transactions</div>
+            <div class="finding-desc">Disclosed related-party tx in 2018. Denied in all 6 subsequent years. Transactions with the LLC continued and escalated.</div>
+            <div class="finding-docs">
+              <span class="doc-chip">990-2018.pdf</span>
+              <span class="doc-chip">990-2022.pdf</span>
+              <span class="doc-chip">990-2024.pdf</span>
+            </div>
+            <div class="finding-footer">
+              <span class="status-chip">Confirmed</span>
+              <span class="weight-chip">Documented</span>
+            </div>
+          </div>
+          <div class="finding-card critical">
+            <div class="finding-top">
+              <span class="sev-badge sev-critical">Critical</span>
+              <span class="rule-id">SR-003</span>
+            </div>
+            <div class="finding-title">Valuation anomaly — 47 Patterson St</div>
+            <div class="finding-desc">Nonprofit paid $300,000 for a property appraised at $37,490. 700% above appraised value. Seller: Winner Kyle J.</div>
+            <div class="finding-docs">
+              <span class="doc-chip">deed-47pat.pdf</span>
+            </div>
+            <div class="finding-footer">
+              <span class="status-chip">Confirmed</span>
+              <span class="weight-chip">Documented</span>
+            </div>
+          </div>
+          <div class="finding-card high">
+            <div class="finding-top">
+              <span class="sev-badge sev-high">High</span>
+              <span class="rule-id">SR-026</span>
+            </div>
+            <div class="finding-title">Contractor denial — Baumer Construction not disclosed</div>
+            <div class="finding-desc">$4.5M paid to Baumer Construction across 5 permits. Not listed in any 990 Part VII contractor disclosure (2018–2024).</div>
+            <div class="finding-docs">
+              <span class="doc-chip">bldg-permits.xlsx</span>
+              <span class="doc-chip">990-2018.pdf</span>
+            </div>
+            <div class="finding-footer">
+              <span class="status-chip">Confirmed</span>
+              <span class="weight-chip">Documented</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="concept">
+  <div class="label">Concept B</div>
+  <div class="concept-header">
+    <span class="concept-name">Three-panel — findings + documents + entity context</span>
+    <span class="concept-tag">network visible</span>
+  </div>
+  <div class="concept-desc">Documents on the far left, findings in the center, entity context on the right. When you click a finding, the right panel shows the entities involved and — critically — a "leads to" next action. No graph required to understand the network.</div>
+  <div class="frame">
+    <div class="topbar">
+      <span class="breadcrumb">Cases / <b>Do Good In His Name Inc</b></span>
+      <div class="btn-primary">Generate referral package</div>
+    </div>
+    <div class="three-panel">
+      <div class="left-panel">
+        <div class="panel-heading">Documents</div>
+        <div class="doc-item">
+          <div class="doc-type type-990">990</div>
+          <div class="doc-name">990-2018</div>
+        </div>
+        <div class="doc-item active">
+          <div class="doc-type type-deed">deed</div>
+          <div class="doc-name">deed-47pat</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-deed">deed</div>
+          <div class="doc-name">deed-25main</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-ucc">ucc</div>
+          <div class="doc-name">ucc-burst</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-permit">permit</div>
+          <div class="doc-name">permits.xlsx</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-type type-sos">sos</div>
+          <div class="doc-name">dgre-4059181</div>
+        </div>
+      </div>
+      <div class="mid-panel">
+        <div class="finding-card critical" style="margin-bottom:0">
+          <div class="finding-top">
+            <span class="sev-badge sev-critical">Critical</span>
+            <span class="rule-id">SR-003</span>
+          </div>
+          <div class="finding-title">Valuation anomaly — 47 Patterson</div>
+          <div class="finding-desc">$300K paid for $37,490 property. Seller directly connected to Winner's Meats.</div>
+          <div class="finding-docs">
+            <span class="doc-chip">deed-47pat.pdf</span>
+          </div>
+        </div>
+        <div class="finding-card high" style="margin-bottom:0">
+          <div class="finding-top">
+            <span class="sev-badge sev-high">High</span>
+            <span class="rule-id">SR-021</span>
+          </div>
+          <div class="finding-title">Revenue spike 2018→2019</div>
+          <div class="finding-desc">$101K → $1.67M, +1,546% in one year.</div>
+          <div class="finding-docs">
+            <span class="doc-chip">990-2018.pdf</span>
+            <span class="doc-chip">990-2019.pdf</span>
+          </div>
+        </div>
+        <div class="finding-card high" style="margin-bottom:0">
+          <div class="finding-top">
+            <span class="sev-badge sev-high">High</span>
+            <span class="rule-id">SR-026</span>
+          </div>
+          <div class="finding-title">Contractor denial — Baumer</div>
+          <div class="finding-desc">$4.5M in permits. Zero 990 disclosure.</div>
+          <div class="finding-docs">
+            <span class="doc-chip">permits.xlsx</span>
+          </div>
+        </div>
+      </div>
+      <div class="entity-panel" style="border-left:.5px solid var(--color-border-tertiary)">
+        <div class="entity-section-head">Entities in this finding</div>
+        <div class="entity-section">
+          <div class="entity-pill"><span class="e-dot-org" style="width:5px;height:5px;border-radius:50%;background:#1D9E75;display:inline-block"></span>Do Good In His Name</div>
+          <div class="entity-pill"><span style="width:5px;height:5px;border-radius:50%;background:#7F77DD;display:inline-block"></span>Karen Homan</div>
+          <div class="entity-pill"><span style="width:5px;height:5px;border-radius:50%;background:#D85A30;display:inline-block"></span>Winner Kyle J</div>
+        </div>
+        <div class="entity-section-head" style="margin-top:10px">Properties</div>
+        <div class="entity-section">
+          <div class="entity-pill"><span style="width:5px;height:5px;border-radius:50%;background:#EF9F27;display:inline-block"></span>47 Patterson St</div>
+        </div>
+        <div class="entity-section-head" style="margin-top:10px">Leads to</div>
+        <div class="next-action">
+          <div class="next-label">Next pull</div>
+          <div class="next-text">Search Winner's Meats — Darke County Recorder + SOS</div>
+        </div>
+        <div class="next-action" style="margin-top:6px">
+          <div class="next-label">Connects to</div>
+          <div class="next-text">SR-024 Charity conduit finding</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="concept">
+  <div class="label">Concept C</div>
+  <div class="concept-header">
+    <span class="concept-name">Thread view — the investigation as a chain</span>
+    <span class="concept-tag">discovery order</span>
+  </div>
+  <div class="concept-desc">Findings displayed as a connected thread in the order they were discovered. Each card shows what triggered it and what it led to next — matching how the replay actually reads. Documents panel slides in from right. Better for telling the story; weaker for triage.</div>
+  <div class="frame">
+    <div class="topbar">
+      <span class="breadcrumb">Cases / <b>Do Good In His Name Inc</b></span>
+      <div class="btn-primary">Generate referral package</div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-chip active">Thread view</div>
+      <div class="filter-chip">By severity</div>
+      <div class="filter-chip">By status</div>
+      <div class="filter-chip">By rule</div>
+    </div>
+    <div class="thread-panel">
+      <div class="finding-thread-card critical">
+        <div class="finding-top">
+          <span class="sev-badge sev-critical">Critical</span>
+          <span class="rule-id">SR-025</span>
+          <span style="font-size:10px;color:var(--color-text-tertiary);margin-left:auto">Step 3 of 14</span>
+        </div>
+        <div class="finding-title">False disclosure — related-party transactions</div>
+        <div class="finding-desc">2018: disclosed. 2019–2024: denied. Transactions continued. ← triggered by multi-year 990 pull in Step 2.</div>
+        <div class="finding-docs" style="margin-top:4px">
+          <span class="doc-chip">990-2018.pdf</span>
+          <span class="doc-chip">990-2022.pdf</span>
+        </div>
+        <div class="trigger-row">
+          <span class="trigger-arrow">→</span>
+          <span class="trigger-text">Triggered: Ohio SOS search for Homan-related LLCs (Step 4)</span>
+        </div>
+      </div>
+      <div class="thread-connector"></div>
+      <div class="finding-thread-card critical">
+        <div class="finding-top">
+          <span class="sev-badge sev-critical">Critical</span>
+          <span class="rule-id">SR-003</span>
+          <span style="font-size:10px;color:var(--color-text-tertiary);margin-left:auto">Step 5 of 14</span>
+        </div>
+        <div class="finding-title">Valuation anomaly — six properties, avg +411% over appraised</div>
+        <div class="finding-desc">$1.19M in purchases at avg 4× appraised value. Triggered by LLC discovery in Step 4 → pulled all Darke County deeds.</div>
+        <div class="finding-docs" style="margin-top:4px">
+          <span class="doc-chip">deed-47pat.pdf</span>
+          <span class="doc-chip">deed-17pat.pdf</span>
+          <span class="doc-chip">+4 more</span>
+        </div>
+        <div class="trigger-row">
+          <span class="trigger-arrow">→</span>
+          <span class="trigger-text">Triggered: UCC search for Homan family collateral (Step 7)</span>
+        </div>
+      </div>
+      <div class="thread-connector"></div>
+      <div class="finding-thread-card high">
+        <div class="finding-top">
+          <span class="sev-badge sev-high">High</span>
+          <span class="rule-id">SR-004</span>
+          <span style="font-size:10px;color:var(--color-text-tertiary);margin-left:auto">Step 7 of 14</span>
+        </div>
+        <div class="finding-title">UCC burst — 5 amendments in 12 minutes</div>
+        <div class="finding-desc">August 2, 2022: 5 Homan family members added as debtors to Farm Credit lien within 12 minutes. Same fiscal year as peak $4.5M revenue.</div>
+        <div class="finding-docs" style="margin-top:4px">
+          <span class="doc-chip">ucc-burst.pdf</span>
+        </div>
+        <div class="trigger-row">
+          <span class="trigger-arrow">→</span>
+          <span class="trigger-text">Triggered: FCA OIG as 4th referral target</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

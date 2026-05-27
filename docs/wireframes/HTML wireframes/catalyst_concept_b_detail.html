@@ -1,0 +1,479 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);font-size:13px}
+
+.frame{border:.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+
+.topbar{background:var(--color-background-secondary);border-bottom:.5px solid var(--color-border-tertiary);padding:8px 14px;display:flex;align-items:center;gap:8px}
+.breadcrumb{font-size:11px;color:var(--color-text-secondary)}
+.breadcrumb b{color:var(--color-text-primary);font-weight:500}
+.topbar-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+.btn-ghost{font-size:11px;padding:3px 9px;border:.5px solid var(--color-border-secondary);border-radius:4px;color:var(--color-text-secondary);background:transparent}
+.btn-solid{font-size:11px;padding:4px 10px;border:.5px solid var(--color-border-primary);border-radius:4px;color:var(--color-text-primary);background:var(--color-background-secondary);font-weight:500}
+
+.stats-row{display:flex;gap:0;border-bottom:.5px solid var(--color-border-tertiary)}
+.stat-block{flex:1;padding:8px 14px;border-right:.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;gap:1px}
+.stat-block:last-child{border-right:none}
+.stat-num{font-size:18px;font-weight:500;line-height:1.1}
+.stat-label{font-size:10px;color:var(--color-text-tertiary);letter-spacing:.03em}
+.stat-num.red{color:#A32D2D}
+.stat-num.amber{color:#854F0B}
+.stat-num.green{color:#3B6D11}
+.stat-num.blue{color:#185FA5}
+
+.body{display:grid;grid-template-columns:150px 1fr 210px;height:500px}
+
+.doc-rail{border-right:.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;overflow:hidden}
+.rail-head{padding:8px 10px 5px;display:flex;align-items:center;justify-content:space-between}
+.rail-title{font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.rail-add{font-size:16px;color:var(--color-text-tertiary);line-height:1;cursor:pointer}
+.doc-list{flex:1;overflow:hidden}
+.doc-row{padding:5px 10px;display:flex;gap:7px;align-items:flex-start;cursor:pointer;border-left:2px solid transparent}
+.doc-row:hover{background:var(--color-background-secondary)}
+.doc-row.active{border-left-color:#378ADD;background:var(--color-background-info)}
+.doc-type-badge{font-size:9px;font-weight:500;padding:1px 5px;border-radius:3px;white-space:nowrap;margin-top:1px}
+.t990{background:#E6F1FB;color:#185FA5}
+.tdeed{background:#EAF3DE;color:#3B6D11}
+.tucc{background:#FAEEDA;color:#854F0B}
+.tsos{background:#EEEDFE;color:#534AB7}
+.tpermit{background:#FAECE7;color:#993C1D}
+.t990t{background:#F1EFE8;color:#5F5E5A}
+.doc-info{flex:1;min-width:0}
+.doc-filename{font-size:11px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-meta{font-size:10px;color:var(--color-text-tertiary);margin-top:1px}
+.doc-finding-count{font-size:9px;color:var(--color-text-info);margin-top:1px}
+.rail-section-divider{padding:6px 10px 3px;margin-top:4px;border-top:.5px solid var(--color-border-tertiary)}
+
+.center-panel{display:flex;flex-direction:column;overflow:hidden}
+.filter-bar{padding:7px 12px;border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:5px;overflow:hidden}
+.chip{font-size:11px;padding:3px 9px;border-radius:10px;border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);white-space:nowrap;cursor:pointer}
+.chip.on{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.chip-spacer{flex:1}
+.add-finding-btn{font-size:11px;padding:3px 9px;border-radius:4px;border:.5px solid var(--color-border-secondary);color:var(--color-text-secondary);white-space:nowrap}
+
+.findings-scroll{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:7px}
+
+.fc{border:.5px solid var(--color-border-tertiary);border-radius:8px;padding:9px 11px;border-left:3px solid transparent;cursor:pointer}
+.fc:hover{background:var(--color-background-secondary)}
+.fc.selected{border-color:var(--color-border-secondary);border-left-color:#E24B4A;background:var(--color-background-secondary)}
+.fc.critical{border-left-color:#E24B4A}
+.fc.high{border-left-color:#EF9F27}
+.fc.medium{border-left-color:#639922}
+.fc.dismissed{border-left-color:var(--color-border-tertiary);opacity:.55}
+
+.fc-top{display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.sev{font-size:9px;font-weight:500;padding:1px 6px;border-radius:3px}
+.sev-c{background:#FCEBEB;color:#A32D2D}
+.sev-h{background:#FAEEDA;color:#854F0B}
+.sev-m{background:#EAF3DE;color:#3B6D11}
+.sev-d{background:#F1EFE8;color:#5F5E5A}
+.rule{font-size:9px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.fc-source{font-size:9px;color:var(--color-text-tertiary);margin-left:auto}
+.fc-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px;line-height:1.3}
+.fc-desc{font-size:11px;color:var(--color-text-secondary);line-height:1.45;margin-bottom:6px}
+.doc-chips{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
+.dchip{font-size:10px;padding:2px 6px;border-radius:3px;background:var(--color-background-secondary);border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.dchip.active{background:var(--color-background-info);color:var(--color-text-info);border-color:transparent}
+.fc-footer{display:flex;align-items:center;gap:5px}
+.fchip{font-size:10px;padding:2px 7px;border-radius:3px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:.5px solid var(--color-border-tertiary)}
+.fchip.confirmed{color:#3B6D11;background:#EAF3DE}
+.fchip.needs{color:#854F0B;background:#FAEEDA}
+.fchip.new-s{color:#185FA5;background:#E6F1FB}
+
+.right-panel{border-left:.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;overflow:hidden}
+.rp-header{padding:8px 12px 6px;border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:6px}
+.rp-title{font-size:11px;font-weight:500;color:var(--color-text-primary)}
+.rp-rule{font-size:10px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.rp-scroll{flex:1;overflow:hidden;padding:0}
+
+.rp-section{padding:8px 12px;border-bottom:.5px solid var(--color-border-tertiary)}
+.rp-section-head{font-size:9px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:7px}
+
+.entity-row{display:flex;align-items:center;gap:7px;padding:4px 0;cursor:pointer}
+.entity-row:hover .entity-name{color:var(--color-text-info)}
+.entity-avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;flex-shrink:0}
+.av-person{background:#EEEDFE;color:#534AB7}
+.av-org{background:#E1F5EE;color:#0F6E56}
+.av-prop{background:#FAEEDA;color:#854F0B}
+.entity-name{font-size:11px;color:var(--color-text-primary);flex:1}
+.entity-role{font-size:10px;color:var(--color-text-tertiary)}
+.entity-arrow{font-size:10px;color:var(--color-text-tertiary)}
+
+.evidence-block{background:var(--color-background-secondary);border-radius:5px;padding:7px 9px;margin-top:2px}
+.ev-row{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0}
+.ev-label{font-size:10px;color:var(--color-text-secondary)}
+.ev-val{font-size:11px;font-weight:500;color:var(--color-text-primary)}
+.ev-val.danger{color:#A32D2D}
+.ev-val.warn{color:#854F0B}
+
+.connection-row{display:flex;align-items:flex-start;gap:7px;padding:4px 0;cursor:pointer}
+.conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.conn-critical{background:#E24B4A}
+.conn-high{background:#EF9F27}
+.conn-text{flex:1}
+.conn-rule{font-size:9px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.conn-title{font-size:11px;color:var(--color-text-primary)}
+.conn-shared{font-size:10px;color:var(--color-text-tertiary);margin-top:1px}
+
+.next-card{background:var(--color-background-secondary);border-radius:5px;padding:7px 9px;margin-bottom:6px;cursor:pointer}
+.next-card:hover{border:.5px solid var(--color-border-info)}
+.next-tag{font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:3px}
+.next-action-text{font-size:11px;color:var(--color-text-info);line-height:1.4}
+.next-why{font-size:10px;color:var(--color-text-tertiary);margin-top:3px;line-height:1.3}
+</style>
+
+<h2 class="sr-only">High-fidelity wireframe of Catalyst case investigation view — three-panel layout with SR-003 finding selected</h2>
+
+<div class="frame">
+
+  <div class="topbar">
+    <span class="breadcrumb">Cases / <b>Do Good In His Name Inc</b></span>
+    <div class="topbar-actions">
+      <div class="btn-ghost">Research</div>
+      <div class="btn-ghost">Financials</div>
+      <div class="btn-ghost">Timeline</div>
+      <div class="btn-solid">Generate referral package</div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-block">
+      <span class="stat-num red">4</span>
+      <span class="stat-label">Critical findings</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num amber">7</span>
+      <span class="stat-label">High findings</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num blue">14</span>
+      <span class="stat-label">Documents</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num green">8</span>
+      <span class="stat-label">Entities</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-num" style="color:var(--color-text-secondary)">3</span>
+      <span class="stat-label">Dismissed</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="doc-rail">
+      <div class="rail-head">
+        <span class="rail-title">Documents</span>
+        <span class="rail-add">+</span>
+      </div>
+      <div class="doc-list">
+        <div class="doc-row">
+          <span class="doc-type-badge t990">990</span>
+          <div class="doc-info">
+            <div class="doc-filename">990-2018.pdf</div>
+            <div class="doc-finding-count">5 findings</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge t990">990</span>
+          <div class="doc-info">
+            <div class="doc-filename">990-2022.pdf</div>
+            <div class="doc-finding-count">4 findings</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge t990t">990-T</span>
+          <div class="doc-info">
+            <div class="doc-filename">990T-2024.pdf</div>
+            <div class="doc-finding-count">2 findings</div>
+          </div>
+        </div>
+        <div class="doc-row active">
+          <span class="doc-type-badge tdeed">deed</span>
+          <div class="doc-info">
+            <div class="doc-filename">deed-47pat.pdf</div>
+            <div class="doc-finding-count">2 findings</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge tdeed">deed</span>
+          <div class="doc-info">
+            <div class="doc-filename">deed-25main.pdf</div>
+            <div class="doc-finding-count">3 findings</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge tucc">ucc</span>
+          <div class="doc-info">
+            <div class="doc-filename">ucc-burst.pdf</div>
+            <div class="doc-finding-count">1 finding</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge tsos">sos</span>
+          <div class="doc-info">
+            <div class="doc-filename">dgre-4059181.pdf</div>
+            <div class="doc-finding-count">2 findings</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge tpermit">permit</span>
+          <div class="doc-info">
+            <div class="doc-filename">bldg-permits.xlsx</div>
+            <div class="doc-finding-count">2 findings</div>
+          </div>
+        </div>
+        <div class="rail-section-divider">
+          <div class="rail-title">External pulls</div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge t990" style="background:#F1EFE8;color:#444441">IRS</span>
+          <div class="doc-info">
+            <div class="doc-filename">TEOS — EIN 82-4458479</div>
+            <div class="doc-finding-count">7 years fetched</div>
+          </div>
+        </div>
+        <div class="doc-row">
+          <span class="doc-type-badge tsos" style="background:#F1EFE8;color:#444441">SOS</span>
+          <div class="doc-info">
+            <div class="doc-filename">Ohio SOS — Homan</div>
+            <div class="doc-finding-count">4 entities found</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="center-panel">
+      <div class="filter-bar">
+        <div class="chip on">All (11)</div>
+        <div class="chip">Critical (4)</div>
+        <div class="chip">High (7)</div>
+        <div class="chip">Confirmed</div>
+        <div class="chip">AI</div>
+        <div class="chip-spacer"></div>
+        <div class="add-finding-btn">+ Add finding</div>
+      </div>
+      <div class="findings-scroll">
+
+        <div class="fc critical selected">
+          <div class="fc-top">
+            <span class="sev sev-c">Critical</span>
+            <span class="rule">SR-003</span>
+            <span class="fc-source">deed-47pat.pdf</span>
+          </div>
+          <div class="fc-title">Valuation anomaly — 47 Patterson St</div>
+          <div class="fc-desc">Nonprofit paid $300,000 for a property appraised at $37,490. 700% above appraised value. Seller: Winner Kyle J, directly connected to Winner's Meats.</div>
+          <div class="doc-chips">
+            <span class="dchip active">deed-47pat.pdf</span>
+            <span class="dchip">deed-17pat.pdf</span>
+          </div>
+          <div class="fc-footer">
+            <span class="fchip confirmed">Confirmed</span>
+            <span class="fchip">Documented</span>
+          </div>
+        </div>
+
+        <div class="fc critical">
+          <div class="fc-top">
+            <span class="sev sev-c">Critical</span>
+            <span class="rule">SR-025</span>
+            <span class="fc-source">990-2018 → 2024</span>
+          </div>
+          <div class="fc-title">False disclosure — related-party transactions</div>
+          <div class="fc-desc">Disclosed related-party transactions in 2018. Denied in all 6 subsequent years. Transactions with the LLC continued and escalated.</div>
+          <div class="doc-chips">
+            <span class="dchip">990-2018.pdf</span>
+            <span class="dchip">990-2022.pdf</span>
+            <span class="dchip">990-2024.pdf</span>
+          </div>
+          <div class="fc-footer">
+            <span class="fchip confirmed">Confirmed</span>
+            <span class="fchip">Documented</span>
+          </div>
+        </div>
+
+        <div class="fc critical">
+          <div class="fc-top">
+            <span class="sev sev-c">Critical</span>
+            <span class="rule">SR-028</span>
+            <span class="fc-source">990-2022.pdf</span>
+          </div>
+          <div class="fc-title">Material diversion — self-disclosed on 990 Part VI Line 5</div>
+          <div class="fc-desc">Organization self-disclosed misuse of assets on the 990. No corrective action documented in subsequent years.</div>
+          <div class="doc-chips">
+            <span class="dchip">990-2022.pdf</span>
+          </div>
+          <div class="fc-footer">
+            <span class="fchip confirmed">Confirmed</span>
+            <span class="fchip">Documented</span>
+          </div>
+        </div>
+
+        <div class="fc high">
+          <div class="fc-top">
+            <span class="sev sev-h">High</span>
+            <span class="rule">SR-026</span>
+            <span class="fc-source">bldg-permits.xlsx</span>
+          </div>
+          <div class="fc-title">Contractor denial — Baumer Construction undisclosed</div>
+          <div class="fc-desc">$4.5M in permitted construction. Baumer Construction not listed in any 990 Part VII contractor disclosure across 7 years.</div>
+          <div class="doc-chips">
+            <span class="dchip">bldg-permits.xlsx</span>
+            <span class="dchip">990-2018.pdf</span>
+          </div>
+          <div class="fc-footer">
+            <span class="fchip confirmed">Confirmed</span>
+            <span class="fchip">Documented</span>
+          </div>
+        </div>
+
+        <div class="fc high">
+          <div class="fc-top">
+            <span class="sev sev-h">High</span>
+            <span class="rule">SR-021</span>
+            <span class="fc-source">IRS TEOS</span>
+          </div>
+          <div class="fc-title">Revenue spike 2018→2019</div>
+          <div class="fc-desc">$101,725 → $1,674,509. +1,546% in one year with no change in stated programs.</div>
+          <div class="doc-chips">
+            <span class="dchip">990-2018.pdf</span>
+            <span class="dchip">990-2019.pdf</span>
+          </div>
+          <div class="fc-footer">
+            <span class="fchip confirmed">Confirmed</span>
+            <span class="fchip">Documented</span>
+          </div>
+        </div>
+
+        <div class="fc dismissed">
+          <div class="fc-top">
+            <span class="sev sev-d">Dismissed</span>
+            <span class="rule">manual</span>
+            <span class="fc-source">sos-lhp.pdf</span>
+          </div>
+          <div class="fc-title">Deceased signatory — Homan AG Management LLP</div>
+          <div class="fc-desc">Retracted. Signatory is a different individual with the same name. Correction memo sent to all agencies.</div>
+          <div class="fc-footer">
+            <span class="fchip">Dismissed</span>
+            <span class="fchip">Speculative</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="rp-header">
+        <span class="rp-title">SR-003 — Valuation anomaly</span>
+      </div>
+      <div class="rp-scroll">
+
+        <div class="rp-section">
+          <div class="rp-section-head">Entities</div>
+          <div class="entity-row">
+            <div class="entity-avatar av-org">DG</div>
+            <div style="flex:1;min-width:0">
+              <div class="entity-name">Do Good In His Name Inc</div>
+              <div class="entity-role">Buyer — nonprofit</div>
+            </div>
+            <span class="entity-arrow">›</span>
+          </div>
+          <div class="entity-row">
+            <div class="entity-avatar av-person">KH</div>
+            <div style="flex:1;min-width:0">
+              <div class="entity-name">Karen Homan</div>
+              <div class="entity-role">Authorized signer</div>
+            </div>
+            <span class="entity-arrow">›</span>
+          </div>
+          <div class="entity-row">
+            <div class="entity-avatar av-person" style="background:#FCEBEB;color:#A32D2D">KW</div>
+            <div style="flex:1;min-width:0">
+              <div class="entity-name">Winner Kyle J</div>
+              <div class="entity-role">Seller — Winner's Meats</div>
+            </div>
+            <span class="entity-arrow">›</span>
+          </div>
+          <div class="entity-row">
+            <div class="entity-avatar av-prop">P</div>
+            <div style="flex:1;min-width:0">
+              <div class="entity-name">47 Patterson St</div>
+              <div class="entity-role">Darke County parcel</div>
+            </div>
+            <span class="entity-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-head">Evidence snapshot</div>
+          <div class="evidence-block">
+            <div class="ev-row">
+              <span class="ev-label">Amount paid</span>
+              <span class="ev-val danger">$300,000</span>
+            </div>
+            <div class="ev-row">
+              <span class="ev-label">Appraised value</span>
+              <span class="ev-val">$37,490</span>
+            </div>
+            <div class="ev-row">
+              <span class="ev-label">Overpayment</span>
+              <span class="ev-val warn">+700%</span>
+            </div>
+            <div class="ev-row">
+              <span class="ev-label">Date</span>
+              <span class="ev-val">Sept 15, 2022</span>
+            </div>
+            <div class="ev-row">
+              <span class="ev-label">Source doc</span>
+              <span class="ev-val" style="font-family:var(--font-mono);font-size:10px">deed-47pat.pdf</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-head">Connected findings</div>
+          <div class="connection-row">
+            <div class="conn-dot conn-critical"></div>
+            <div class="conn-text">
+              <div class="conn-rule">SR-024</div>
+              <div class="conn-title">Charity conduit — Winner family</div>
+              <div class="conn-shared">Shared entity: Winner Kyle J</div>
+            </div>
+          </div>
+          <div class="connection-row">
+            <div class="conn-dot conn-critical"></div>
+            <div class="conn-text">
+              <div class="conn-rule">SR-025</div>
+              <div class="conn-title">False disclosure</div>
+              <div class="conn-shared">Shared entity: Karen Homan</div>
+            </div>
+          </div>
+          <div class="connection-row">
+            <div class="conn-dot conn-high"></div>
+            <div class="conn-text">
+              <div class="conn-rule">SR-005</div>
+              <div class="conn-title">Zero-consideration transfer</div>
+              <div class="conn-shared">Same property portfolio</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-section" style="border-bottom:none">
+          <div class="rp-section-head">Leads to</div>
+          <div class="next-card">
+            <div class="next-tag">Next pull</div>
+            <div class="next-action-text">Search Winner's Meats — Ohio SOS + Darke County Recorder</div>
+            <div class="next-why">Kyle Winner received $300K in charitable funds. Confirm all ownership entities and property transactions.</div>
+          </div>
+          <div class="next-card">
+            <div class="next-tag">Cross-check</div>
+            <div class="next-action-text">Pull 17 Patterson St deed — same seller, same date</div>
+            <div class="next-why">$152,200 paid for $11,090 appraised property. Confirms pattern, not isolated transaction.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>

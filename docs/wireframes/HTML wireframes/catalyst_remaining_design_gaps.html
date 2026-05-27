@@ -1,0 +1,126 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.sect-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:14px 0}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-danger{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-neutral{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-success{background:var(--color-background-success);color:var(--color-text-success)}
+.gap-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:11px 13px;margin-bottom:8px;display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start}
+.gap-card.blocker{border-left:3px solid #E24B4A}
+.gap-card.important{border-left:3px solid #BA7517}
+.gap-card.later{border-left:3px solid #888;opacity:0.75}
+.gap-num{width:22px;height:22px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:var(--color-text-primary);flex-shrink:0;margin-top:1px}
+.gap-num.b{background:var(--color-background-danger);color:var(--color-text-danger)}
+.gap-num.i{background:var(--color-background-warning);color:var(--color-text-warning)}
+.gap-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.gap-body{font-size:11px;color:var(--color-text-secondary);line-height:1.5}
+.gap-why{font-size:10px;color:var(--color-text-secondary);margin-top:5px;padding:4px 7px;background:var(--color-background-secondary);border-radius:3px}
+.btn-sm{height:26px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);cursor:pointer;white-space:nowrap}
+</style>
+
+<h2 class="sr-only">Remaining design gaps for Catalyst, organized by priority</h2>
+
+<div style="display:flex;gap:16px;margin-bottom:14px;font-size:11px;color:var(--color-text-secondary);align-items:center">
+  <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:20px;background:#E24B4A;border-radius:1px"></div><span>Blocker — can't ship without it</span></div>
+  <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:20px;background:#BA7517;border-radius:1px"></div><span>Important — needed soon</span></div>
+  <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:20px;background:#888;border-radius:1px"></div><span>Later — phase 2</span></div>
+</div>
+
+<div class="sect-label">Blockers — design these before writing any code</div>
+
+<div class="gap-card blocker">
+  <div class="gap-num b">1</div>
+  <div>
+    <div class="gap-title">The web view — visualizing knots connected by threads</div>
+    <div class="gap-body">Tyler just confirmed this is a web, not a single-point investigation. Karen Homan, Hanes Law Group, Do Good Inc, Baumer Construction — all knots. The thread between Hanes and Homan (LLC assembly) is an edge between two knots. We need a view that shows this web. Without it, the investigator can't see the shape of the case.</div>
+    <div class="gap-why">Why blocker: the Investigate tab's knot view only works if you have one knot. As soon as there are multiple, you need the web view to navigate between them and see cross-knot threads.</div>
+  </div>
+  <span class="badge badge-danger">no design yet</span>
+</div>
+
+<div class="gap-card blocker">
+  <div class="gap-num b">2</div>
+  <div>
+    <div class="gap-title">The Referrals tab — the actual product output</div>
+    <div class="gap-body">This is the whole point of Catalyst. The referral package PDF is the deliverable. We haven't designed: what the pre-export checklist looks like, how confirmed threads from multiple knots get organized into the package, the review step before Tyler clicks "Generate PDF." The backend exporter already exists — it just needs a UI that makes it trustworthy to use.</div>
+    <div class="gap-why">Why blocker: this is what a recruiter or interviewer will ask about. "Walk me through generating a referral package" needs a clear, designed answer.</div>
+  </div>
+  <span class="badge badge-danger">no design yet</span>
+</div>
+
+<div class="gap-card blocker">
+  <div class="gap-num b">3</div>
+  <div>
+    <div class="gap-title">Evidence confirmation — reviewing what Haiku extracted</div>
+    <div class="gap-body">Haiku runs on every uploaded document and surfaces candidate facts. But we haven't designed where those candidates live or how Tyler reviews and confirms them. Right now they'd just silently appear on a thread — but some will be wrong (wrong name match, OCR noise, hallucinated EIN). The investigator needs a simple "accept / reject" flow. Rejected evidence should be kept but flagged as dismissed — not deleted, because chain of custody.</div>
+    <div class="gap-why">Why blocker: without this, Haiku output is trusted by default, which is dangerous for a referral package that will be read by an AG investigator.</div>
+  </div>
+  <span class="badge badge-danger">no design yet</span>
+</div>
+
+<div class="divider"></div>
+<div class="sect-label">Important — design in this session or the next</div>
+
+<div class="gap-card important">
+  <div class="gap-num i">4</div>
+  <div>
+    <div class="gap-title">Thread splitting — one question becomes two</div>
+    <div class="gap-body">We agreed this is needed. We haven't designed the actual interaction. When Tyler is pulling the hidden compensation thread and realizes it has split into two separate questions (off-book pay vs. contractor fraud), how does he divide the evidence? Does he drag evidence items to the new thread? Does he pick which documents belong to each child thread? This needs a concrete flow.</div>
+    <div class="gap-why">This happens in real investigations. The Do Good case is full of it — the Hanes LLC thread split into "who assembled the entities" and "what's the relationship between the two Do Good LLCs."</div>
+  </div>
+  <span class="badge badge-warn">needs design</span>
+</div>
+
+<div class="gap-card important">
+  <div class="gap-num i">5</div>
+  <div>
+    <div class="gap-title">Quick capture — noting something before it has a thread</div>
+    <div class="gap-body">Right now you can only add evidence to an existing thread. But sometimes you're reading a document and something catches your eye that doesn't fit any current thread — and you don't want to stop and create a full thread just to note it. You need a fast "flag this and come back to it" action. Something like a floating sticky note that lives in an "unassigned evidence" pile until you route it to a thread.</div>
+    <div class="gap-why">This is the digital equivalent of a sticky note on a physical document. Investigators work this way. Without it, things get lost.</div>
+  </div>
+  <span class="badge badge-warn">needs design</span>
+</div>
+
+<div class="gap-card important">
+  <div class="gap-num i">6</div>
+  <div>
+    <div class="gap-title">Case readiness check — is this ready to refer?</div>
+    <div class="gap-body">Before generating the referral package, there should be a view that shows: how many threads are confirmed vs. still pulling, which confirmed findings have citations vs. which don't, whether the key entities have been identified, whether the 990 data has been fetched. This is the "pre-flight checklist" — it tells Tyler what's missing before he commits to generating the PDF.</div>
+    <div class="gap-why">The quality bar is "heavy confidence that it was going to go somewhere." This view is how you verify that bar has been met.</div>
+  </div>
+  <span class="badge badge-warn">needs design</span>
+</div>
+
+<div class="divider"></div>
+<div class="sect-label">Later — phase 2, don't design now</div>
+
+<div class="gap-card later">
+  <div class="gap-num">7</div>
+  <div>
+    <div class="gap-title">Navigate to external search from inside a thread</div>
+    <div class="gap-body">Clicking on Baumer Construction in a thread should be able to launch an Ohio SOS search for that entity without losing your place in the thread. This is a nice-to-have — the current Research tab handles it, just with more clicks.</div>
+  </div>
+  <span class="badge badge-neutral">phase 2</span>
+</div>
+
+<div class="gap-card later">
+  <div class="gap-num">8</div>
+  <div>
+    <div class="gap-title">Cross-case search and entity linking</div>
+    <div class="gap-body">If Karen Homan appears in a different case, Catalyst should surface that. Useful later when the platform has multiple real cases. Not needed for the portfolio demo.</div>
+  </div>
+  <span class="badge badge-neutral">phase 2</span>
+</div>
+
+<div class="gap-card later">
+  <div class="gap-num">9</div>
+  <div>
+    <div class="gap-title">Referral package preview (live PDF render)</div>
+    <div class="gap-body">Seeing what the PDF will actually look like before generating it. The pre-export checklist covers the content review — a live visual preview is a nice polish step for later.</div>
+  </div>
+  <span class="badge badge-neutral">phase 2</span>
+</div>

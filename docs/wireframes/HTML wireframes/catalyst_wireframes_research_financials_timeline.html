@@ -1,0 +1,433 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tabs{display:flex;gap:4px;padding:0 0 20px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:24px}
+.tab-btn{padding:6px 14px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;transition:all 0.15s}
+.tab-btn.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.panel{display:none}
+.panel.active{display:block}
+
+.wf-chrome{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.wf-topbar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 12px;display:flex;align-items:center;gap:8px}
+.wf-tabs{display:flex;gap:2px}
+.wf-tab{padding:4px 10px;border-radius:4px;font-size:11px;color:var(--color-text-secondary);cursor:default}
+.wf-tab.active{background:var(--color-background-primary);color:var(--color-text-primary);border:0.5px solid var(--color-border-tertiary)}
+.wf-body{display:flex;min-height:400px}
+.wf-left{width:200px;border-right:0.5px solid var(--color-border-tertiary);padding:12px;flex-shrink:0}
+.wf-main{flex:1;padding:12px}
+.wf-right{width:180px;border-left:0.5px solid var(--color-border-tertiary);padding:12px;flex-shrink:0}
+
+.sect-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.field-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.field-box{height:26px;border:0.5px solid var(--color-border-tertiary);border-radius:4px;background:var(--color-background-secondary);flex:1;padding:0 8px;display:flex;align-items:center;font-size:11px;color:var(--color-text-secondary)}
+.btn-sm{height:26px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);white-space:nowrap;cursor:pointer}
+.btn-sm.primary{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.result-card{border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:var(--color-background-primary)}
+.result-card:hover{border-color:var(--color-border-secondary)}
+.rc-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.rc-meta{font-size:11px;color:var(--color-text-secondary)}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-success{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-danger{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge-neutral{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--color-border-tertiary);border-top-color:var(--color-text-info);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-bar{padding:6px 10px;border-radius:4px;font-size:11px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.status-bar.running{background:var(--color-background-info);color:var(--color-text-info)}
+.status-bar.success{background:var(--color-background-success);color:var(--color-text-success)}
+.callout{background:var(--color-background-secondary);border-left:2px solid var(--color-border-secondary);border-radius:0 4px 4px 0;padding:6px 10px;font-size:11px;color:var(--color-text-secondary);margin-bottom:10px}
+.divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:10px 0}
+
+.fin-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.fin-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 10px;text-align:center}
+.fin-card .num{font-size:16px;font-weight:500;color:var(--color-text-primary)}
+.fin-card .lbl{font-size:10px;color:var(--color-text-secondary);margin-top:2px}
+.fin-table{width:100%;border-collapse:collapse;font-size:11px}
+.fin-table th{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-align:right;padding:4px 6px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.fin-table th:first-child{text-align:left}
+.fin-table td{padding:5px 6px;border-bottom:0.5px solid var(--color-border-tertiary);text-align:right;color:var(--color-text-primary)}
+.fin-table td:first-child{text-align:left;font-weight:500}
+.fin-table tr:last-child td{border-bottom:none}
+.fin-table .anomaly{color:var(--color-text-danger);font-weight:500}
+.fin-table .anomaly-row td{background:var(--color-background-danger)}
+.chart-row{display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:4px}
+.bar{border-radius:3px 3px 0 0;min-width:20px;flex:1;position:relative}
+.bar-label{font-size:10px;color:var(--color-text-secondary);text-align:center;margin-top:4px}
+.yr-labels{display:flex;gap:6px}
+.yr-label{flex:1;text-align:center;font-size:9px;color:var(--color-text-secondary)}
+.chart-area{margin-bottom:14px}
+
+.timeline-wrap{position:relative;padding-left:16px}
+.tl-spine{position:absolute;left:5px;top:0;bottom:0;width:1px;background:var(--color-border-tertiary)}
+.tl-event{position:relative;margin-bottom:14px}
+.tl-dot{position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--color-border-secondary);background:var(--color-background-primary)}
+.tl-dot.critical{border-color:#E24B4A;background:#FCEBEB}
+.tl-dot.high{border-color:#BA7517;background:#FAEEDA}
+.tl-dot.medium{border-color:#185FA5;background:#E6F1FB}
+.tl-card{border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:8px 10px;background:var(--color-background-primary);cursor:pointer}
+.tl-card:hover{border-color:var(--color-border-secondary)}
+.tl-card.selected{border-color:var(--color-border-info);background:var(--color-background-info)}
+.tl-date{font-size:10px;color:var(--color-text-secondary);margin-bottom:2px}
+.tl-title{font-size:12px;font-weight:500;color:var(--color-text-primary)}
+.tl-sub{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.tl-group-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;padding:4px 0 8px;margin-left:-2px}
+
+.note-box{font-size:10px;border:0.5px dashed var(--color-border-secondary);border-radius:4px;padding:6px 8px;color:var(--color-text-secondary);margin-top:8px}
+.note-box strong{color:var(--color-text-primary)}
+
+.filter-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.filter-chip{padding:3px 8px;border:0.5px solid var(--color-border-tertiary);border-radius:12px;font-size:11px;color:var(--color-text-secondary);cursor:pointer}
+.filter-chip.on{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+
+.click-ref{margin-top:20px}
+.click-ref-title{font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em}
+.cr-row{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;align-items:start}
+.cr-row:last-child{border-bottom:none}
+.cr-num{width:20px;height:20px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:var(--color-text-primary);flex-shrink:0}
+.cr-action{color:var(--color-text-primary)}
+.cr-result{color:var(--color-text-secondary)}
+</style>
+
+<h2 class="sr-only">Catalyst wireframes for Research, Financials, and Timeline tabs with interaction click maps</h2>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showPanel('research')">Research tab</button>
+  <button class="tab-btn" onclick="showPanel('financials')">Financials tab</button>
+  <button class="tab-btn" onclick="showPanel('timeline')">Timeline tab</button>
+</div>
+
+<div id="research" class="panel active">
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div class="wf-tabs" style="margin-left:auto">
+        <div class="wf-tab">Overview</div><div class="wf-tab">Documents</div>
+        <div class="wf-tab active">Research</div><div class="wf-tab">Financials</div>
+        <div class="wf-tab">Timeline</div><div class="wf-tab">Referrals</div>
+      </div>
+    </div>
+    <div class="wf-body" style="flex-direction:column">
+      <div style="display:flex;min-height:400px">
+        <div class="wf-left" style="width:180px">
+          <div class="sect-label">Source</div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <div style="padding:5px 8px;border-radius:4px;font-size:11px;background:var(--color-background-info);color:var(--color-text-info);cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+              IRS / 990<span class="badge badge-success">✓</span>
+            </div>
+            <div style="padding:5px 8px;border-radius:4px;font-size:11px;background:var(--color-background-info);color:var(--color-text-info);cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+              Ohio AOS<span class="badge badge-success">✓</span>
+            </div>
+            <div style="padding:5px 8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center">
+              County Recorder<span class="badge badge-success">✓</span>
+            </div>
+            <div style="padding:5px 8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center">
+              Ohio SOS<span class="badge badge-success">✓</span>
+            </div>
+            <div style="padding:5px 8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary);opacity:0.5;display:flex;justify-content:space-between;align-items:center">
+              Parcel search<span class="badge badge-warn">—</span>
+            </div>
+          </div>
+          <hr class="divider">
+          <div class="sect-label">Recent jobs</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="padding:4px 6px;border-radius:4px;font-size:11px;background:var(--color-background-success);color:var(--color-text-success)">IRS name search ✓</div>
+            <div style="padding:4px 6px;border-radius:4px;font-size:11px;background:var(--color-background-success);color:var(--color-text-success)">AOS audit ✓</div>
+            <div style="padding:4px 6px;border-radius:4px;font-size:11px;background:var(--color-background-warning);color:var(--color-text-warning)">Parcels — offline</div>
+          </div>
+        </div>
+        <div class="wf-main">
+          <div class="sect-label">IRS / Form 990 search</div>
+          <div class="field-row">
+            <div class="field-box" style="flex:2">EIN or org name</div>
+            <button class="btn-sm primary">Search</button>
+          </div>
+          <div class="status-bar running" style="margin-bottom:10px">
+            <span class="spinner"></span> Searching IRS TEOS index… job #a4f2 — <span style="font-size:10px">polls every 2s</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="result-card" style="border-left:2px solid #185FA5">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                  <div class="rc-title">Do Good In His Name Inc</div>
+                  <div class="rc-meta">EIN 82-4458479 · Darke County OH · 990-EZ</div>
+                </div>
+                <div style="display:flex;gap:4px;align-items:center">
+                  <span class="badge badge-warn">2019</span>
+                  <span class="badge badge-warn">2020</span>
+                  <span class="badge badge-info">2021</span>
+                </div>
+              </div>
+              <div style="margin-top:6px;display:flex;gap:6px">
+                <button class="btn-sm primary">Fetch 990 data</button>
+                <button class="btn-sm">View XML</button>
+                <button class="btn-sm">Add to case</button>
+              </div>
+            </div>
+            <div class="result-card">
+              <div class="rc-title">Do Good Community Services LLC</div>
+              <div class="rc-meta">EIN 45-1122334 · Franklin County OH · no filings</div>
+              <div style="margin-top:4px">
+                <button class="btn-sm">Add to case</button>
+              </div>
+            </div>
+          </div>
+          <hr class="divider">
+          <div class="sect-label">Ohio AOS — audit findings</div>
+          <div class="status-bar success">2 audit findings returned for "Do Good"</div>
+          <div class="result-card" style="border-left:2px solid #E24B4A">
+            <div class="rc-title">Finding for Recovery — Do Good In His Name Inc</div>
+            <div class="rc-meta">AOS Report 2021-DAR-003 · $14,200 unallowable expenditures</div>
+            <div style="margin-top:4px;display:flex;gap:4px">
+              <button class="btn-sm primary">Add to case</button>
+              <button class="btn-sm">Open PDF</button>
+            </div>
+          </div>
+        </div>
+        <div class="wf-right">
+          <div class="sect-label">Selected result</div>
+          <div style="font-size:12px;font-weight:500;margin-bottom:4px">Do Good In His Name Inc</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">EIN 82-4458479 · Active</div>
+          <div class="sect-label" style="margin-top:8px">Already in case?</div>
+          <div class="badge badge-warn" style="margin-bottom:8px">Org not yet linked</div>
+          <div class="sect-label" style="margin-top:8px">Filings on record</div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">2019, 2020, 2021</div>
+          <hr class="divider">
+          <div class="sect-label">Suggested signal checks</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);display:flex;flex-direction:column;gap:4px">
+            <div>→ SR-013: officer pay</div>
+            <div>→ SR-012: COI policy</div>
+            <div>→ SR-029: program ratio</div>
+          </div>
+          <div class="note-box" style="margin-top:10px"><strong>Fetch 990 data</strong> will run IRS XML pipeline + evaluate signal rules automatically</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="click-ref">
+    <div class="click-ref-title">Research tab — click map</div>
+    <div class="cr-row" style="font-size:10px;color:var(--color-text-secondary);font-weight:500"><div></div><div>Click target</div><div>Outcome</div></div>
+    <div class="cr-row"><div class="cr-num">A</div><div class="cr-action">Click source in left rail (IRS, AOS, Recorder, SOS)</div><div class="cr-result">Shows that source's search form in center panel; right panel clears</div></div>
+    <div class="cr-row"><div class="cr-num">B</div><div class="cr-action">Submit search form (slow sources: IRS, AOS, Parcel)</div><div class="cr-result">Creates SearchJob → 202; status bar shows spinner + "polling…"; auto-updates when job completes</div></div>
+    <div class="cr-row"><div class="cr-num">C</div><div class="cr-action">Submit search form (fast sources: SOS, Recorder)</div><div class="cr-result">Synchronous — results render immediately in center panel</div></div>
+    <div class="cr-row"><div class="cr-num">D</div><div class="cr-action">Click a result card</div><div class="cr-result">Right panel shows: entity detail, "already in case?" indicator, suggested signals to check</div></div>
+    <div class="cr-row"><div class="cr-num">E</div><div class="cr-action">"Add to case" button on result card</div><div class="cr-result">Calls /research/add-to-case/ → creates entity + note; button changes to "Added ✓"; entity appears in main case view entities list</div></div>
+    <div class="cr-row"><div class="cr-num">F</div><div class="cr-action">"Fetch 990 data" on IRS result</div><div class="cr-result">Calls /fetch-990s/ → creates FinancialSnapshots + runs signal rules; redirects user to Financials tab to see populated data</div></div>
+    <div class="cr-row"><div class="cr-num">G</div><div class="cr-action">Click recent job in left rail</div><div class="cr-result">Re-renders that job's results in center panel (reattach-on-mount — no re-fetch)</div></div>
+  </div>
+</div>
+
+<div id="financials" class="panel">
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div class="wf-tabs" style="margin-left:auto">
+        <div class="wf-tab">Overview</div><div class="wf-tab">Documents</div>
+        <div class="wf-tab">Research</div><div class="wf-tab active">Financials</div>
+        <div class="wf-tab">Timeline</div><div class="wf-tab">Referrals</div>
+      </div>
+    </div>
+    <div class="wf-body" style="flex-direction:column">
+      <div style="display:flex;min-height:480px">
+        <div class="wf-main">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="sect-label" style="margin:0">Year-over-year 990 data</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn-sm">Export CSV</button>
+              <button class="btn-sm primary">Fetch more years</button>
+            </div>
+          </div>
+          <div class="fin-grid">
+            <div class="fin-card"><div class="num" style="color:#E24B4A">+847%</div><div class="lbl">Revenue spike 2018→2019</div></div>
+            <div class="fin-card"><div class="num">$1.4M</div><div class="lbl">Peak revenue (2021)</div></div>
+            <div class="fin-card"><div class="num" style="color:#E24B4A">28%</div><div class="lbl">Program ratio (2021)</div></div>
+          </div>
+          <div class="chart-area">
+            <div class="sect-label">Revenue by year</div>
+            <div class="chart-row">
+              <div class="bar" style="height:8%;background:var(--color-background-secondary)"></div>
+              <div class="bar" style="height:15%;background:var(--color-background-secondary)"></div>
+              <div class="bar" style="height:72%;background:#B5D4F4"></div>
+              <div class="bar" style="height:90%;background:#85B7EB"></div>
+              <div class="bar" style="height:100%;background:#378ADD;position:relative">
+                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:500;color:#185FA5;white-space:nowrap">$1.4M ▲</div>
+              </div>
+              <div class="bar" style="height:88%;background:#85B7EB"></div>
+            </div>
+            <div class="yr-labels">
+              <div class="yr-label">2017</div>
+              <div class="yr-label">2018</div>
+              <div class="yr-label">2019</div>
+              <div class="yr-label">2020</div>
+              <div class="yr-label">2021</div>
+              <div class="yr-label">2022</div>
+            </div>
+          </div>
+          <div class="sect-label">Detail table</div>
+          <div class="filter-row">
+            <span class="filter-chip on">All years</span>
+            <span class="filter-chip">2019–2021 only</span>
+            <span class="filter-chip">Flag anomalies</span>
+          </div>
+          <table class="fin-table">
+            <tr><th>Metric</th><th>2018</th><th>2019</th><th>2020</th><th>2021</th><th>2022</th></tr>
+            <tr><td>Total revenue</td><td>$48K</td><td class="anomaly">$456K</td><td>$890K</td><td>$1.4M</td><td>$1.2M</td></tr>
+            <tr><td>Total expenses</td><td>$41K</td><td>$420K</td><td>$810K</td><td>$1.3M</td><td>$1.1M</td></tr>
+            <tr><td>Net assets</td><td>$7K</td><td>$43K</td><td>$120K</td><td>$210K</td><td>$310K</td></tr>
+            <tr><td>Program services</td><td>$28K</td><td>$180K</td><td>$310K</td><td class="anomaly">$392K</td><td>$390K</td></tr>
+            <tr class="anomaly-row"><td>Officer compensation</td><td>$0</td><td>$0</td><td>$0</td><td class="anomaly">$0</td><td>$0</td></tr>
+            <tr><td>Program ratio</td><td>68%</td><td>43%</td><td>38%</td><td class="anomaly">28%</td><td>35%</td></tr>
+          </table>
+        </div>
+        <div class="wf-right">
+          <div class="sect-label">Selected row</div>
+          <div style="font-size:12px;font-weight:500;margin-bottom:4px">Officer compensation</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">All years: $0</div>
+          <div class="badge badge-danger" style="margin-bottom:8px">Triggers SR-013</div>
+          <div class="sect-label" style="margin-top:8px">Signal detail</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">$0 officer pay at an org with $1.4M peak revenue — hidden compensation pattern</div>
+          <button class="btn-sm primary" style="width:100%;margin-bottom:6px">View finding</button>
+          <button class="btn-sm" style="width:100%">Create manual finding</button>
+          <hr class="divider">
+          <div class="sect-label">Related documents</div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">Form 990-EZ (2021) · Part VII</div>
+          <button class="btn-sm" style="margin-top:6px;width:100%">Open in document view</button>
+          <div class="note-box" style="margin-top:10px"><strong>Red rows</strong> = anomaly flag from signal rule. Click any row to see which rule triggered and why.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="click-ref">
+    <div class="click-ref-title">Financials tab — click map</div>
+    <div class="cr-row" style="font-size:10px;color:var(--color-text-secondary);font-weight:500"><div></div><div>Click target</div><div>Outcome</div></div>
+    <div class="cr-row"><div class="cr-num">A</div><div class="cr-action">Click a bar in the revenue chart</div><div class="cr-result">Highlights that year column in the table; right panel shows that year's summary stats</div></div>
+    <div class="cr-row"><div class="cr-num">B</div><div class="cr-action">Click a table row (e.g. officer compensation)</div><div class="cr-result">Right panel: shows the metric, which signal rule it triggers, why it's anomalous, link to related finding and source document</div></div>
+    <div class="cr-row"><div class="cr-num">C</div><div class="cr-action">Click a red/anomaly-highlighted cell</div><div class="cr-result">Right panel: jumps directly to the signal finding for that specific year + metric</div></div>
+    <div class="cr-row"><div class="cr-num">D</div><div class="cr-action">"View finding" in right panel</div><div class="cr-result">Main case view opens with that finding selected in center panel (navigates back to Overview tab)</div></div>
+    <div class="cr-row"><div class="cr-num">E</div><div class="cr-action">"Fetch more years" button</div><div class="cr-result">Runs IRS TEOS search for org EIN; populates additional year rows; re-evaluates SR-021 (revenue spike) with the full range</div></div>
+    <div class="cr-row"><div class="cr-num">F</div><div class="cr-action">"Export CSV" button</div><div class="cr-result">Downloads the current table view as CSV (respects active year filter)</div></div>
+  </div>
+</div>
+
+<div id="timeline" class="panel">
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div class="wf-tabs" style="margin-left:auto">
+        <div class="wf-tab">Overview</div><div class="wf-tab">Documents</div>
+        <div class="wf-tab">Research</div><div class="wf-tab">Financials</div>
+        <div class="wf-tab active">Timeline</div><div class="wf-tab">Referrals</div>
+      </div>
+    </div>
+    <div class="wf-body">
+      <div class="wf-left" style="width:170px">
+        <div class="sect-label">Filter</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:10px">
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked style="margin:0"> <span class="badge badge-danger" style="font-size:10px">Critical</span></label>
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked style="margin:0"> <span class="badge badge-warn" style="font-size:10px">High</span></label>
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked style="margin:0"> <span class="badge badge-info" style="font-size:10px">Medium</span></label>
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" style="margin:0"> <span class="badge badge-neutral" style="font-size:10px">Documents</span></label>
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" style="margin:0"> <span class="badge badge-neutral" style="font-size:10px">Entity formed</span></label>
+        </div>
+        <hr class="divider">
+        <div class="sect-label">Focus</div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+          <div style="padding:4px 6px;border-radius:4px;background:var(--color-background-info);color:var(--color-text-info);cursor:pointer">Karen Homan</div>
+          <div style="padding:4px 6px;border-radius:4px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary)">Do Good Real Estate</div>
+          <div style="padding:4px 6px;border-radius:4px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary)">Hanes Law Group</div>
+          <div style="padding:4px 6px;border-radius:4px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid var(--color-border-tertiary)">Baumer Construction</div>
+        </div>
+        <hr class="divider">
+        <div class="sect-label">Selected event</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Aug 8, 2017</div>
+        <div style="font-size:12px;font-weight:500;margin:2px 0 4px">Hanes Law Group files two LLCs</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">Do Good LLC #1 + #2 both assembled same day — 6 weeks before nonprofit incorporated</div>
+        <div class="badge badge-danger" style="display:block;margin-bottom:6px">Triggers SR-024</div>
+        <button class="btn-sm primary" style="width:100%;margin-bottom:4px">View finding</button>
+        <button class="btn-sm" style="width:100%">Open source doc</button>
+      </div>
+      <div class="wf-main">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="sect-label" style="margin:0">Case timeline</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sm">Zoom in</button>
+            <button class="btn-sm">Fit all</button>
+            <button class="btn-sm primary">Add event</button>
+          </div>
+        </div>
+        <div class="timeline-wrap">
+          <div class="tl-spine"></div>
+          <div class="tl-group-label">2017</div>
+          <div class="tl-event">
+            <div class="tl-dot high"></div>
+            <div class="tl-card selected">
+              <div class="tl-date">Aug 8, 2017</div>
+              <div class="tl-title">Hanes Law Group files two Do Good LLCs</div>
+              <div class="tl-sub">Both entities assembled same day — 6 weeks before nonprofit incorporated</div>
+              <div style="margin-top:4px;display:flex;gap:4px"><span class="badge badge-danger">SR-024</span><span class="badge badge-neutral">Ohio SOS</span></div>
+            </div>
+          </div>
+          <div class="tl-event">
+            <div class="tl-dot medium"></div>
+            <div class="tl-card">
+              <div class="tl-date">Sep 19, 2017</div>
+              <div class="tl-title">Do Good In His Name Inc incorporated</div>
+              <div class="tl-sub">Karen Homan as statutory agent</div>
+              <div style="margin-top:4px"><span class="badge badge-neutral">Ohio SOS</span></div>
+            </div>
+          </div>
+          <div class="tl-group-label" style="margin-top:4px">2019</div>
+          <div class="tl-event">
+            <div class="tl-dot critical"></div>
+            <div class="tl-card">
+              <div class="tl-date">Mar–Apr, 2019</div>
+              <div class="tl-title">Farm Credit UCC liens filed on 9 Homan family members</div>
+              <div class="tl-sub">Same creditor, same window — debt restructuring pattern</div>
+              <div style="margin-top:4px;display:flex;gap:4px"><span class="badge badge-danger">SR-004</span><span class="badge badge-danger">SR-017</span></div>
+            </div>
+          </div>
+          <div class="tl-event">
+            <div class="tl-dot high"></div>
+            <div class="tl-card">
+              <div class="tl-date">2019 tax year</div>
+              <div class="tl-title">Revenue spikes $48K → $456K (+847%)</div>
+              <div class="tl-sub">Concurrent with UCC activity</div>
+              <div style="margin-top:4px"><span class="badge badge-danger">SR-021</span></div>
+            </div>
+          </div>
+          <div class="tl-group-label" style="margin-top:4px">2021</div>
+          <div class="tl-event">
+            <div class="tl-dot critical"></div>
+            <div class="tl-card">
+              <div class="tl-date">2021 990-EZ filing</div>
+              <div class="tl-title">$0 officer pay — $1.4M revenue year</div>
+              <div class="tl-sub">990 denies compensation; building permits list Homan as contractor</div>
+              <div style="margin-top:4px;display:flex;gap:4px"><span class="badge badge-danger">SR-013</span><span class="badge badge-danger">SR-026</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="click-ref">
+    <div class="click-ref-title">Timeline tab — click map</div>
+    <div class="cr-row" style="font-size:10px;color:var(--color-text-secondary);font-weight:500"><div></div><div>Click target</div><div>Outcome</div></div>
+    <div class="cr-row"><div class="cr-num">A</div><div class="cr-action">Click a timeline event card</div><div class="cr-result">Card highlights; left panel shows event detail: date, entity connections, triggered signal rules, source document</div></div>
+    <div class="cr-row"><div class="cr-num">B</div><div class="cr-action">"View finding" in left panel</div><div class="cr-result">Navigates to main case view (Overview tab) with that finding selected in center panel</div></div>
+    <div class="cr-row"><div class="cr-num">C</div><div class="cr-action">Click a signal badge on an event (e.g. SR-004)</div><div class="cr-result">Shortcut: jumps directly to that finding without going through left panel</div></div>
+    <div class="cr-row"><div class="cr-num">D</div><div class="cr-action">Click entity in "Focus" list (left rail)</div><div class="cr-result">Filters timeline to show only events connected to that entity; other events dim</div></div>
+    <div class="cr-row"><div class="cr-num">E</div><div class="cr-action">Toggle severity filter checkboxes</div><div class="cr-result">Shows/hides events by severity level in real time; "Documents" and "Entity formed" options add non-finding events to the view</div></div>
+    <div class="cr-row"><div class="cr-num">F</div><div class="cr-action">"Add event" button</div><div class="cr-result">Opens a modal: date picker, description, entity link (optional), source document (optional), signal rule (optional); saves as a manual finding or investigator note</div></div>
+    <div class="cr-row"><div class="cr-num">G</div><div class="cr-action">Zoom in / Fit all buttons</div><div class="cr-result">Collapses/expands date groupings — "Fit all" shows all years; "Zoom in" shows one year at a time with expanded event cards</div></div>
+  </div>
+</div>
+
+<script>
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>

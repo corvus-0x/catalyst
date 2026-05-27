@@ -1,0 +1,469 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);font-size:13px}
+
+.section-label{font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:10px;margin-top:24px}
+.section-label:first-child{margin-top:0}
+
+/* ── Wireframe ── */
+.frame{border:.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary);position:relative;margin-bottom:8px}
+.topbar{background:var(--color-background-secondary);border-bottom:.5px solid var(--color-border-tertiary);padding:7px 12px;display:flex;align-items:center;gap:7px}
+.bc{font-size:11px;color:var(--color-text-secondary)}
+.bc b{color:var(--color-text-primary);font-weight:500}
+.ml{margin-left:auto;display:flex;gap:5px;align-items:center}
+.tbtn{font-size:11px;padding:3px 8px;border:.5px solid var(--color-border-secondary);border-radius:4px;color:var(--color-text-secondary);background:transparent;position:relative}
+.tbtn.primary{color:var(--color-text-primary);border-color:var(--color-border-primary);font-weight:500}
+.stats{display:flex;border-bottom:.5px solid var(--color-border-tertiary)}
+.sb{flex:1;padding:6px 12px;border-right:.5px solid var(--color-border-tertiary);position:relative}
+.sb:last-child{border-right:none}
+.sbn{font-size:16px;font-weight:500;line-height:1.1}
+.sbn.r{color:#A32D2D}.sbn.a{color:#854F0B}.sbn.b{color:#185FA5}.sbn.g{color:#3B6D11}.sbn.gr{color:var(--color-text-secondary)}
+.sbl{font-size:10px;color:var(--color-text-tertiary)}
+.body3{display:grid;grid-template-columns:140px 1fr 190px;height:340px}
+.lp{border-right:.5px solid var(--color-border-tertiary);overflow:hidden}
+.lp-h{padding:6px 10px 4px;display:flex;justify-content:space-between;align-items:center}
+.lp-ht{font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.dr{padding:5px 9px;display:flex;gap:6px;align-items:flex-start;position:relative;border-left:2px solid transparent}
+.dr.sel{border-left-color:#378ADD;background:var(--color-background-info)}
+.db{font-size:9px;font-weight:500;padding:1px 4px;border-radius:3px;white-space:nowrap;margin-top:1px}
+.t990{background:#E6F1FB;color:#185FA5}.tdeed{background:#EAF3DE;color:#3B6D11}.tucc{background:#FAEEDA;color:#854F0B}.tsos{background:#EEEDFE;color:#534AB7}.tperm{background:#FAECE7;color:#993C1D}
+.di{flex:1;min-width:0}
+.dn{font-size:11px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dfc{font-size:10px;color:var(--color-text-info);position:relative}
+
+.cp{display:flex;flex-direction:column;overflow:hidden}
+.vtoggle{padding:6px 12px;border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:0}
+.vt-btn{font-size:11px;padding:3px 10px;border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);cursor:pointer;background:var(--color-background-primary)}
+.vt-btn:first-child{border-radius:4px 0 0 4px}
+.vt-btn:last-child{border-radius:0 4px 4px 0;border-left:none}
+.vt-btn.on{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.vt-space{flex:1}
+.vt-add{font-size:11px;padding:3px 9px;border-radius:4px;border:.5px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.fbar{padding:6px 12px;border-bottom:.5px solid var(--color-border-tertiary);display:flex;gap:4px;overflow:hidden}
+.fchp{font-size:11px;padding:2px 8px;border-radius:10px;border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);white-space:nowrap}
+.fchp.on{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.flist{flex:1;overflow:hidden;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.fc{border:.5px solid var(--color-border-tertiary);border-radius:7px;padding:7px 9px;border-left:3px solid transparent;position:relative}
+.fc.critical{border-left-color:#E24B4A}.fc.high{border-left-color:#EF9F27}.fc.dis{border-left-color:var(--color-border-tertiary);opacity:.5}
+.fc.sel{background:var(--color-background-secondary);border-color:var(--color-border-secondary)}
+.fct{display:flex;align-items:center;gap:4px;margin-bottom:3px}
+.sv{font-size:9px;font-weight:500;padding:1px 5px;border-radius:3px}
+.sv.c{background:#FCEBEB;color:#A32D2D}.sv.h{background:#FAEEDA;color:#854F0B}.sv.d{background:#F1EFE8;color:#5F5E5A}
+.rid{font-size:9px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.ftl{font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+.fdesc{font-size:10px;color:var(--color-text-secondary);line-height:1.4;margin-bottom:4px}
+.dcs{display:flex;gap:3px;flex-wrap:wrap}
+.dc{font-size:10px;padding:1px 5px;border-radius:3px;background:var(--color-background-secondary);border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.ffoot{display:flex;gap:4px;margin-top:4px}
+.stchp{font-size:10px;padding:1px 6px;border-radius:3px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.stchp.conf{color:#3B6D11;background:#EAF3DE}
+
+.rp{border-left:.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;overflow:hidden}
+.rph{padding:7px 10px;border-bottom:.5px solid var(--color-border-tertiary);font-size:11px;font-weight:500;color:var(--color-text-primary)}
+.rps{padding:7px 10px;border-bottom:.5px solid var(--color-border-tertiary)}
+.rpsh{font-size:9px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:5px}
+.er{display:flex;align-items:center;gap:6px;padding:3px 0;position:relative}
+.av{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:500;flex-shrink:0}
+.av-p{background:#EEEDFE;color:#534AB7}.av-o{background:#E1F5EE;color:#0F6E56}.av-r{background:#FCEBEB;color:#A32D2D}.av-prop{background:#FAEEDA;color:#854F0B}
+.en{font-size:11px;color:var(--color-text-primary);flex:1}
+.earr{font-size:10px;color:var(--color-text-tertiary)}
+.evb{background:var(--color-background-secondary);border-radius:4px;padding:5px 7px;margin-top:2px}
+.evr{display:flex;justify-content:space-between;padding:1px 0}
+.evl{font-size:10px;color:var(--color-text-secondary)}
+.evv{font-size:10px;font-weight:500;color:var(--color-text-primary)}
+.evv.r{color:#A32D2D}.evv.w{color:#854F0B}
+.cr{display:flex;align-items:flex-start;gap:6px;padding:3px 0;position:relative}
+.cdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.cdot.c{background:#E24B4A}.cdot.h{background:#EF9F27}
+.ctxt .crl{font-size:9px;font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.ctxt .ctl{font-size:11px;color:var(--color-text-primary)}
+.ctxt .csh{font-size:10px;color:var(--color-text-tertiary)}
+.nc{background:var(--color-background-secondary);border-radius:4px;padding:5px 7px;margin-bottom:4px;position:relative}
+.nt{font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:2px}
+.na{font-size:11px;color:var(--color-text-info);line-height:1.3}
+.nw{font-size:10px;color:var(--color-text-tertiary);margin-top:2px;line-height:1.3}
+
+/* ── Callout numbers ── */
+.c-num{position:absolute;width:18px;height:18px;border-radius:50%;background:#E24B4A;color:#fff;font-size:9px;font-weight:500;display:flex;align-items:center;justify-content:center;z-index:10;pointer-events:none;line-height:1}
+.c-num.blue{background:#378ADD}
+.c-num.amber{background:#EF9F27;color:#fff}
+.c-num.green{background:#639922;color:#fff}
+.c-num.purple{background:#7F77DD;color:#fff}
+
+/* ── Document view panel ── */
+.docview{flex:1;overflow:hidden;padding:8px 10px;display:flex;flex-direction:column;gap:0}
+.docview-header{font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.docview-badge{font-size:9px;padding:1px 5px;border-radius:3px}
+.docview-body{flex:1;border:.5px solid var(--color-border-tertiary);border-radius:5px;padding:7px 9px;overflow:hidden;display:flex;flex-direction:column;gap:4px}
+.docview-line{height:7px;background:var(--color-border-tertiary);border-radius:2px}
+.docview-line.hl{background:#FAC775;height:9px}
+.docview-line.short{width:60%}
+.docview-line.med{width:80%}
+
+/* ── Click map legend ── */
+.legend{margin-top:0}
+.legend-group{margin-bottom:16px}
+.lg-head{font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;padding-bottom:4px;border-bottom:.5px solid var(--color-border-tertiary)}
+.lg-rows{display:flex;flex-direction:column;gap:4px}
+.lg-row{display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;align-items:start}
+.lg-num{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;color:#fff;flex-shrink:0}
+.lg-num.r{background:#E24B4A}.lg-num.b{background:#378ADD}.lg-num.a{background:#EF9F27}.lg-num.g{background:#639922}.lg-num.p{background:#7F77DD}
+.lg-what{font-size:11px;color:var(--color-text-primary)}
+.lg-result{font-size:11px;color:var(--color-text-secondary)}
+
+/* ── Tab descriptions ── */
+.tab-block{border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:10px}
+.tab-header{padding:9px 14px;background:var(--color-background-secondary);border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:8px}
+.tab-icon{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.tab-name{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.tab-sub{font-size:11px;color:var(--color-text-secondary)}
+.tab-body{padding:10px 14px}
+.tab-click-rows{display:flex;flex-direction:column;gap:5px}
+.tcr{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;align-items:start;padding:3px 0;border-bottom:.5px solid var(--color-border-tertiary)}
+.tcr:last-child{border-bottom:none}
+.tc-el{font-size:11px;color:var(--color-text-primary)}
+.tc-res{font-size:11px;color:var(--color-text-secondary)}
+.tc-num{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;color:#fff;background:#378ADD;flex-shrink:0}
+.tc-num.a{background:#EF9F27}.tc-num.g{background:#639922}
+.col-head{font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-tertiary);padding-bottom:4px}
+</style>
+
+<h2 class="sr-only">Catalyst interaction map — every click in the case investigation view and three supporting tabs</h2>
+
+<div class="section-label">Main case view — annotated</div>
+
+<div class="frame">
+  <div class="topbar">
+    <span class="bc">Cases / <b>Do Good In His Name Inc</b></span>
+    <div class="ml">
+      <div class="tbtn" style="position:relative">Research <div class="c-num blue" style="top:-8px;right:-8px">15</div></div>
+      <div class="tbtn" style="position:relative">Financials <div class="c-num blue" style="top:-8px;right:-8px">16</div></div>
+      <div class="tbtn" style="position:relative">Timeline <div class="c-num blue" style="top:-8px;right:-8px">17</div></div>
+      <div class="tbtn primary" style="position:relative">Generate referral package <div class="c-num amber" style="top:-8px;right:-8px">18</div></div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="sb"><div class="sbn r">4</div><div class="sbl">Critical</div><div class="c-num blue" style="top:4px;right:4px">19</div></div>
+    <div class="sb"><div class="sbn a">7</div><div class="sbl">High</div></div>
+    <div class="sb"><div class="sbn b">14</div><div class="sbl">Documents</div></div>
+    <div class="sb"><div class="sbn g">8</div><div class="sbl">Entities</div></div>
+    <div class="sb"><div class="sbn gr">3</div><div class="sbl">Dismissed</div></div>
+  </div>
+  <div class="body3">
+    <div class="lp">
+      <div class="lp-h">
+        <span class="lp-ht">Documents</span>
+        <span style="font-size:16px;color:var(--color-text-tertiary);position:relative">+ <div class="c-num" style="top:-8px;right:-10px">1</div></span>
+      </div>
+      <div class="dr sel" style="position:relative">
+        <span class="db tdeed">deed</span>
+        <div class="di"><div class="dn">deed-47pat.pdf</div><div class="dfc" style="position:relative">2 findings <div class="c-num green" style="top:-6px;left:52px;width:15px;height:15px;font-size:8px">3</div></div></div>
+        <div class="c-num blue" style="top:4px;right:4px;width:15px;height:15px;font-size:8px">2</div>
+      </div>
+      <div class="dr">
+        <span class="db t990">990</span>
+        <div class="di"><div class="dn">990-2018.pdf</div><div class="dfc">5 findings</div></div>
+      </div>
+      <div class="dr">
+        <span class="db tucc">ucc</span>
+        <div class="di"><div class="dn">ucc-burst.pdf</div><div class="dfc">1 finding</div></div>
+      </div>
+      <div class="dr">
+        <span class="db tsos">sos</span>
+        <div class="di"><div class="dn">dgre-4059181.pdf</div><div class="dfc">2 findings</div></div>
+      </div>
+      <div class="dr">
+        <span class="db tperm">permit</span>
+        <div class="di"><div class="dn">bldg-permits.xlsx</div><div class="dfc">2 findings</div></div>
+      </div>
+    </div>
+
+    <div class="cp">
+      <div class="vtoggle">
+        <div class="vt-btn on" style="position:relative">Findings <div class="c-num blue" style="top:-8px;right:-8px;width:15px;height:15px;font-size:8px">4</div></div>
+        <div class="vt-btn" style="position:relative">Document <div class="c-num blue" style="top:-8px;right:-8px;width:15px;height:15px;font-size:8px">5</div></div>
+        <div class="vt-space"></div>
+        <div class="vt-add" style="position:relative">+ Add finding <div class="c-num amber" style="top:-8px;right:-8px;width:15px;height:15px;font-size:8px">6</div></div>
+      </div>
+      <div class="fbar">
+        <div class="fchp on" style="position:relative">All (11) <div class="c-num blue" style="top:-8px;right:-8px;width:15px;height:15px;font-size:8px">7</div></div>
+        <div class="fchp">Critical</div>
+        <div class="fchp">Confirmed</div>
+        <div class="fchp">AI</div>
+      </div>
+      <div class="flist">
+        <div class="fc critical sel" style="position:relative">
+          <div class="fct">
+            <span class="sv c">Critical</span>
+            <span class="rid">SR-003</span>
+            <span style="font-size:9px;color:var(--color-text-tertiary);margin-left:auto">deed-47pat.pdf</span>
+          </div>
+          <div class="ftl">Valuation anomaly — 47 Patterson St</div>
+          <div class="fdesc">Nonprofit paid $300,000 for a $37,490 appraised property. 700% above value. Seller: Winner Kyle J.</div>
+          <div class="dcs">
+            <span class="dc" style="position:relative">deed-47pat.pdf <div class="c-num purple" style="top:-7px;right:-7px;width:14px;height:14px;font-size:8px">9</div></span>
+            <span class="dc">deed-17pat.pdf</span>
+          </div>
+          <div class="ffoot">
+            <span class="stchp conf" style="position:relative">Confirmed <div class="c-num amber" style="top:-7px;right:-7px;width:14px;height:14px;font-size:8px">10</div></span>
+            <span class="stchp">Documented</span>
+          </div>
+          <div class="c-num blue" style="top:6px;right:6px;width:15px;height:15px;font-size:8px">8</div>
+        </div>
+        <div class="fc critical">
+          <div class="fct"><span class="sv c">Critical</span><span class="rid">SR-025</span></div>
+          <div class="ftl">False disclosure — related-party transactions</div>
+          <div class="dcs"><span class="dc">990-2018.pdf</span><span class="dc">990-2022.pdf</span></div>
+          <div class="ffoot"><span class="stchp conf">Confirmed</span><span class="stchp">Documented</span></div>
+        </div>
+        <div class="fc high">
+          <div class="fct"><span class="sv h">High</span><span class="rid">SR-026</span></div>
+          <div class="ftl">Contractor denial — Baumer Construction</div>
+          <div class="dcs"><span class="dc">bldg-permits.xlsx</span></div>
+          <div class="ffoot"><span class="stchp conf">Confirmed</span><span class="stchp">Documented</span></div>
+        </div>
+        <div class="fc dis">
+          <div class="fct"><span class="sv d">Dismissed</span><span class="rid">manual</span></div>
+          <div class="ftl">Deceased signatory — Homan AG Mgmt</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rp">
+      <div class="rph">SR-003 context</div>
+      <div class="rps">
+        <div class="rpsh">Entities</div>
+        <div class="er" style="position:relative">
+          <div class="av av-o">DG</div><div class="en">Do Good In His Name</div><span class="earr">›</span>
+          <div class="c-num purple" style="top:0;right:0;width:14px;height:14px;font-size:8px">11</div>
+        </div>
+        <div class="er"><div class="av av-p">KH</div><div class="en">Karen Homan</div><span class="earr">›</span></div>
+        <div class="er"><div class="av av-r">KW</div><div class="en">Winner Kyle J</div><span class="earr">›</span></div>
+        <div class="er"><div class="av av-prop">P</div><div class="en">47 Patterson St</div><span class="earr">›</span></div>
+      </div>
+      <div class="rps">
+        <div class="rpsh">Evidence snapshot</div>
+        <div class="evb">
+          <div class="evr"><span class="evl">Amount paid</span><span class="evv r">$300,000</span></div>
+          <div class="evr"><span class="evl">Appraised</span><span class="evv">$37,490</span></div>
+          <div class="evr"><span class="evl">Overpayment</span><span class="evv w">+700%</span></div>
+        </div>
+      </div>
+      <div class="rps">
+        <div class="rpsh">Connected findings</div>
+        <div class="cr" style="position:relative">
+          <div class="cdot c"></div>
+          <div class="ctxt"><div class="crl">SR-024</div><div class="ctl">Charity conduit</div><div class="csh">Shared: Winner Kyle J</div></div>
+          <div class="c-num purple" style="top:0;right:0;width:14px;height:14px;font-size:8px">12</div>
+        </div>
+        <div class="cr"><div class="cdot c"></div><div class="ctxt"><div class="crl">SR-025</div><div class="ctl">False disclosure</div><div class="csh">Shared: Karen Homan</div></div></div>
+      </div>
+      <div class="rps" style="border-bottom:none">
+        <div class="rpsh">Leads to</div>
+        <div class="nc" style="position:relative">
+          <div class="nt">Next pull</div>
+          <div class="na">Search Winner's Meats — SOS + Recorder</div>
+          <div class="c-num green" style="top:4px;right:4px;width:14px;height:14px;font-size:8px">13</div>
+        </div>
+        <div class="nc">
+          <div class="nt">Cross-check</div>
+          <div class="na">Pull 17 Patterson deed — same seller</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-label">Document mode — what the center panel shows when you click "Document"</div>
+<div class="frame">
+  <div class="topbar"><span class="bc">Cases / <b>Do Good In His Name Inc</b></span><div class="ml"><div class="tbtn">Research</div><div class="tbtn">Financials</div><div class="tbtn">Timeline</div><div class="tbtn primary">Generate referral package</div></div></div>
+  <div class="body3">
+    <div class="lp">
+      <div class="lp-h"><span class="lp-ht">Documents</span></div>
+      <div class="dr sel"><span class="db tdeed">deed</span><div class="di"><div class="dn">deed-47pat.pdf</div><div class="dfc">2 findings</div></div></div>
+      <div class="dr"><span class="db t990">990</span><div class="di"><div class="dn">990-2018.pdf</div><div class="dfc">5 findings</div></div></div>
+      <div class="dr"><span class="db tucc">ucc</span><div class="di"><div class="dn">ucc-burst.pdf</div><div class="dfc">1 finding</div></div></div>
+    </div>
+    <div class="cp">
+      <div class="vtoggle">
+        <div class="vt-btn">Findings</div>
+        <div class="vt-btn on">Document</div>
+        <div class="vt-space"></div>
+        <div style="font-size:10px;color:var(--color-text-tertiary);padding:4px 8px">deed-47pat.pdf — 2 findings highlighted</div>
+      </div>
+      <div class="docview">
+        <div class="docview-body">
+          <div class="docview-line short"></div>
+          <div class="docview-line"></div>
+          <div class="docview-line med"></div>
+          <div class="docview-line short"></div>
+          <div style="height:8px"></div>
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:4px">Highlighted — SR-003 Valuation anomaly</div>
+          <div class="docview-line hl"></div>
+          <div class="docview-line hl med"></div>
+          <div style="height:8px"></div>
+          <div class="docview-line"></div>
+          <div class="docview-line short"></div>
+          <div class="docview-line med"></div>
+          <div style="height:8px"></div>
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:4px">Highlighted — SR-003 second transaction</div>
+          <div class="docview-line hl short"></div>
+          <div class="docview-line hl"></div>
+        </div>
+      </div>
+    </div>
+    <div class="rp">
+      <div class="rph">deed-47pat.pdf</div>
+      <div class="rps">
+        <div class="rpsh">Entities extracted</div>
+        <div class="er"><div class="av av-r">KW</div><div class="en">Winner Kyle J</div><span class="earr">›</span></div>
+        <div class="er"><div class="av av-o">DG</div><div class="en">Do Good In His Name</div><span class="earr">›</span></div>
+        <div class="er"><div class="av av-prop">P</div><div class="en">47 Patterson St</div><span class="earr">›</span></div>
+      </div>
+      <div class="rps">
+        <div class="rpsh">Findings from this doc</div>
+        <div class="cr"><div class="cdot c"></div><div class="ctxt"><div class="crl">SR-003</div><div class="ctl">Valuation anomaly</div></div></div>
+        <div class="cr"><div class="cdot c"></div><div class="ctxt"><div class="crl">SR-005</div><div class="ctl">Zero-consideration transfer</div></div></div>
+      </div>
+      <div class="rps" style="border-bottom:none">
+        <div class="rpsh">Source</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5">Instrument 202200006823<br>Recorded Sept 15, 2022<br>Darke County Recorder</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-label">Click map reference</div>
+<div class="legend">
+
+  <div class="legend-group">
+    <div class="lg-head">Document rail</div>
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:4px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="lg-rows">
+      <div class="lg-row"><div class="lg-num r">1</div><div class="lg-what">"+" button</div><div class="lg-result">Opens file upload — drag or browse. Accepts PDF, XLSX, images. Auto-queues OCR + extraction on upload.</div></div>
+      <div class="lg-row"><div class="lg-num b">2</div><div class="lg-what">Document row</div><div class="lg-result">Selects the document. Center panel switches to Document mode showing the full content with findings highlighted inline. Right panel shows entities extracted from this document.</div></div>
+      <div class="lg-row"><div class="lg-num g">3</div><div class="lg-what">Finding count badge</div><div class="lg-result">Stays in Findings mode but filters the center list to show only findings from this document.</div></div>
+    </div>
+  </div>
+
+  <div class="legend-group">
+    <div class="lg-head">Center panel — Findings mode</div>
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:4px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="lg-rows">
+      <div class="lg-row"><div class="lg-num b">4</div><div class="lg-what">"Findings" toggle</div><div class="lg-result">Stays in / returns to findings list. If a document was selected, shows all findings (not just that document's).</div></div>
+      <div class="lg-row"><div class="lg-num b">5</div><div class="lg-what">"Document" toggle</div><div class="lg-result">Switches center to Document mode. Shows the last-selected document, or prompts to pick one from the rail if none is selected.</div></div>
+      <div class="lg-row"><div class="lg-num a">6</div><div class="lg-what">"+ Add finding" button</div><div class="lg-result">Opens a drawer or modal. You write a title, description, pick severity and evidence weight, and optionally link documents and entities. Creates a manual finding (source = MANUAL).</div></div>
+      <div class="lg-row"><div class="lg-num b">7</div><div class="lg-what">Filter chips</div><div class="lg-result">Filters the finding list. Chips are: All / Critical / High / Medium / Confirmed / Needs Evidence / New / Dismissed / AI (AI-generated) / Rule (auto-detected). Multiple chips can be active.</div></div>
+      <div class="lg-row"><div class="lg-num b">8</div><div class="lg-what">Finding card</div><div class="lg-result">Selects the finding. Right panel updates to show entities, evidence snapshot, connected findings, and leads-to actions for this finding. Does NOT navigate away.</div></div>
+      <div class="lg-row"><div class="lg-num p">9</div><div class="lg-what">Document chip on a finding</div><div class="lg-result">Switches center to Document mode, opens that document, and scrolls to + highlights the passage relevant to this finding.</div></div>
+      <div class="lg-row"><div class="lg-num a">10</div><div class="lg-what">Status chip (Confirmed/New/etc)</div><div class="lg-result">Opens an inline status picker. One click to change status without opening a modal. Options: New / Needs Evidence / Confirmed / Dismissed. Dismissed asks for a reason note.</div></div>
+    </div>
+  </div>
+
+  <div class="legend-group">
+    <div class="lg-head">Right panel — finding selected</div>
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:4px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="lg-rows">
+      <div class="lg-row"><div class="lg-num p">11</div><div class="lg-what">Entity row (person/org/property)</div><div class="lg-result">Navigates to the entity detail page. Shows all findings, documents, and external search results tied to that entity. Back button returns here.</div></div>
+      <div class="lg-row"><div class="lg-num p">12</div><div class="lg-what">Connected finding</div><div class="lg-result">Scrolls the center panel to that finding and selects it. Right panel updates to the new finding's context. No navigation — everything stays in place.</div></div>
+      <div class="lg-row"><div class="lg-num g">13</div><div class="lg-what">"Leads to" action card</div><div class="lg-result">If it's a "Next pull" → opens the Research tab with the search pre-filled (e.g. "Winner's Meats" in Ohio SOS). If it's a "Cross-check" → highlights the related document in the rail.</div></div>
+    </div>
+  </div>
+
+  <div class="legend-group">
+    <div class="lg-head">Top bar</div>
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:4px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="lg-rows">
+      <div class="lg-row"><div class="lg-num b">15</div><div class="lg-what">Research</div><div class="lg-result">Navigates to Research tab. Shows all external source searches with their status and results. See Research tab breakdown below.</div></div>
+      <div class="lg-row"><div class="lg-num b">16</div><div class="lg-what">Financials</div><div class="lg-result">Navigates to Financials tab. Year-over-year 990 data, revenue trend, 990-T restaurant data. See Financials tab breakdown below.</div></div>
+      <div class="lg-row"><div class="lg-num b">17</div><div class="lg-what">Timeline</div><div class="lg-result">Navigates to Timeline tab. Chronological view of all events in the case. See Timeline tab breakdown below.</div></div>
+      <div class="lg-row"><div class="lg-num a">18</div><div class="lg-what">Generate referral package</div><div class="lg-result">Opens a pre-export checklist showing confirmed findings, linked documents, and entities. One more click to generate the PDF. Cannot generate if no findings are Confirmed.</div></div>
+      <div class="lg-row"><div class="lg-num b">19</div><div class="lg-what">Stat block (e.g. "4 Critical")</div><div class="lg-result">Same as clicking the Critical filter chip — filters the center panel to show only that severity.</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section-label">Research tab — click map</div>
+<div class="tab-block">
+  <div class="tab-header">
+    <div class="tab-icon" style="background:var(--color-background-info)">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="#378ADD" stroke-width="1"/><line x1="9.5" y1="9.5" x2="13" y2="13" stroke="#378ADD" stroke-width="1.2" stroke-linecap="round"/></svg>
+    </div>
+    <div>
+      <div class="tab-name">Research</div>
+      <div class="tab-sub">Pull data from IRS, Ohio SOS, AOS, county recorder, parcel search. Each source has its own search form and result set.</div>
+    </div>
+  </div>
+  <div class="tab-body">
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:6px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="tab-click-rows">
+      <div class="tcr"><div class="tc-num b">A</div><div class="tc-el">Source selector (IRS / SOS / AOS / Recorder / Parcel)</div><div class="tc-res">Switches the search form. Each source has different input fields (EIN vs. name vs. county + parcel number).</div></div>
+      <div class="tcr"><div class="tc-num b">B</div><div class="tc-el">Search / Submit button</div><div class="tc-res">For slow sources (IRS, AOS, Parcel): queues an async job, shows a spinner, polls every 2s. For fast sources (SOS, Recorder): returns inline. Status pill shows Queued → Running → Done.</div></div>
+      <div class="tcr"><div class="tc-num b">C</div><div class="tc-el">Result card</div><div class="tc-res">Expands to show full detail (all fields returned from the source). Collapsed state shows name + type + one key fact.</div></div>
+      <div class="tcr"><div class="tc-num g">D</div><div class="tc-el">"Add to case" on a result</div><div class="tc-res">Creates an entity (person, org, or property depending on result type) in the case. Shows a confirmation: "Karen Homan added as Person." Finding suggestions appear if the entity matches an existing finding pattern.</div></div>
+      <div class="tcr"><div class="tc-num b">E</div><div class="tc-el">Recent searches (sidebar or list)</div><div class="tc-res">Re-displays the result from a previous search in this case. Does not re-run the search — shows the cached result with the date it was pulled.</div></div>
+      <div class="tcr"><div class="tc-num a">F</div><div class="tc-el">Job status pill (Queued / Running / Failed)</div><div class="tc-res">Running: just shows progress. Failed: shows the error + a Retry button. Clicking Retry re-queues the job.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-block">
+  <div class="tab-header">
+    <div class="tab-icon" style="background:#EAF3DE">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="9" width="2" height="4" rx="1" fill="#3B6D11"/><rect x="5.5" y="6" width="2" height="7" rx="1" fill="#3B6D11"/><rect x="9.5" y="3" width="2" height="10" rx="1" fill="#3B6D11"/></svg>
+    </div>
+    <div>
+      <div class="tab-name">Financials</div>
+      <div class="tab-sub">Year-over-year 990 data, revenue trend, 990-T restaurant income/loss. Data pulled from IRS TEOS.</div>
+    </div>
+  </div>
+  <div class="tab-body">
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:6px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="tab-click-rows">
+      <div class="tcr"><div class="tc-num b">A</div><div class="tc-el">Year row (e.g. "2022")</div><div class="tc-res">Expands that year to show the full financial breakdown: Part I totals, Part IV checklist answers, Part VI governance fields, Part VII compensation. Collapses others.</div></div>
+      <div class="tcr"><div class="tc-num b">B</div><div class="tc-el">Financial line item (e.g. "Revenue $4.5M")</div><div class="tc-res">Shows the source: which 990 document, which XML field, which line on the form. If a finding is connected to this line item, shows a badge linking to it.</div></div>
+      <div class="tcr"><div class="tc-num b">C</div><div class="tc-el">Chart bar / data point</div><div class="tc-res">Highlights that year in the table. If an SR-021 (revenue spike) finding exists for that year, highlights the finding badge alongside it.</div></div>
+      <div class="tcr"><div class="tc-num b">D</div><div class="tc-el">"990-T" sub-tab</div><div class="tc-res">Switches to restaurant UBIT view: gross receipts, cost of goods, salaries, NOL carryforward by year. Same click behaviors as main 990 table.</div></div>
+      <div class="tcr"><div class="tc-num g">E</div><div class="tc-el">"Fetch 990 data" button</div><div class="tc-res">Runs the IRS TEOS fetch for this case's EIN. Queues an async job. On completion, populates or refreshes the financial table and re-evaluates financial signal rules.</div></div>
+      <div class="tcr"><div class="tc-num a">F</div><div class="tc-el">Governance field (e.g. "COI Policy: No")</div><div class="tc-res">If a finding is tied to this field (e.g. SR-012), shows a badge. Clicking the badge jumps to that finding in the main case view.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-block">
+  <div class="tab-header">
+    <div class="tab-icon" style="background:#FAEEDA">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><line x1="2" y1="7" x2="12" y2="7" stroke="#854F0B" stroke-width="1"/><circle cx="4" cy="7" r="1.5" fill="#854F0B"/><circle cx="8" cy="4" r="1.5" fill="#854F0B"/><circle cx="11" cy="7" r="1.5" fill="#854F0B"/></svg>
+    </div>
+    <div>
+      <div class="tab-name">Timeline</div>
+      <div class="tab-sub">Chronological view of every event in the case — LLC formations, deeds, UCC filings, 990 filings, permits, referrals. The investigation story in order.</div>
+    </div>
+  </div>
+  <div class="tab-body">
+    <div style="display:grid;grid-template-columns:24px 1fr 1fr;gap:8px;margin-bottom:6px">
+      <div></div><div class="col-head">What you click</div><div class="col-head">What happens</div>
+    </div>
+    <div class="tab-click-rows">
+      <div class="tcr"><div class="tc-num b">A</div><div class="tc-el">Event on the timeline</div><div class="tc-res">Opens a detail panel: the event date, source document, entities involved, and any findings connected to this event. Does not navigate away — panel slides in alongside the timeline.</div></div>
+      <div class="tcr"><div class="tc-num b">B</div><div class="tc-el">Event type filter (Deeds / 990s / UCC / SOS / Permits)</div><div class="tc-res">Hides/shows event types. Lets you isolate, e.g., only property transactions to see the full acquisition sequence in order.</div></div>
+      <div class="tcr"><div class="tc-num b">C</div><div class="tc-el">Finding badge on an event</div><div class="tc-res">Jumps back to the main case view with that finding selected. The badge indicates "this event is part of a confirmed finding."</div></div>
+      <div class="tcr"><div class="tc-num g">D</div><div class="tc-el">Source document link on an event</div><div class="tc-res">Navigates to the main case view, switches to Document mode, opens that document. Back button returns to the timeline.</div></div>
+      <div class="tcr"><div class="tc-num a">E</div><div class="tc-el">"Add event manually" button</div><div class="tc-res">Lets you add an event that isn't in a document — e.g. "Correction memo sent to FCA OIG, March 15 2026." Takes a date, description, and optional document attachment.</div></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,290 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); font-size: 14px; color: var(--color-text-primary); }
+.shell { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-tertiary); }
+.topbar { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
+.breadcrumb span { cursor: pointer; }
+.breadcrumb span:hover { color: var(--color-text-info); text-decoration: underline; }
+.breadcrumb .sep { color: var(--color-text-tertiary); }
+.breadcrumb .current { color: var(--color-text-primary); font-weight: 500; }
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+.btn-sm { font-size: 12px; padding: 5px 12px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); white-space: nowrap; }
+.btn-sm:hover { background: var(--color-background-secondary); }
+.btn-primary { background: #185FA5; color: #E6F1FB; border-color: #185FA5; }
+.btn-primary:hover { background: #0C447C; }
+
+.body { display: grid; grid-template-columns: 260px 1fr; min-height: 580px; }
+
+.entity-panel { background: var(--color-background-primary); border-right: 0.5px solid var(--color-border-tertiary); padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+.entity-avatar { width: 48px; height: 48px; border-radius: 50%; background: #E6F1FB; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 500; color: #185FA5; flex-shrink: 0; }
+.entity-name { font-size: 17px; font-weight: 500; margin-bottom: 2px; }
+.entity-type { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: #E6F1FB; color: #185FA5; display: inline-block; }
+.entity-meta { display: flex; flex-direction: column; gap: 6px; }
+.meta-row { display: flex; gap: 8px; align-items: flex-start; }
+.meta-label { font-size: 11px; color: var(--color-text-tertiary); min-width: 70px; padding-top: 1px; }
+.meta-value { font-size: 12px; color: var(--color-text-primary); line-height: 1.4; }
+.entity-divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); }
+.stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.stat-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 8px 10px; text-align: center; }
+.stat-num { font-size: 20px; font-weight: 500; line-height: 1; margin-bottom: 2px; }
+.stat-num.pulling { color: #185FA5; }
+.stat-num.confirmed { color: #3B6D11; }
+.stat-num.docs { color: var(--color-text-primary); }
+.stat-label { font-size: 10px; color: var(--color-text-secondary); }
+.quick-cap-btn { width: 100%; font-size: 12px; padding: 7px 12px; border-radius: var(--border-radius-md); cursor: pointer; border: 0.5px dashed var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); text-align: left; }
+.quick-cap-btn:hover { background: var(--color-background-secondary); color: var(--color-text-primary); }
+.quick-note-area { display: none; }
+.quick-note-area.show { display: flex; flex-direction: column; gap: 6px; }
+.quick-note-area textarea { font-size: 12px; padding: 8px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); font-family: var(--font-sans); resize: none; outline: none; width: 100%; }
+.quick-note-area textarea:focus { border-color: #378ADD; }
+.quick-note-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.btn-xs { font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); }
+.btn-xs:hover { background: var(--color-background-secondary); }
+.btn-xs-save { font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: none; background: #185FA5; color: #E6F1FB; }
+
+.main-panel { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; max-height: 580px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.section-title { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.section-add { font-size: 11px; color: #185FA5; cursor: pointer; }
+.section-add:hover { text-decoration: underline; }
+
+.thread-list { display: flex; flex-direction: column; gap: 6px; }
+.thread-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 14px; cursor: pointer; transition: border-color 0.15s; display: flex; align-items: center; gap: 12px; }
+.thread-card:hover { border-color: var(--color-border-secondary); }
+.thread-status-bar { width: 3px; height: 36px; border-radius: 2px; flex-shrink: 0; }
+.thread-status-bar.pulling { background: #378ADD; }
+.thread-status-bar.confirmed { background: #639922; }
+.thread-status-bar.exhausted { background: var(--color-border-tertiary); }
+.thread-info { flex: 1; min-width: 0; }
+.thread-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-knots { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 3px; }
+.thread-docs { font-size: 11px; color: var(--color-text-tertiary); }
+.thread-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.thread-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.badge-pulling { background: #E6F1FB; color: #185FA5; }
+.badge-confirmed { background: #EAF3DE; color: #3B6D11; }
+.badge-exhausted { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+.badge-rule { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #FAECE7; color: #993C1D; border: 0.5px solid #F5C4B3; }
+
+.finding-list { display: flex; flex-direction: column; gap: 6px; }
+.finding-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 14px; border-left: 3px solid #639922; }
+.finding-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.finding-title { font-size: 13px; font-weight: 500; flex: 1; }
+.finding-sev { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+.sev-high { background: #FAECE7; color: #993C1D; border: 0.5px solid #F5C4B3; }
+.sev-critical { background: #FCEBEB; color: #A32D2D; border: 0.5px solid #F7C1C1; }
+.finding-desc { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 4px; }
+.finding-docs { font-size: 11px; color: var(--color-text-tertiary); }
+
+.note-list { display: flex; flex-direction: column; gap: 6px; }
+.note-card { background: #FAEEDA; border: 0.5px solid #FAC775; border-radius: var(--border-radius-md); padding: 8px 12px; }
+.note-text { font-size: 12px; color: #633806; line-height: 1.5; }
+.note-meta { font-size: 10px; color: #854F0B; margin-top: 4px; }
+</style>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <span onclick="sendPrompt('Show me the Do Good investigation web view')">Investigation web</span>
+      <span class="sep">›</span>
+      <span class="current">Karen Homan</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn-sm" onclick="sendPrompt('Show me all documents linked to Karen Homan')">View documents</button>
+      <button class="btn-sm btn-primary" onclick="sendPrompt('Show me the connect two knots flow to add a new thread from Karen Homan')">+ New thread</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="entity-panel">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="entity-avatar">KH</div>
+        <div>
+          <div class="entity-name">Karen Homan</div>
+          <span class="entity-type">Person</span>
+        </div>
+      </div>
+
+      <div class="entity-meta">
+        <div class="meta-row">
+          <span class="meta-label">Role</span>
+          <span class="meta-value">Executive Director, Do Good In His Name Inc</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">County</span>
+          <span class="meta-value">Darke County, OH</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Also linked</span>
+          <span class="meta-value">Baumer Construction LLC (secured party)</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Intake ID</span>
+          <span class="meta-value" style="font-family: var(--font-mono); font-size:11px;">PER-0001</span>
+        </div>
+      </div>
+
+      <hr class="entity-divider" />
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-num pulling">3</div>
+          <div class="stat-label">Pulling</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num confirmed">2</div>
+          <div class="stat-label">Confirmed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num docs">11</div>
+          <div class="stat-label">Docs</div>
+        </div>
+      </div>
+
+      <hr class="entity-divider" />
+
+      <div>
+        <button class="quick-cap-btn" id="qc-btn" onclick="toggleQuickCap()">+ Quick capture…</button>
+        <div class="quick-note-area" id="quick-note">
+          <textarea rows="3" placeholder="Flag something about Karen Homan — you'll come back to it…"></textarea>
+          <div class="quick-note-actions">
+            <button class="btn-xs" onclick="toggleQuickCap()">Cancel</button>
+            <button class="btn-xs-save" onclick="saveNote()">Save note</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-panel">
+      <div>
+        <div class="section-head">
+          <span class="section-title">Threads (5)</span>
+          <span class="section-add" onclick="sendPrompt('Show me the connect two knots flow to add a new thread from Karen Homan')">+ Add thread</span>
+        </div>
+        <div class="thread-list">
+          <div class="thread-card" onclick="sendPrompt('Show me the UCC filing timeline thread view for Karen Homan and Baumer Construction')">
+            <div class="thread-status-bar pulling"></div>
+            <div class="thread-info">
+              <div class="thread-name">UCC filing timeline</div>
+              <div class="thread-knots">Karen Homan ↔ Baumer Construction LLC</div>
+              <div class="thread-docs">3 docs · 7 facts · opened 4 days ago</div>
+            </div>
+            <div class="thread-right">
+              <span class="thread-badge badge-pulling">Pulling</span>
+              <span class="badge-rule">SR-004</span>
+            </div>
+          </div>
+
+          <div class="thread-card" onclick="sendPrompt('Open the officer compensation thread for Karen Homan and Do Good In His Name Inc')">
+            <div class="thread-status-bar confirmed"></div>
+            <div class="thread-info">
+              <div class="thread-name">Officer compensation — $0 disclosed</div>
+              <div class="thread-knots">Karen Homan ↔ Do Good In His Name Inc</div>
+              <div class="thread-docs">2 docs · confirmed 2 days ago</div>
+            </div>
+            <div class="thread-right">
+              <span class="thread-badge badge-confirmed">Confirmed</span>
+              <span class="badge-rule">SR-013</span>
+            </div>
+          </div>
+
+          <div class="thread-card" onclick="sendPrompt('Open the Schedule I grant payments thread for Do Good and Baumer Construction')">
+            <div class="thread-status-bar pulling"></div>
+            <div class="thread-info">
+              <div class="thread-name">Schedule I grant payments</div>
+              <div class="thread-knots">Do Good In His Name Inc ↔ Baumer Construction LLC</div>
+              <div class="thread-docs">1 doc · started today</div>
+            </div>
+            <div class="thread-right">
+              <span class="thread-badge badge-pulling">Pulling</span>
+            </div>
+          </div>
+
+          <div class="thread-card" onclick="sendPrompt('Open the legal fees thread for Karen Homan and Hanes Law Group')">
+            <div class="thread-status-bar pulling"></div>
+            <div class="thread-info">
+              <div class="thread-name">Legal fees — insider relationship?</div>
+              <div class="thread-knots">Do Good In His Name Inc ↔ Hanes Law Group</div>
+              <div class="thread-docs">2 docs · 3 facts</div>
+            </div>
+            <div class="thread-right">
+              <span class="thread-badge badge-pulling">Pulling</span>
+            </div>
+          </div>
+
+          <div class="thread-card" onclick="sendPrompt('Open the shell entity transfer thread for Karen Homan and Do Good Real Estate')">
+            <div class="thread-status-bar confirmed"></div>
+            <div class="thread-info">
+              <div class="thread-name">Property transfer — zero consideration</div>
+              <div class="thread-knots">Karen Homan ↔ Do Good Real Estate LLC</div>
+              <div class="thread-docs">3 docs · confirmed 1 week ago</div>
+            </div>
+            <div class="thread-right">
+              <span class="thread-badge badge-confirmed">Confirmed</span>
+              <span class="badge-rule">SR-005</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-head">
+          <span class="section-title">Confirmed findings (2)</span>
+        </div>
+        <div class="finding-list">
+          <div class="finding-card">
+            <div class="finding-header">
+              <span class="finding-title">$0 officer compensation — high-revenue org</span>
+              <span class="finding-sev sev-high">HIGH</span>
+            </div>
+            <div class="finding-desc">990 Part VII discloses $0 compensation for Karen Homan as Executive Director. Do Good reported $847,000 in total revenue for 2020. SR-013 satisfied.</div>
+            <div class="finding-docs">2 documents · [Doc-1] 2020 Form 990 · [Doc-2] Part VII officer schedule</div>
+          </div>
+          <div class="finding-card">
+            <div class="finding-header">
+              <span class="finding-title">Zero-consideration property transfer to insider</span>
+              <span class="finding-sev sev-high">HIGH</span>
+            </div>
+            <div class="finding-desc">Do Good Real Estate LLC received title to 1204 Greenville Rd with $0 consideration listed. Karen Homan is listed as registered agent for Do Good Real Estate. SR-005 satisfied.</div>
+            <div class="finding-docs">3 documents · [Doc-4] Deed · [Doc-5] SOS filing · [Doc-6] Recorder search</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-head">
+          <span class="section-title">Quick captures (1)</span>
+        </div>
+        <div class="note-list" id="note-list">
+          <div class="note-card">
+            <div class="note-text">Check if Homan is also listed as a board member — 990 Part VI is unclear on whether she's an officer or director. May affect conflict of interest policy findings.</div>
+            <div class="note-meta">Flagged 3 days ago · not yet attached to a thread</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var qcOpen = false;
+function toggleQuickCap() {
+  qcOpen = !qcOpen;
+  document.getElementById('qc-btn').style.display = qcOpen ? 'none' : 'block';
+  document.getElementById('quick-note').classList.toggle('show', qcOpen);
+}
+function saveNote() {
+  var ta = document.querySelector('#quick-note textarea');
+  var text = ta.value.trim();
+  if (!text) { toggleQuickCap(); return; }
+  var list = document.getElementById('note-list');
+  var card = document.createElement('div');
+  card.className = 'note-card';
+  card.innerHTML = '<div class="note-text">' + text + '</div><div class="note-meta">Flagged just now · not yet attached to a thread</div>';
+  list.appendChild(card);
+  ta.value = '';
+  toggleQuickCap();
+}
+</script>

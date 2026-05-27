@@ -1,0 +1,140 @@
+
+<style>
+  .tab-bar { display:flex; gap:0; border-bottom:0.5px solid var(--color-border-tertiary); margin-bottom:24px; }
+  .tab { padding:10px 20px; font-size:13px; color:var(--color-text-secondary); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+  .tab.active { color:var(--color-text-primary); font-weight:500; border-bottom:2px solid var(--color-text-primary); }
+  .tab.deferred { color:var(--color-text-tertiary); font-style:italic; }
+  .section { margin-bottom:32px; }
+  .section-label { font-size:11px; font-weight:500; color:var(--color-text-secondary); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+  .tab-card { background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:16px 20px; margin-bottom:10px; }
+  .tab-name { font-size:14px; font-weight:500; color:var(--color-text-primary); margin-bottom:4px; }
+  .tab-desc { font-size:13px; color:var(--color-text-secondary); line-height:1.5; }
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:4px; margin-right:6px; margin-top:6px; }
+  .tag-core { background:var(--color-background-info); color:var(--color-text-info); }
+  .tag-done { background:var(--color-background-success); color:var(--color-text-success); }
+  .tag-design { background:var(--color-background-warning); color:var(--color-text-warning); }
+  .tag-defer { background:var(--color-background-secondary); color:var(--color-text-secondary); }
+  .zone-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px; }
+  .zone-chip { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:10px 14px; font-size:12px; }
+  .zone-title { font-weight:500; color:var(--color-text-primary); margin-bottom:3px; }
+  .zone-sub { color:var(--color-text-secondary); }
+  .divider { height:0.5px; background:var(--color-border-tertiary); margin:20px 0; }
+  .note { font-size:12px; color:var(--color-text-secondary); padding:10px 14px; background:var(--color-background-secondary); border-radius:var(--border-radius-md); border-left:2px solid var(--color-border-secondary); }
+</style>
+
+<h2 class="sr-only">Catalyst case detail — 5-tab layout overview</h2>
+
+<div class="section-label">Case detail — tab navigation</div>
+<div class="tab-bar">
+  <div class="tab active">Investigate</div>
+  <div class="tab">Research</div>
+  <div class="tab">Financials</div>
+  <div class="tab">Timeline</div>
+  <div class="tab deferred">Referrals</div>
+</div>
+
+<div class="tab-card">
+  <div class="tab-name">Investigate</div>
+  <div class="tab-desc">The web view. Full knot/thread/web canvas. Four-level drill-down: Web → Knot → Thread → Document.</div>
+  <span class="tag tag-core">Primary view</span>
+  <span class="tag tag-done">Design complete</span>
+  <div class="zone-grid">
+    <div class="zone-chip">
+      <div class="zone-title">Web (level 1)</div>
+      <div class="zone-sub">Cytoscape graph, all knots + threads</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Knot view (level 2)</div>
+      <div class="zone-sub">Entity hub — threads, findings, quick captures</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Thread view (level 3)</div>
+      <div class="zone-sub">Evidence feed, Lead panel, tie-off</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Document view (level 4)</div>
+      <div class="zone-sub">OCR + Intake highlights + RAG search</div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-card">
+  <div class="tab-name">Research</div>
+  <div class="tab-desc">External data source queries. IRS, Ohio SOS, Ohio AOS, County Recorder, County Auditor. Async job polling with spinner/result states.</div>
+  <span class="tag tag-design">Design next</span>
+  <div class="zone-grid">
+    <div class="zone-chip">
+      <div class="zone-title">Source picker</div>
+      <div class="zone-sub">5 connectors, status indicators</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Query form</div>
+      <div class="zone-sub">EIN, name, county — context-aware</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Job status rail</div>
+      <div class="zone-sub">Queued → Running → Result (polls /api/jobs/)</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Add to case</div>
+      <div class="zone-sub">Promote result to knot/document</div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-card">
+  <div class="tab-name">Financials</div>
+  <div class="tab-desc">Year-over-year 990 data table. Revenue, expenses, net assets. Anomaly highlights (>100% spike = amber, <50% program ratio = coral). Sourced from FinancialSnapshot model.</div>
+  <span class="tag tag-design">Design next</span>
+  <div class="zone-grid">
+    <div class="zone-chip">
+      <div class="zone-title">YoY trend table</div>
+      <div class="zone-sub">Tax years as columns, rows as metrics</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Anomaly badges</div>
+      <div class="zone-sub">SR-021, SR-029 flags inline on cells</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Sparklines</div>
+      <div class="zone-sub">Revenue/expense trend per row</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Thread link</div>
+      <div class="zone-sub">Click anomaly → pre-fill new thread</div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-card">
+  <div class="tab-name">Timeline</div>
+  <div class="tab-desc">Brushable chronological view of all case events — documents, transactions, 990 filings, UCC activity. Useful for showing compression patterns.</div>
+  <span class="tag tag-design">Design next</span>
+  <div class="zone-grid">
+    <div class="zone-chip">
+      <div class="zone-title">Event rail</div>
+      <div class="zone-sub">Date-sorted, colored by event type</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Brush range</div>
+      <div class="zone-sub">Zoom into a period, filters other tabs</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Cluster view</div>
+      <div class="zone-sub">SR-004 UCC burst visible as stack</div>
+    </div>
+    <div class="zone-chip">
+      <div class="zone-title">Add to thread</div>
+      <div class="zone-sub">Click event → attach to open thread</div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-card">
+  <div class="tab-name" style="color:var(--color-text-secondary);">Referrals <span style="font-size:11px;font-weight:400;">(deferred)</span></div>
+  <div class="tab-desc">Deterministic PDF exporter. Cover page, findings with Doc-N citations, financial tables, document index with SHA-256 hashes. Already built in backend (Session 33 — reportlab, 794 lines). UI button exists on current tab.</div>
+  <span class="tag tag-defer">Deferred — backend done</span>
+</div>
+
+<div class="divider"></div>
+<div class="note">Research, Financials, and Timeline are the three remaining tabs to design. Which one first?</div>

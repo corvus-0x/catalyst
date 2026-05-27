@@ -1,0 +1,431 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tabs{display:flex;gap:4px;padding:0 0 20px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:24px}
+.tab-btn{padding:6px 14px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.tab-btn.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.panel{display:none}.panel.active{display:block}
+.sect-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:7px}
+.divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:11px 0}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-danger{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge-success{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-neutral{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-purple{background:#EEEDFE;color:#3C3489}
+.btn-sm{height:26px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);cursor:pointer;white-space:nowrap}
+.btn-sm.primary{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.btn-sm.teal{background:#E1F5EE;color:#0F6E56;border-color:#1D9E75}
+.btn-sm.purple{background:#EEEDFE;color:#3C3489;border-color:#AFA9EC}
+.callout{background:var(--color-background-secondary);border-left:2px solid var(--color-border-secondary);border-radius:0 4px 4px 0;padding:7px 10px;font-size:11px;color:var(--color-text-secondary);margin-bottom:10px;line-height:1.5}
+
+.wf-chrome{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.wf-topbar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 12px;display:flex;align-items:center;gap:6px}
+.wf-tab{padding:4px 10px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)}
+.wf-tab.active{background:var(--color-background-primary);color:var(--color-text-primary);border:0.5px solid var(--color-border-tertiary)}
+
+.knot{width:60px;height:60px;border-radius:50%;border:2px solid #185FA5;background:#E6F1FB;display:flex;align-items:center;justify-content:center;flex-direction:column;flex-shrink:0}
+.knot-label{font-size:9px;font-weight:500;color:#0C447C;text-align:center;line-height:1.2}
+
+.thread-card{border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:8px 10px;margin-bottom:7px;cursor:pointer;position:relative}
+.thread-card.pulling{border-left:3px solid #185FA5;background:var(--color-background-primary)}
+.thread-card.pulling.active{border-color:#185FA5;box-shadow:0 0 0 1px #B5D4F4}
+.thread-card.confirmed{border-left:3px solid #1D9E75;background:var(--color-background-primary)}
+.thread-card.dead-end{border-left:3px solid #888780;background:var(--color-background-primary);opacity:0.65}
+.thread-card.new-thread{border:0.5px dashed var(--color-border-secondary);background:var(--color-background-secondary)}
+.thread-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.thread-sub{font-size:11px;color:var(--color-text-secondary)}
+.thread-docs{display:flex;gap:3px;flex-wrap:wrap;margin-top:5px}
+.doc-chip{font-size:10px;padding:2px 5px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:3px;color:var(--color-text-secondary)}
+
+.evidence-item{border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:7px 9px;margin-bottom:6px;background:var(--color-background-primary)}
+.ev-doc{font-size:10px;color:var(--color-text-secondary);margin-bottom:3px;display:flex;justify-content:space-between;align-items:center}
+.ev-quote{font-size:11px;color:var(--color-text-primary);line-height:1.5;border-left:2px solid var(--color-border-secondary);padding-left:7px;font-style:italic}
+.ev-note{font-size:10px;color:var(--color-text-secondary);margin-top:4px}
+
+.ai-card{background:#EEEDFE;border:0.5px solid #AFA9EC;border-radius:6px;padding:8px 10px;margin-bottom:6px}
+.ai-header{font-size:10px;font-weight:500;color:#3C3489;margin-bottom:5px;display:flex;align-items:center;gap:4px}
+.ai-suggestion{font-size:11px;color:#3C3489;line-height:1.5;margin-bottom:6px}
+.ai-action{font-size:10px;padding:3px 8px;border:0.5px solid #AFA9EC;border-radius:3px;background:var(--color-background-primary);color:#3C3489;cursor:pointer;display:inline-block}
+
+.model-diagram{display:flex;align-items:flex-start;gap:14px;padding:14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:16px}
+</style>
+
+<h2 class="sr-only">Thread-based investigation model: knot view and thread pulling workspace with AI suggestions</h2>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showPanel('model')">The mental model</button>
+  <button class="tab-btn" onclick="showPanel('knotview')">Knot view</button>
+  <button class="tab-btn" onclick="showPanel('threadview')">Pulling a thread</button>
+  <button class="tab-btn" onclick="showPanel('aiflow')">AI role in threads</button>
+</div>
+
+<div id="model" class="panel active">
+  <div class="callout" style="margin-bottom:16px">The investigation is a knot with threads coming off it. You pull one thread at a time. Multiple documents feed one thread. The AI watches what you've gathered and tells you where to pull next. When a thread is exhausted, you tie it off and go back to the knot.</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">The knot</div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:8px">The central entity the investigation orbits — usually a person or org. Karen Homan is the knot in Do Good. Every thread starts and ends here. Returning to the knot means stepping back from the detail and asking: what else does this person connect to that I haven't pulled yet?</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="knot"><div class="knot-label">Karen<br>Homan</div></div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Threads attach here: compensation, property, contractors, board relationships, UCC liens…</div>
+      </div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">A thread</div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:8px">One line of inquiry. Starts as a question. Accumulates evidence from multiple documents. Gets an AI suggestion for what to look at next. Ends in one of three states:</div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;align-items:center;gap:7px"><div style="width:8px;height:8px;border-radius:50%;background:#185FA5;flex-shrink:0"></div><div style="font-size:11px;color:var(--color-text-primary)"><strong>Pulling</strong> — active, still gathering evidence</div></div>
+        <div style="display:flex;align-items:center;gap:7px"><div style="width:8px;height:8px;border-radius:50%;background:#1D9E75;flex-shrink:0"></div><div style="font-size:11px;color:var(--color-text-primary)"><strong>Confirmed</strong> — enough evidence, tied off as a finding</div></div>
+        <div style="display:flex;align-items:center;gap:7px"><div style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0"></div><div style="font-size:11px;color:var(--color-text-primary)"><strong>Exhausted</strong> — pulled as far as it goes, no more evidence found</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;margin-bottom:16px">
+    <div class="sect-label">Why threads change the data model</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:5px">Old model (broken)</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6">Document → Finding. One finding has one trigger document. If three documents together prove the same pattern, you end up with three separate findings that all look unrelated, or you force one document to "own" the finding and the others are footnotes. The referral package looks weak because the connections are invisible.</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:5px">Thread model (correct)</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6">Thread ← Documents (many). The 990 Part VII, the building permit, and the AOS audit all feed the same thread: "Karen Homan is being compensated off-book through Baumer Construction." The thread is the finding. The three documents are its citations. The referral package presents the full chain, not isolated data points.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+    <div class="sect-label">What changes in the Investigate tab</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="background:var(--color-background-secondary);border-radius:4px;padding:8px">
+        <div style="font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Left rail</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Documents list stays. Below it: Threads list (active threads + their status). Clicking a thread opens Thread view.</div>
+      </div>
+      <div style="background:var(--color-background-secondary);border-radius:4px;padding:8px">
+        <div style="font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Center panel</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Two modes: Document viewer (reading a doc) or Thread view (working a thread — shows evidence gathered + what to do next).</div>
+      </div>
+      <div style="background:var(--color-background-secondary);border-radius:4px;padding:8px">
+        <div style="font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Right panel</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">When reading a doc: shows which threads this doc feeds into. When on a thread: shows AI suggestions for what to pull next + "tie off" button.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="knotview" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">The default state of the Investigate tab when no thread is active. You see the knot (primary entity), all threads attached to it, and what's still unexamined.</p>
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div style="display:flex;gap:2px;margin-left:auto">
+        <div class="wf-tab active">Investigate</div>
+        <div class="wf-tab">Research</div>
+        <div class="wf-tab">Financials</div>
+        <div class="wf-tab">Timeline</div>
+        <div class="wf-tab">Referrals</div>
+      </div>
+    </div>
+    <div style="display:flex;min-height:460px">
+      <div style="width:165px;border-right:0.5px solid var(--color-border-tertiary);padding:10px;flex-shrink:0">
+        <div class="sect-label">Documents (7)</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px">
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);display:flex;justify-content:space-between"><span>990-EZ 2021</span><span style="color:#1D9E75">3 threads</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);display:flex;justify-content:space-between"><span>990-EZ 2020</span><span style="color:#1D9E75">1 thread</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);display:flex;justify-content:space-between"><span>Building permit</span><span style="color:#185FA5">1 thread</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);display:flex;justify-content:space-between"><span>Deed - 25 W Main</span><span style="color:#185FA5">1 thread</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;background:var(--color-background-warning);color:var(--color-text-warning);display:flex;justify-content:space-between"><span>UCC filing 2019</span><span>unread</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);display:flex;justify-content:space-between"><span>AOS audit 2021</span><span style="color:#185FA5">1 thread</span></div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;background:var(--color-background-warning);color:var(--color-text-warning);display:flex;justify-content:space-between"><span>Ohio SOS filing</span><span>unread</span></div>
+        </div>
+        <div style="margin-bottom:5px"><button class="btn-sm" style="width:100%;font-size:10px">Upload files</button></div>
+        <div class="divider"></div>
+        <div class="sect-label">Threads (5)</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #185FA5;background:var(--color-background-secondary);cursor:pointer">Hidden compensation</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #185FA5;background:var(--color-background-secondary);cursor:pointer">Property transfer / deed</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #185FA5;background:var(--color-background-secondary);cursor:pointer">UCC lien burst</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #1D9E75;background:var(--color-background-secondary);cursor:pointer;opacity:0.8">False disclosure ✓</div>
+          <div style="padding:4px 7px;border-radius:4px;font-size:10px;border-left:2px solid #888;background:var(--color-background-secondary);cursor:pointer;opacity:0.6">Board overlap —</div>
+        </div>
+        <button class="btn-sm teal" style="width:100%;font-size:10px;margin-top:6px">+ New thread</button>
+      </div>
+
+      <div style="flex:1;padding:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <div class="knot"><div class="knot-label">Karen<br>Homan</div></div>
+          <div>
+            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">Karen Homan</div>
+            <div style="font-size:11px;color:var(--color-text-secondary)">Executive Director · Do Good In His Name Inc</div>
+            <div style="display:flex;gap:4px;margin-top:4px">
+              <span class="badge badge-danger">3 active threads</span>
+              <span class="badge badge-success">1 confirmed</span>
+              <span class="badge badge-neutral">1 exhausted</span>
+            </div>
+          </div>
+          <button class="btn-sm" style="margin-left:auto;font-size:10px">Switch knot</button>
+        </div>
+
+        <div class="sect-label">Active threads — still pulling</div>
+        <div class="thread-card pulling">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div class="thread-title">Hidden compensation through Baumer Construction</div>
+              <div class="thread-sub">990 shows $0 officer pay. Building permit + AOS audit show Baumer payments. Connected?</div>
+            </div>
+            <span class="badge badge-info">pulling</span>
+          </div>
+          <div class="thread-docs">
+            <span class="doc-chip">990-EZ 2021</span>
+            <span class="doc-chip">Building permit</span>
+            <span class="doc-chip">AOS audit 2021</span>
+          </div>
+          <div style="margin-top:6px;display:flex;gap:4px">
+            <button class="btn-sm primary" style="font-size:10px">Pull this thread →</button>
+            <span style="font-size:10px;color:#3C3489;padding:3px 6px;background:#EEEDFE;border-radius:3px;display:flex;align-items:center;gap:3px">AI: 1 suggestion waiting</span>
+          </div>
+        </div>
+
+        <div class="thread-card pulling">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div class="thread-title">Property transfer — 25 W Main St</div>
+              <div class="thread-sub">Zero-consideration deed transfer. Who is on both sides?</div>
+            </div>
+            <span class="badge badge-info">pulling</span>
+          </div>
+          <div class="thread-docs">
+            <span class="doc-chip">Deed - 25 W Main</span>
+          </div>
+          <div style="margin-top:6px"><button class="btn-sm" style="font-size:10px">Pull this thread →</button></div>
+        </div>
+
+        <div class="thread-card pulling">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div class="thread-title">UCC lien burst — 9 family members same window</div>
+              <div class="thread-sub">Farm Credit liens all filed within 6 weeks. UCC filing not yet examined.</div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center"><span class="badge badge-warn">unread doc</span><span class="badge badge-info">pulling</span></div>
+          </div>
+          <div class="thread-docs">
+            <span class="doc-chip" style="border-color:#BA7517;color:#854F0B">UCC filing 2019 !</span>
+          </div>
+          <div style="margin-top:6px"><button class="btn-sm" style="font-size:10px">Pull this thread →</button></div>
+        </div>
+
+        <div class="sect-label" style="margin-top:12px">Confirmed + exhausted</div>
+        <div class="thread-card confirmed">
+          <div style="display:flex;justify-content:space-between">
+            <div>
+              <div class="thread-title">False disclosure — 990 denies related-party tx</div>
+              <div class="thread-sub">Part IV Line 28 Yes + no Schedule L. Tied off as SR-006 + SR-025.</div>
+            </div>
+            <span class="badge badge-success">confirmed ✓</span>
+          </div>
+        </div>
+        <div class="thread-card dead-end">
+          <div style="display:flex;justify-content:space-between">
+            <div>
+              <div class="thread-title">Board member overlap</div>
+              <div class="thread-sub">Checked Ohio SOS — board members not traceable to Do Good Real Estate. No corroboration found.</div>
+            </div>
+            <span class="badge badge-neutral">exhausted —</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:165px;border-left:0.5px solid var(--color-border-tertiary);padding:10px;flex-shrink:0">
+        <div class="sect-label">Unread documents</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">2 documents have not been assigned to any thread yet.</div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+          <div style="padding:6px 8px;border-radius:4px;border:0.5px solid var(--color-border-warning);background:var(--color-background-warning)">
+            <div style="font-size:11px;font-weight:500;color:var(--color-text-warning)">UCC filing 2019</div>
+            <div style="font-size:10px;color:var(--color-text-warning);margin-top:1px">Assigned to UCC thread but not read</div>
+          </div>
+          <div style="padding:6px 8px;border-radius:4px;border:0.5px solid var(--color-border-warning);background:var(--color-background-warning)">
+            <div style="font-size:11px;font-weight:500;color:var(--color-text-warning)">Ohio SOS filing</div>
+            <div style="font-size:10px;color:var(--color-text-warning);margin-top:1px">Not yet assigned to any thread</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="sect-label">AI overview</div>
+        <div class="ai-card" style="margin-bottom:0">
+          <div class="ai-header">Sonnet · case-level</div>
+          <div class="ai-suggestion">3 active threads. The UCC lien burst and hidden compensation threads may connect — same creditor window as Baumer payments. Worth checking overlap.</div>
+          <div class="ai-action">Explore connection →</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="threadview" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">What you see when you click "Pull this thread" on the hidden compensation thread. The center panel becomes the thread workspace — evidence gathered, what's been read, what's still missing.</p>
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <button class="btn-sm" style="font-size:10px">← Back to knot</button>
+      <span style="font-size:11px;color:var(--color-text-secondary)">Thread:</span>
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-primary)">Hidden compensation through Baumer Construction</span>
+      <span class="badge badge-info" style="margin-left:4px">pulling</span>
+      <div style="margin-left:auto;display:flex;gap:4px">
+        <button class="btn-sm teal" style="font-size:10px">+ Add evidence</button>
+        <button class="btn-sm" style="font-size:10px">Tie off thread</button>
+      </div>
+    </div>
+    <div style="display:flex;min-height:460px">
+      <div style="width:165px;border-right:0.5px solid var(--color-border-tertiary);padding:10px;flex-shrink:0">
+        <div class="sect-label">Documents in this thread</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">
+          <div style="padding:5px 7px;border-radius:4px;background:var(--color-background-info);border:0.5px solid var(--color-border-info);font-size:10px;color:var(--color-text-info)">
+            <div style="font-weight:500">990-EZ 2021.pdf</div>
+            <div style="opacity:0.8;margin-top:1px">Part VII · Part IV</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);cursor:pointer">
+            <div style="font-weight:500">Building permit 2021</div>
+            <div style="opacity:0.8;margin-top:1px">p. 2 — contractor</div>
+          </div>
+          <div style="padding:5px 7px;border-radius:4px;font-size:10px;color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);cursor:pointer">
+            <div style="font-weight:500">AOS audit 2021</div>
+            <div style="opacity:0.8;margin-top:1px">p. 7 — Baumer costs</div>
+          </div>
+        </div>
+        <button class="btn-sm" style="width:100%;font-size:10px;margin-bottom:5px">+ Add document</button>
+        <button class="btn-sm" style="width:100%;font-size:10px">Search docs for "Baumer"</button>
+        <div class="divider"></div>
+        <div class="sect-label">Other threads</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid transparent">Property transfer</div>
+          <div style="padding:4px 6px;border-radius:3px;font-size:10px;color:var(--color-text-secondary);cursor:pointer;border:0.5px solid transparent">UCC lien burst</div>
+        </div>
+      </div>
+
+      <div style="flex:1;padding:12px;overflow-y:auto">
+        <div style="background:var(--color-background-secondary);border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;color:var(--color-text-secondary)">
+          <strong style="color:var(--color-text-primary)">Thread question:</strong> Is Karen Homan receiving compensation off-book, routed through Baumer Construction contracts, despite 990 reporting $0 officer pay?
+        </div>
+
+        <div class="sect-label">Evidence gathered (3 items)</div>
+
+        <div class="evidence-item">
+          <div class="ev-doc"><span>990-EZ 2021 · Part VII</span><button class="btn-sm" style="font-size:9px;height:18px">Open doc</button></div>
+          <div class="ev-quote">"Karen Homan, Executive Director — Avg hrs/wk: 40 — Reportable compensation: $0"</div>
+          <div class="ev-note">Extracted by Haiku · confirmed by investigator · SR-013 candidate</div>
+        </div>
+
+        <div class="evidence-item">
+          <div class="ev-doc"><span>Building permit 2021 · p. 2</span><button class="btn-sm" style="font-size:9px;height:18px">Open doc</button></div>
+          <div class="ev-quote">"Contractor of record: Baumer Construction LLC — Owner/applicant: Karen Homan"</div>
+          <div class="ev-note">Added manually by investigator · connects Homan to Baumer directly</div>
+        </div>
+
+        <div class="evidence-item">
+          <div class="ev-doc"><span>AOS audit 2021 · p. 7</span><button class="btn-sm" style="font-size:9px;height:18px">Open doc</button></div>
+          <div class="ev-quote">"$48,000 paid to Baumer Construction for renovation services — no competitive bid documentation on file"</div>
+          <div class="ev-note">Extracted by Haiku · AOS finding for recovery · high weight</div>
+        </div>
+
+        <div style="border:0.5px dashed var(--color-border-secondary);border-radius:5px;padding:8px;margin-top:8px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--color-text-secondary)">What still needs to be found to tie this off?</span>
+          <button class="btn-sm teal" style="font-size:10px">+ Add evidence note</button>
+        </div>
+      </div>
+
+      <div style="width:185px;border-left:0.5px solid var(--color-border-tertiary);padding:10px;flex-shrink:0">
+        <div class="sect-label">AI — what to pull next</div>
+        <div class="ai-card" style="margin-bottom:8px">
+          <div class="ai-header">Sonnet · thread-aware</div>
+          <div class="ai-suggestion">You have Homan as owner-applicant on the permit and Baumer receiving $48K with no bid docs. Missing link: is Baumer an entity connected to Homan directly? Check Ohio SOS for Baumer Construction LLC registration — look for Homan as registered agent or member.</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">
+            <span class="ai-action">Search Ohio SOS →</span>
+            <span class="ai-action">Mark noted</span>
+          </div>
+        </div>
+        <div class="ai-card">
+          <div class="ai-header">Sonnet · thread-aware</div>
+          <div class="ai-suggestion">990 Part IV Line 28 says Yes to related-party transactions but no Schedule L was filed. That's a separate thread (false disclosure) but also corroborates this one — the org self-admitted a related-party relationship exists.</div>
+          <div style="margin-top:5px">
+            <span class="ai-action">Add to this thread</span>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="sect-label">Tie off options</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="btn-sm teal" style="width:100%;font-size:10px">Confirm as finding</button>
+          <button class="btn-sm" style="width:100%;font-size:10px;color:var(--color-text-secondary)">Mark exhausted</button>
+          <button class="btn-sm" style="width:100%;font-size:10px">Split into two threads</button>
+        </div>
+        <div style="font-size:10px;color:var(--color-text-secondary);margin-top:6px;line-height:1.4">"Confirm as finding" creates a Finding record with all three documents as citations and auto-fills the evidence snapshot.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="aiflow" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">Haiku and Sonnet play different roles. Haiku extracts — it pulls facts from documents. Sonnet reasons — it looks at the thread you're building and points to the next pull. Neither one writes the finding. You do.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div style="border:0.5px solid #AFA9EC;border-radius:var(--border-radius-md);padding:12px;background:#EEEDFE">
+      <div style="font-size:12px;font-weight:500;color:#3C3489;margin-bottom:6px">Haiku — document extraction</div>
+      <div style="font-size:11px;color:#534AB7;line-height:1.6;margin-bottom:8px">Runs automatically when a document is uploaded and OCR'd. Pulls: entities (persons, orgs, EINs, addresses), financial figures, dates, form field values. Surfaces these as candidate evidence items on the relevant thread. Does not reason about what they mean.</div>
+      <div style="font-size:10px;color:#534AB7;background:#CECBF6;padding:6px 8px;border-radius:3px">Example: reads the 990 Part VII, extracts "Karen Homan — $0 compensation" as a candidate fact. Adds it to the hidden compensation thread if one exists, or flags it as unassigned evidence.</div>
+    </div>
+    <div style="border:0.5px solid #AFA9EC;border-radius:var(--border-radius-md);padding:12px;background:#EEEDFE">
+      <div style="font-size:12px;font-weight:500;color:#3C3489;margin-bottom:6px">Sonnet — thread reasoning</div>
+      <div style="font-size:11px;color:#534AB7;line-height:1.6;margin-bottom:8px">Runs when you open a thread or click "What should I look at next?" Reads the evidence you've gathered so far on that thread and suggests: what document to find, what search to run, what connection to check. It knows what you already have and doesn't repeat it.</div>
+      <div style="font-size:10px;color:#534AB7;background:#CECBF6;padding:6px 8px;border-radius:3px">Example: sees you have $0 officer pay + Baumer permit + $48K uncompetitive payment. Suggests: check Ohio SOS for Baumer entity registration, look for Homan as member or agent.</div>
+    </div>
+  </div>
+
+  <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;margin-bottom:14px">
+    <div class="sect-label">What the AI never does</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="background:var(--color-background-secondary);padding:8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)">Does not <strong style="color:var(--color-text-primary)">write the finding narrative</strong> — the investigator writes what was found, in plain fact language, with citations</div>
+      <div style="background:var(--color-background-secondary);padding:8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)">Does not <strong style="color:var(--color-text-primary)">assign evidence weight</strong> — the investigator decides how proven a thread is</div>
+      <div style="background:var(--color-background-secondary);padding:8px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)">Does not <strong style="color:var(--color-text-primary)">tie off threads</strong> — only a human can decide a thread is confirmed or exhausted. AI suggests; investigator decides.</div>
+    </div>
+  </div>
+
+  <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+    <div class="sect-label">Thread lifecycle with AI involvement</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0">1</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Investigator opens a thread</strong> — writes the question: "Is Homan being paid off-book through Baumer?"</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;color:#3C3489">H</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Haiku extracts</strong> from each document as it's added to the thread — surfaces candidate facts automatically</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0">3</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Investigator confirms or rejects</strong> each extracted fact — Haiku is fast but not infallible, human stays in the loop</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;color:#3C3489">S</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Sonnet reasons</strong> about what's been confirmed so far and suggests the next pull — which document to find, which search to run</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0">5</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Investigator pulls the next document</strong> based on Sonnet's suggestion — or ignores it and follows their own instinct</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0">6</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)"><strong style="color:var(--color-text-primary)">Thread is tied off</strong> when the investigator decides — confirmed (finding) or exhausted (dead end). AI does not decide this.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>

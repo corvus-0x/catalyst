@@ -1,0 +1,356 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tab-row{display:flex;gap:4px;margin-bottom:20px}
+.tab-btn{padding:6px 14px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.tab-btn.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.panel{display:none}.panel.active{display:block}
+.wf-chrome{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.wf-topbar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.wf-tab{padding:4px 10px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)}
+.wf-tab.active{background:var(--color-background-primary);color:var(--color-text-primary);border:0.5px solid var(--color-border-tertiary)}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-s{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-i{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-w{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-n{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-d{background:var(--color-background-danger);color:var(--color-text-danger)}
+.btn-sm{height:26px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);cursor:pointer;white-space:nowrap}
+.btn-p{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.btn-t{background:#E1F5EE;color:#0F6E56;border-color:#1D9E75}
+.sect{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
+.div{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:10px 0}
+.cr-row{display:grid;grid-template-columns:26px 1fr 1fr;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;align-items:start}
+.cr-row:last-child{border-bottom:none}
+.cr-n{width:20px;height:20px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;flex-shrink:0}
+</style>
+
+<h2 class="sr-only">Catalyst web view wireframe — interactive investigation web showing knots connected by threads, with detail panel and navigation hierarchy</h2>
+
+<div class="tab-row">
+  <button class="tab-btn active" onclick="showP('web')">Investigation web</button>
+  <button class="tab-btn" onclick="showP('nav')">Navigation hierarchy</button>
+  <button class="tab-btn" onclick="showP('clicks')">Click map</button>
+</div>
+
+<div id="web" class="panel active">
+  <div class="wf-chrome">
+    <div class="wf-topbar">
+      <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">Do Good In His Name Inc</span>
+      <div style="display:flex;gap:2px;margin-left:4px">
+        <div class="wf-tab active">Investigate</div>
+        <div class="wf-tab">Research</div>
+        <div class="wf-tab">Financials</div>
+        <div class="wf-tab">Timeline</div>
+        <div class="wf-tab">Referrals</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:5px;align-items:center">
+        <button class="btn-sm btn-t" style="font-size:10px">+ Add knot</button>
+        <button class="btn-sm" style="font-size:10px">+ Add thread</button>
+        <button class="btn-sm" style="font-size:10px;border:none;color:var(--color-text-secondary)">Web ▾</button>
+      </div>
+    </div>
+    <div style="display:flex;min-height:380px">
+      <div style="flex:1;background:var(--color-background-secondary);padding:8px;position:relative">
+        <svg id="websvg" viewBox="0 0 420 310" style="width:100%;display:block;cursor:default">
+          <defs>
+            <marker id="arr-g" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#1D9E75"/></marker>
+            <marker id="arr-b" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#185FA5"/></marker>
+          </defs>
+
+          <!-- EDGES drawn first, nodes render on top -->
+          <!-- e1: homan→dogood CONFIRMED green -->
+          <g class="edge-g" data-eid="e1" style="cursor:pointer" onclick="selEdge('e1')">
+            <line x1="210" y1="160" x2="330" y2="75" stroke="#1D9E75" stroke-width="2.5"/>
+            <line x1="210" y1="160" x2="330" y2="75" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e1" cx="270" cy="117" r="5" fill="#1D9E75" stroke="#fff" stroke-width="1.5"/>
+          </g>
+          <!-- e4: hanes→dogood CONFIRMED green -->
+          <g class="edge-g" data-eid="e4" style="cursor:pointer" onclick="selEdge('e4')">
+            <line x1="90" y1="75" x2="330" y2="75" stroke="#1D9E75" stroke-width="2.5"/>
+            <line x1="90" y1="75" x2="330" y2="75" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e4" cx="210" cy="75" r="5" fill="#1D9E75" stroke="#fff" stroke-width="1.5"/>
+          </g>
+          <!-- e5: hanes→dogoodre CONFIRMED green -->
+          <g class="edge-g" data-eid="e5" style="cursor:pointer" onclick="selEdge('e5')">
+            <line x1="90" y1="75" x2="90" y2="245" stroke="#1D9E75" stroke-width="2.5"/>
+            <line x1="90" y1="75" x2="90" y2="245" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e5" cx="90" cy="160" r="5" fill="#1D9E75" stroke="#fff" stroke-width="1.5"/>
+          </g>
+          <!-- e2: homan→baumer PULLING blue dashed -->
+          <g class="edge-g" data-eid="e2" style="cursor:pointer" onclick="selEdge('e2')">
+            <line x1="210" y1="160" x2="330" y2="245" stroke="#185FA5" stroke-width="2" stroke-dasharray="7,4"/>
+            <line x1="210" y1="160" x2="330" y2="245" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e2" cx="270" cy="202" r="5" fill="#185FA5" stroke="#fff" stroke-width="1.5"/>
+          </g>
+          <!-- e3: dogood→baumer PULLING blue dashed -->
+          <g class="edge-g" data-eid="e3" style="cursor:pointer" onclick="selEdge('e3')">
+            <line x1="330" y1="75" x2="330" y2="245" stroke="#185FA5" stroke-width="2" stroke-dasharray="7,4"/>
+            <line x1="330" y1="75" x2="330" y2="245" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e3" cx="330" cy="160" r="5" fill="#185FA5" stroke="#fff" stroke-width="1.5"/>
+          </g>
+          <!-- e6: homan→dogoodre PULLING blue dashed -->
+          <g class="edge-g" data-eid="e6" style="cursor:pointer" onclick="selEdge('e6')">
+            <line x1="210" y1="160" x2="90" y2="245" stroke="#185FA5" stroke-width="2" stroke-dasharray="7,4"/>
+            <line x1="210" y1="160" x2="90" y2="245" stroke="transparent" stroke-width="14"/>
+            <circle id="em-e6" cx="150" cy="202" r="5" fill="#185FA5" stroke="#fff" stroke-width="1.5"/>
+          </g>
+
+          <!-- NODES on top of edges -->
+          <!-- Karen Homan (person, circle, blue) -->
+          <g id="n-homan" style="cursor:pointer" onclick="selNode('homan')">
+            <circle cx="210" cy="160" r="33" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="210" y="155" text-anchor="middle" font-size="10" font-weight="500" fill="#0C447C">Karen</text>
+            <text x="210" y="167" text-anchor="middle" font-size="10" font-weight="500" fill="#0C447C">Homan</text>
+            <circle cx="232" cy="137" r="8" fill="#E24B4A" stroke="#fff" stroke-width="1"/>
+            <text x="232" y="141" text-anchor="middle" font-size="8" font-weight="500" fill="white">3</text>
+          </g>
+
+          <!-- Do Good Inc (org, teal rect) -->
+          <g id="n-dogood" style="cursor:pointer" onclick="selNode('dogood')">
+            <rect x="275" y="53" width="110" height="44" rx="5" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.5"/>
+            <text x="330" y="71" text-anchor="middle" font-size="9.5" font-weight="500" fill="#085041">Do Good Inc</text>
+            <text x="330" y="83" text-anchor="middle" font-size="8.5" fill="#0F6E56">nonprofit</text>
+            <circle cx="381" cy="55" r="7" fill="#1D9E75" stroke="#fff" stroke-width="1"/>
+            <text x="381" y="59" text-anchor="middle" font-size="7.5" font-weight="500" fill="white">3</text>
+          </g>
+
+          <!-- Baumer Construction (org, amber rect) -->
+          <g id="n-baumer" style="cursor:pointer" onclick="selNode('baumer')">
+            <rect x="275" y="223" width="110" height="44" rx="5" fill="#FAEEDA" stroke="#BA7517" stroke-width="1.5"/>
+            <text x="330" y="241" text-anchor="middle" font-size="9.5" font-weight="500" fill="#633806">Baumer Const.</text>
+            <text x="330" y="253" text-anchor="middle" font-size="8.5" fill="#854F0B">LLC · contractor</text>
+            <circle cx="381" cy="225" r="7" fill="#185FA5" stroke="#fff" stroke-width="1"/>
+            <text x="381" y="229" text-anchor="middle" font-size="7.5" font-weight="500" fill="white">2</text>
+          </g>
+
+          <!-- Hanes Law Group (org, purple rect) -->
+          <g id="n-hanes" style="cursor:pointer" onclick="selNode('hanes')">
+            <rect x="35" y="53" width="110" height="44" rx="5" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.5"/>
+            <text x="90" y="71" text-anchor="middle" font-size="9.5" font-weight="500" fill="#26215C">Hanes Law Group</text>
+            <text x="90" y="83" text-anchor="middle" font-size="8.5" fill="#3C3489">legal</text>
+            <circle cx="141" cy="55" r="7" fill="#1D9E75" stroke="#fff" stroke-width="1"/>
+            <text x="141" y="59" text-anchor="middle" font-size="7.5" font-weight="500" fill="white">2</text>
+          </g>
+
+          <!-- Do Good Real Estate (org, coral rect) -->
+          <g id="n-dogoodre" style="cursor:pointer" onclick="selNode('dogoodre')">
+            <rect x="35" y="223" width="110" height="44" rx="5" fill="#FAECE7" stroke="#D85A30" stroke-width="1.5"/>
+            <text x="90" y="241" text-anchor="middle" font-size="9.5" font-weight="500" fill="#4A1B0C">Do Good RE LLC</text>
+            <text x="90" y="253" text-anchor="middle" font-size="8.5" fill="#993C1D">shell entity</text>
+            <circle cx="141" cy="225" r="7" fill="#185FA5" stroke="#fff" stroke-width="1"/>
+            <text x="141" y="229" text-anchor="middle" font-size="7.5" font-weight="500" fill="white">1</text>
+          </g>
+
+          <!-- Legend bottom left -->
+          <g transform="translate(8,280)">
+            <line x1="0" y1="5" x2="22" y2="5" stroke="#1D9E75" stroke-width="2.5"/>
+            <text x="26" y="9" font-size="9" fill="#888780">confirmed finding</text>
+            <line x1="0" y1="20" x2="22" y2="20" stroke="#185FA5" stroke-width="2" stroke-dasharray="5,3"/>
+            <text x="26" y="24" font-size="9" fill="#888780">pulling thread</text>
+            <circle cx="60" cy="5" r="5" fill="#E24B4A" stroke="#fff" stroke-width="1" transform="translate(95,-3)"/>
+            <text x="168" y="9" font-size="9" fill="#888780">active threads</text>
+            <circle cx="60" cy="5" r="5" fill="#1D9E75" stroke="#fff" stroke-width="1" transform="translate(95,12)"/>
+            <text x="168" y="24" font-size="9" fill="#888780">confirmed</text>
+          </g>
+        </svg>
+      </div>
+
+      <div id="detail" style="width:215px;border-left:0.5px solid var(--color-border-tertiary);padding:12px;background:var(--color-background-primary);font-size:11px;overflow-y:auto">
+        <!-- default content rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:10px;font-size:11px;color:var(--color-text-secondary);line-height:1.6">
+    Colored dot badges on each knot show thread count: <span style="background:#E24B4A;color:white;border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:9px">3</span> red = active threads still pulling, <span style="background:#1D9E75;color:white;border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:9px">2</span> green = confirmed findings. Click any knot or any edge dot to see its detail.
+  </div>
+</div>
+
+<div id="nav" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">The Investigate tab has four drill-down levels. Each level zooms in on one thing. "Back" always takes you up one level.</p>
+  <div style="display:flex;flex-direction:column;gap:0">
+    <div style="display:flex;gap:0">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center;padding-top:14px">
+        <div style="width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0"></div>
+        <div style="width:1px;flex:1;background:var(--color-border-tertiary);margin-top:4px"></div>
+      </div>
+      <div style="flex:1;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:11px 13px;margin-bottom:6px;margin-left:8px">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Web view <span style="font-size:10px;font-weight:400;color:var(--color-text-secondary)">— Investigate tab default</span></div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">All knots (persons + orgs) as nodes. All threads as edges. Thread state encoded in edge color + style. Badge on each knot shows active vs. confirmed thread counts. Entry point for all investigation navigation.</div>
+        <div style="margin-top:6px;font-size:10px;color:var(--color-text-secondary)">Left rail: flat list of all knots with thread counts. Right panel: case-level stats + Sonnet case overview.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center">
+        <div style="width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0"></div>
+        <div style="width:1px;flex:1;background:var(--color-border-tertiary);margin-top:4px"></div>
+      </div>
+      <div style="flex:1;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:11px 13px;margin-bottom:6px;margin-left:8px">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Knot view <span style="font-size:10px;font-weight:400;color:var(--color-text-secondary)">— click a node in web view</span></div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Focuses on one person or org. Shows all threads attached to this knot (including threads that connect to other knots). Lists documents that mention this entity. Sonnet shows per-knot observations.</div>
+        <div style="margin-top:6px;font-size:10px;color:var(--color-text-secondary)">Header: "← Back to web." Left rail: this knot's threads. Center: thread list with statuses. Right: Sonnet suggestions for this knot.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center">
+        <div style="width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0"></div>
+        <div style="width:1px;flex:1;background:var(--color-border-tertiary);margin-top:4px"></div>
+      </div>
+      <div style="flex:1;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:11px 13px;margin-bottom:6px;margin-left:8px">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Thread view <span style="font-size:10px;font-weight:400;color:var(--color-text-secondary)">— click an edge dot, or "Pull this thread"</span></div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">The active investigation workspace. Shows the thread question, all evidence gathered so far (from multiple documents), Sonnet's automatic "what to pull next" suggestions, and the tie-off options. This is where investigation work actually happens.</div>
+        <div style="margin-top:6px;font-size:10px;color:var(--color-text-secondary)">Header: "← Back to knot [name]." Left rail: documents in this thread + RAG search. Right: Sonnet suggestions, auto-refreshed when evidence added.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center">
+        <div style="width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0"></div>
+      </div>
+      <div style="flex:1;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:11px 13px;margin-left:8px">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Document view <span style="font-size:10px;font-weight:400;color:var(--color-text-secondary)">— click a document in thread view or left rail</span></div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Full document facsimile. Findings linked to this doc are highlighted inline. Right panel shows which threads this document feeds into. RAG search sidebar available. Haiku extraction candidates shown for review.</div>
+        <div style="margin-top:6px;font-size:10px;color:var(--color-text-secondary)">Header: "← Back to thread [name]." "Add finding" always visible. Highlight text → right-click → Search other docs.</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px;padding:10px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);font-size:11px;color:var(--color-text-secondary)">
+    At any level, the top navigation bar shows the breadcrumb: <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);padding:2px 6px;border-radius:3px;font-size:10px">Web</span> → <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);padding:2px 6px;border-radius:3px;font-size:10px">Karen Homan</span> → <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);padding:2px 6px;border-radius:3px;font-size:10px">Hidden compensation</span> → <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);padding:2px 6px;border-radius:3px;font-size:10px">990-EZ 2021</span>
+  </div>
+</div>
+
+<div id="clicks" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Every interactive element on the web view.</p>
+  <div style="font-size:10px;color:var(--color-text-secondary);font-weight:500;display:grid;grid-template-columns:26px 1fr 1fr;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:2px">
+    <div></div><div>Click target</div><div>Outcome</div>
+  </div>
+  <div class="cr-row"><div class="cr-n">1</div><div>Click a knot node (person or org shape)</div><div style="color:var(--color-text-secondary)">Navigates to knot view for that entity — center panel shows all threads attached to it, right panel shows Sonnet per-knot observations</div></div>
+  <div class="cr-row"><div class="cr-n">2</div><div>Click a thread dot (colored circle on an edge)</div><div style="color:var(--color-text-secondary)">Opens thread detail in right panel — title, status, evidence count, signal rules, documents. "Pull this thread" button takes you to full thread view.</div></div>
+  <div class="cr-row"><div class="cr-n">3</div><div>Click a thread line (anywhere on the edge itself)</div><div style="color:var(--color-text-secondary)">Same as clicking the dot — selects that thread. The wide invisible hit area makes this easy to click.</div></div>
+  <div class="cr-row"><div class="cr-n">4</div><div>"+ Add knot" button (top toolbar)</div><div style="color:var(--color-text-secondary)">Opens a picker: search existing case entities to promote to a knot, or create a new person/org. Placed on the web canvas at a default position; can be dragged.</div></div>
+  <div class="cr-row"><div class="cr-n">5</div><div>"+ Add thread" button (top toolbar)</div><div style="color:var(--color-text-secondary)">Click mode activates: click one knot, then another to draw a thread between them. Thread question drawer opens to name the thread.</div></div>
+  <div class="cr-row"><div class="cr-n">6</div><div>Knot in left rail list</div><div style="color:var(--color-text-secondary)">Highlights that knot in the SVG web; same as clicking the node. Does not navigate away from web view.</div></div>
+  <div class="cr-row"><div class="cr-n">7</div><div>Drag a knot node</div><div style="color:var(--color-text-secondary)">Repositions the node on the canvas. Layout is persistent — if you arrange the web to match how you think about the case, it stays that way.</div></div>
+  <div class="cr-row"><div class="cr-n">8</div><div>Scroll / pinch on web canvas</div><div style="color:var(--color-text-secondary)">Zooms in/out. "Fit all" button in toolbar resets to full case view.</div></div>
+  <div class="cr-row"><div class="cr-n">9</div><div>Right-click a knot</div><div style="color:var(--color-text-secondary)">Context menu: "Open knot view / Add thread from here / Mark as secondary knot / Remove from web"</div></div>
+  <div class="cr-row"><div class="cr-n">10</div><div>Badge on knot (red = active, green = confirmed count)</div><div style="color:var(--color-text-secondary)">Shows a tooltip with a mini-list of thread names. Does not navigate — just informational at a glance.</div></div>
+</div>
+
+<script>
+const NODES = {
+  homan:{label:'Karen Homan',type:'Person',sub:'Executive Director',threads:3,confirmed:1,pulling:2,
+    detail:'Central subject of the investigation. Reports $0 officer compensation across all filing years while peak revenue hit $1.4M. Appears as owner/applicant on building permits listing Baumer Construction as contractor of record.',
+    rules:['SR-013','SR-026','SR-025','SR-006'],badges:['badge-d','badge-d','badge-d','badge-w']},
+  dogood:{label:'Do Good In His Name Inc',type:'Organization',sub:'Nonprofit · EIN 82-4458479',threads:3,confirmed:2,pulling:1,
+    detail:'Primary subject entity. 990-EZ filer. Revenue grew from $48K (2018) to $1.4M (2021). Incorporated Sep 19 2017 — six weeks after Hanes Law assembled both LLC entities.',
+    rules:['SR-006','SR-013','SR-028','SR-029','SR-025'],badges:['badge-w','badge-d','badge-d','badge-w','badge-d']},
+  baumer:{label:'Baumer Construction LLC',type:'Organization',sub:'Contractor · status unknown',threads:2,confirmed:0,pulling:2,
+    detail:'Received $48K from Do Good Inc without competitive bid documentation per AOS audit. Karen Homan listed as owner/applicant on same permits. Ohio SOS registration not yet confirmed.',
+    rules:['SR-026'],badges:['badge-w']},
+  hanes:{label:'Hanes Law Group',type:'Organization',sub:'Legal',threads:2,confirmed:2,pulling:0,
+    detail:'Assembled both Do Good LLC entities on Aug 8 2017 — six weeks before the nonprofit was publicly incorporated. Pattern indicates the legal structure was pre-positioned before the nonprofit formation.',
+    rules:['SR-024'],badges:['badge-w']},
+  dogoodre:{label:'Do Good Real Estate LLC',type:'Organization',sub:'Shell entity',threads:2,confirmed:1,pulling:1,
+    detail:'Assembled by Hanes Law on the same day as sibling LLC. Not a 990 filer — not tax exempt. Potential conduit for routing nonprofit funds to insider-controlled property entity.',
+    rules:['SR-015','SR-024'],badges:['badge-d','badge-w']},
+};
+const EDGES = {
+  e1:{from:'Karen Homan',to:'Do Good Inc',status:'confirmed',statusLabel:'confirmed ✓',statusClass:'badge-s',
+    title:'Exec Director + 990 false disclosure',
+    detail:'Homan reports 40hr/wk as Executive Director with $0 compensation. 990 Part IV Line 28 answered Yes to related-party transactions but no Schedule L filed. Multiple self-disclosed violations confirmed.',
+    rules:['SR-006','SR-013','SR-025','SR-028','SR-029'],docs:2,evidence:4},
+  e2:{from:'Karen Homan',to:'Baumer Construction',status:'pulling',statusLabel:'pulling →',statusClass:'badge-i',
+    title:'Hidden compensation via contractor payments',
+    detail:'Homan listed as owner/applicant on permits; Baumer as contractor of record. AOS audit found $48K Baumer payments with no bid docs. Sonnet: check Ohio SOS for Baumer entity registration — look for Homan as member or registered agent.',
+    rules:['SR-013','SR-026'],docs:3,evidence:3},
+  e3:{from:'Do Good Inc',to:'Baumer Construction',status:'pulling',statusLabel:'pulling →',statusClass:'badge-i',
+    title:'Uncompetitive contracts — no bid documentation',
+    detail:'Repeated payments from Do Good to Baumer without documented competitive bidding. AOS audit filed Finding for Recovery. Thread shares evidence with the hidden compensation thread.',
+    rules:['SR-026'],docs:2,evidence:2},
+  e4:{from:'Hanes Law Group',to:'Do Good Inc',status:'confirmed',statusLabel:'confirmed ✓',statusClass:'badge-s',
+    title:'LLC assembly six weeks before nonprofit',
+    detail:'Hanes filed both Do Good entities Aug 8 2017. Do Good Inc not incorporated until Sep 19 2017. Confirmed via Ohio SOS filing records.',
+    rules:['SR-024'],docs:1,evidence:2},
+  e5:{from:'Hanes Law Group',to:'Do Good RE LLC',status:'confirmed',statusLabel:'confirmed ✓',statusClass:'badge-s',
+    title:'Same-day LLC filing — pre-positioned structure',
+    detail:'Both Do Good LLC entities assembled by Hanes on the same calendar day. Deliberate legal architecture placed before public nonprofit formation.',
+    rules:['SR-024'],docs:1,evidence:1},
+  e6:{from:'Karen Homan',to:'Do Good RE LLC',status:'pulling',statusLabel:'pulling →',statusClass:'badge-i',
+    title:'Charity conduit — insider LLC',
+    detail:'Do Good Real Estate connected to Homan via Hanes Law. Potential mechanism for routing nonprofit funds through insider-controlled property entity. One document attached — property deed. More evidence needed.',
+    rules:['SR-015','SR-024'],docs:1,evidence:1},
+};
+
+function renderDefault(){
+  document.getElementById('detail').innerHTML=`
+    <div class="sect">Case web</div>
+    <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Do Good Investigation</div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:10px">5 knots · 6 threads</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--color-text-secondary)">Confirmed findings</span><span class="badge badge-s">3</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--color-text-secondary)">Pulling threads</span><span class="badge badge-i">3</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--color-text-secondary)">Unread documents</span><span class="badge badge-w">2</span></div>
+    </div>
+    <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);margin:8px 0">
+    <div class="sect">Sonnet · case level</div>
+    <div style="background:#EEEDFE;border:0.5px solid #AFA9EC;border-radius:5px;padding:7px 8px;font-size:10px;color:#3C3489;line-height:1.5">UCC lien burst thread and hidden compensation thread both connect to Karen Homan in the same 2019 window. Worth examining whether the Farm Credit lien activity coincides with Baumer payment dates.</div>
+    <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);margin:8px 0">
+    <div style="font-size:10px;color:var(--color-text-secondary)">Click any knot or thread dot to see detail</div>`;
+}
+
+function selNode(id){
+  clearSel();
+  const n=NODES[id];
+  document.getElementById('n-'+id).style.opacity='0.85';
+  document.getElementById('detail').innerHTML=`
+    <button onclick="renderDefault()" style="font-size:10px;color:var(--color-text-secondary);border:none;background:none;cursor:pointer;padding:0;margin-bottom:8px">← Case web</button>
+    <div class="sect">${n.type}</div>
+    <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px">${n.label}</div>
+    <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:8px">${n.sub}</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <span class="badge badge-d">${n.pulling} pulling</span>
+      <span class="badge badge-s">${n.confirmed} confirmed</span>
+    </div>
+    <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5;margin-bottom:8px">${n.detail}</div>
+    <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);margin:6px 0">
+    <div class="sect">Signal rules triggered</div>
+    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:10px">${n.rules.map((r,i)=>`<span class="badge ${n.badges[i]}">${r}</span>`).join('')}</div>
+    <button style="width:100%;height:26px;background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);border-radius:4px;font-size:11px;cursor:pointer;margin-bottom:4px">Open knot view →</button>
+    <button style="width:100%;height:26px;background:#E1F5EE;color:#0F6E56;border:0.5px solid #1D9E75;border-radius:4px;font-size:11px;cursor:pointer">+ Add thread from here</button>`;
+}
+
+function selEdge(id){
+  clearSel();
+  const e=EDGES[id];
+  document.getElementById('em-'+id).setAttribute('r','7');
+  document.getElementById('detail').innerHTML=`
+    <button onclick="renderDefault()" style="font-size:10px;color:var(--color-text-secondary);border:none;background:none;cursor:pointer;padding:0;margin-bottom:8px">← Case web</button>
+    <div class="sect">Thread</div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:4px">${e.from} → ${e.to}</div>
+    <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:5px">${e.title}</div>
+    <span class="badge ${e.statusClass}" style="margin-bottom:8px;display:inline-block">${e.statusLabel}</span>
+    <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5;margin-bottom:8px">${e.detail}</div>
+    <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);margin:6px 0">
+    <div style="display:flex;gap:8px;margin-bottom:8px;font-size:11px">
+      <div style="flex:1;text-align:center;background:var(--color-background-secondary);border-radius:4px;padding:5px"><div style="font-weight:500">${e.docs}</div><div style="color:var(--color-text-secondary);font-size:10px">docs</div></div>
+      <div style="flex:1;text-align:center;background:var(--color-background-secondary);border-radius:4px;padding:5px"><div style="font-weight:500">${e.evidence}</div><div style="color:var(--color-text-secondary);font-size:10px">evidence</div></div>
+    </div>
+    <div class="sect">Signal rules</div>
+    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:10px">${e.rules.map(r=>`<span class="badge badge-w">${r}</span>`).join('')}</div>
+    <button style="width:100%;height:26px;background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);border-radius:4px;font-size:11px;cursor:pointer;margin-bottom:4px">Pull this thread →</button>`;
+}
+
+function clearSel(){
+  Object.keys(NODES).forEach(id=>{document.getElementById('n-'+id).style.opacity='1'});
+  Object.keys(EDGES).forEach(id=>{const el=document.getElementById('em-'+id);if(el)el.setAttribute('r','5')});
+}
+
+function showP(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+renderDefault();
+</script>

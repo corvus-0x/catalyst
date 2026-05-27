@@ -1,0 +1,412 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tabs{display:flex;gap:4px;padding:0 0 20px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:24px}
+.tab-btn{padding:6px 14px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;transition:all 0.15s}
+.tab-btn.active{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-secondary)}
+.panel{display:none}
+.panel.active{display:block}
+
+.wf-chrome{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.wf-topbar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 12px;display:flex;align-items:center;gap:8px}
+.wf-tabs{display:flex;gap:2px}
+.wf-tab{padding:4px 10px;border-radius:4px;font-size:11px;color:var(--color-text-secondary)}
+.wf-tab.active{background:var(--color-background-primary);color:var(--color-text-primary);border:0.5px solid var(--color-border-tertiary)}
+
+.sect-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.divider{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:12px 0}
+.badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500}
+.badge-info{background:var(--color-background-info);color:var(--color-text-info)}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-success{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-danger{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge-neutral{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.badge-purple{background:#EEEDFE;color:#3C3489}
+
+.form-row{margin-bottom:12px}
+.form-label{font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.form-hint{font-size:10px;color:var(--color-text-secondary);font-weight:400}
+.form-input{width:100%;height:30px;border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:0 8px;font-size:11px;background:var(--color-background-secondary);color:var(--color-text-primary)}
+.form-textarea{width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:6px 8px;font-size:11px;background:var(--color-background-secondary);color:var(--color-text-primary);resize:none}
+.form-select{width:100%;height:30px;border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:0 8px;font-size:11px;background:var(--color-background-secondary);color:var(--color-text-primary)}
+.btn-sm{height:28px;padding:0 10px;border:0.5px solid var(--color-border-secondary);border-radius:4px;font-size:11px;color:var(--color-text-primary);background:var(--color-background-primary);cursor:pointer}
+.btn-sm.primary{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.btn-sm.danger{background:var(--color-background-danger);color:var(--color-text-danger);border-color:var(--color-border-danger)}
+.chip-group{display:flex;flex-wrap:wrap;gap:4px}
+.chip{padding:4px 8px;border:0.5px solid var(--color-border-tertiary);border-radius:12px;font-size:11px;color:var(--color-text-secondary);cursor:pointer}
+.chip.on{border-color:var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info)}
+.chip.danger-on{border-color:var(--color-border-danger);background:var(--color-background-danger);color:var(--color-text-danger)}
+.chip.warn-on{border-color:var(--color-border-warning);background:var(--color-background-warning);color:var(--color-text-warning)}
+.pill-row{display:flex;gap:4px;flex-wrap:wrap}
+.doc-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:4px;font-size:11px;color:var(--color-text-primary)}
+.doc-tag .remove{color:var(--color-text-secondary);cursor:pointer;margin-left:2px}
+.step-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.step-num{width:18px;height:18px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;flex-shrink:0;margin-top:2px}
+.step-text{font-size:11px;color:var(--color-text-secondary)}
+
+.cr-row{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;align-items:start}
+.cr-row:last-child{border-bottom:none}
+.cr-num{width:20px;height:20px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:var(--color-text-primary);flex-shrink:0}
+.click-ref-title{font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em}
+.callout{background:var(--color-background-secondary);border-left:2px solid var(--color-border-secondary);border-radius:0 4px 4px 0;padding:6px 10px;font-size:11px;color:var(--color-text-secondary);margin-bottom:10px}
+
+.drawer-scene{position:relative;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;min-height:520px;background:var(--color-background-secondary)}
+.scene-bg{position:absolute;inset:0;opacity:0.25;display:flex}
+.scene-bg .col{flex:1;border-right:0.5px solid var(--color-border-tertiary)}
+.scene-bg .col:last-child{border-right:none}
+.drawer-overlay{position:absolute;top:0;right:0;bottom:0;width:340px;background:var(--color-background-primary);border-left:0.5px solid var(--color-border-secondary);display:flex;flex-direction:column;z-index:2}
+.drawer-header{padding:14px 14px 10px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center}
+.drawer-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.drawer-body{flex:1;overflow-y:auto;padding:14px}
+.drawer-footer{padding:10px 14px;border-top:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center}
+
+.modal-scene{position:relative;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;min-height:480px;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.25)}
+.modal-box{position:relative;width:440px;background:var(--color-background-primary);border-radius:var(--border-radius-lg);border:0.5px solid var(--color-border-secondary);z-index:2;display:flex;flex-direction:column}
+.modal-header{padding:14px 16px 10px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center}
+.modal-body{padding:14px 16px;flex:1}
+.modal-footer{padding:10px 16px;border-top:0.5px solid var(--color-border-tertiary);display:flex;justify-content:flex-end;gap:8px}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.progress-steps{display:flex;align-items:center;gap:0;margin-bottom:14px}
+.ps{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.ps-dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--color-border-tertiary);background:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:var(--color-text-secondary)}
+.ps-dot.active{border-color:#185FA5;background:#E6F1FB;color:#185FA5}
+.ps-dot.done{border-color:#0F6E56;background:#E1F5EE;color:#0F6E56}
+.ps-line{flex:1;height:1px;background:var(--color-border-tertiary);margin-top:-12px}
+.ps-label{font-size:9px;color:var(--color-text-secondary)}
+</style>
+
+<h2 class="sr-only">Wireframes for Add Finding drawer and Add Event modal with interaction maps</h2>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showPanel('finding')">Add finding drawer</button>
+  <button class="tab-btn" onclick="showPanel('event')">Add event modal</button>
+  <button class="tab-btn" onclick="showPanel('states')">Form states + edge cases</button>
+</div>
+
+<div id="finding" class="panel active">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Triggered from: "Add finding" button in the main case view (top of center panel). Slides in from the right as a drawer — the three-panel layout stays visible behind it so the investigator can see context while filling in the form.</p>
+  <div class="drawer-scene">
+    <div class="scene-bg">
+      <div class="col"></div>
+      <div class="col"></div>
+      <div class="col"></div>
+    </div>
+    <div style="position:absolute;left:10px;top:10px;font-size:10px;color:var(--color-text-secondary);opacity:0.5">← main case view (dimmed)</div>
+    <div class="drawer-overlay">
+      <div class="drawer-header">
+        <div class="drawer-title">Add finding</div>
+        <button class="btn-sm" style="width:24px;height:24px;padding:0;font-size:14px;border:none">✕</button>
+      </div>
+      <div class="drawer-body" style="font-size:12px">
+        <div class="callout">Manual findings let you record a pattern the rules didn't catch. Every field here becomes a citable element in the referral package.</div>
+
+        <div class="form-row">
+          <div class="form-label">Title <span class="form-hint">required · shown in referral package</span></div>
+          <input class="form-input" placeholder="e.g. Zero officer pay despite $1.4M revenue" style="background:var(--color-background-primary)">
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Signal rule <span class="form-hint">optional — links to a pattern</span></div>
+          <select class="form-select" style="background:var(--color-background-primary)">
+            <option value="">None — original finding</option>
+            <option>SR-003 Valuation anomaly</option>
+            <option>SR-004 UCC burst</option>
+            <option selected>SR-013 Zero officer pay</option>
+            <option>SR-015 Insider swap</option>
+            <option>SR-021 Revenue spike</option>
+            <option>SR-024 Charity conduit</option>
+            <option>SR-025 False disclosure</option>
+            <option>SR-028 Material diversion</option>
+            <option>SR-029 Low program ratio</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Severity</div>
+          <div class="chip-group">
+            <span class="chip">Informational</span>
+            <span class="chip warn-on">Medium</span>
+            <span class="chip">High</span>
+            <span class="chip danger-on">Critical</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Evidence weight <span class="form-hint">how proven is this?</span></div>
+          <div class="chip-group">
+            <span class="chip">Speculative</span>
+            <span class="chip on">Directional</span>
+            <span class="chip">Documented</span>
+            <span class="chip">Traced</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Description <span class="form-hint">what was found — no conclusions, just facts</span></div>
+          <textarea class="form-textarea" rows="3" style="background:var(--color-background-primary)">990-EZ Part VII reports $0 officer compensation across all filing years (2018–2022). Peak revenue in 2021 was $1.4M. Building permits filed same period list Karen Homan as contractor.</textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Source documents <span class="form-hint">click to add</span></div>
+          <div class="pill-row" style="margin-bottom:6px">
+            <span class="doc-tag">Doc-3: 990-EZ 2021 <span class="remove">✕</span></span>
+            <span class="doc-tag">Doc-7: Building permit <span class="remove">✕</span></span>
+          </div>
+          <button class="btn-sm">+ Add document</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Linked entities <span class="form-hint">who is involved?</span></div>
+          <div class="pill-row" style="margin-bottom:6px">
+            <span class="doc-tag badge-info">Karen Homan <span class="remove">✕</span></span>
+          </div>
+          <button class="btn-sm">+ Add entity</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Narrative note <span class="form-hint">optional · your working theory</span></div>
+          <textarea class="form-textarea" rows="2" style="background:var(--color-background-primary)" placeholder="Possible hidden compensation routed through Baumer Construction invoices…"></textarea>
+        </div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-sm">Cancel</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm">Save as draft</button>
+          <button class="btn-sm primary">Save finding</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px">
+    <div class="click-ref-title">Add finding drawer — click map</div>
+    <div class="cr-row" style="font-size:10px;color:var(--color-text-secondary);font-weight:500"><div></div><div>Click target</div><div>Outcome</div></div>
+    <div class="cr-row"><div class="cr-num">1</div><div>Signal rule dropdown — select a rule</div><div style="color:var(--color-text-secondary)">Auto-populates severity (from rule definition); shows a rule description hint below the dropdown so investigator knows what they're claiming</div></div>
+    <div class="cr-row"><div class="cr-num">2</div><div>Severity chips</div><div style="color:var(--color-text-secondary)">Single-select toggle; selecting "Critical" shows a small warning: "Critical findings appear first in the referral package — reserve for self-disclosed or directly documented violations"</div></div>
+    <div class="cr-row"><div class="cr-num">3</div><div>Evidence weight chips</div><div style="color:var(--color-text-secondary)">Single-select; "Traced" is locked unless at least one source document is attached — can't claim traced without a citation</div></div>
+    <div class="cr-row"><div class="cr-num">4</div><div>"+ Add document" button</div><div style="color:var(--color-text-secondary)">Opens a mini-picker listing docs already in the case; click a doc to attach it as a citation (with page number field); attached docs show as removable tags</div></div>
+    <div class="cr-row"><div class="cr-num">5</div><div>"+ Add entity" button</div><div style="color:var(--color-text-secondary)">Opens a mini-picker listing persons, orgs, properties in the case; click to attach; shows as colored tag (blue = person, green = org, amber = property)</div></div>
+    <div class="cr-row"><div class="cr-num">6</div><div>Remove tag (✕ on doc or entity)</div><div style="color:var(--color-text-secondary)">Removes that citation link; if removing the last doc makes weight="Traced" invalid, weight drops to "Documented" automatically with a toast</div></div>
+    <div class="cr-row"><div class="cr-num">7</div><div>"Save as draft" button</div><div style="color:var(--color-text-secondary)">Saves finding with status=NEW and evidence_weight=SPECULATIVE regardless of form state; no validation required; appears in Pipeline tab as gray "draft" card</div></div>
+    <div class="cr-row"><div class="cr-num">8</div><div>"Save finding" button</div><div style="color:var(--color-text-secondary)">Validates required fields (title + description); saves with selected status/weight; drawer closes; center panel scrolls to the new finding card; audit log entry created</div></div>
+    <div class="cr-row"><div class="cr-num">9</div><div>✕ close or click outside drawer</div><div style="color:var(--color-text-secondary)">If form has unsaved content: shows "Discard changes?" confirmation. If empty: closes immediately</div></div>
+  </div>
+</div>
+
+<div id="event" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">Triggered from: "Add event" button on the Timeline tab. A centered modal — unlike the drawer, the timeline disappears behind a backdrop because you need to focus on the date and context fields without distraction.</p>
+
+  <div class="modal-scene">
+    <div class="modal-backdrop"></div>
+    <div class="modal-box">
+      <div class="modal-header">
+        <div style="font-size:13px;font-weight:500">Add timeline event</div>
+        <button class="btn-sm" style="width:24px;height:24px;padding:0;font-size:14px;border:none">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="progress-steps" style="margin-bottom:16px">
+          <div class="ps">
+            <div class="ps-dot done">✓</div>
+            <div class="ps-label">Date + title</div>
+          </div>
+          <div class="ps-line"></div>
+          <div class="ps">
+            <div class="ps-dot active">2</div>
+            <div class="ps-label">Connect</div>
+          </div>
+          <div class="ps-line"></div>
+          <div class="ps">
+            <div class="ps-dot">3</div>
+            <div class="ps-label">Classify</div>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-bottom:12px">Step 2 of 3: Link this event to the entities and documents it involves.</div>
+
+        <div class="form-row">
+          <div class="form-label">Event date <span class="form-hint">already entered</span></div>
+          <div style="display:flex;gap:6px">
+            <input class="form-input" value="Aug 8, 2017" style="flex:1;background:var(--color-background-secondary)">
+            <button class="btn-sm">Edit</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Title <span class="form-hint">already entered</span></div>
+          <input class="form-input" value="Hanes Law Group files two Do Good LLCs" style="background:var(--color-background-secondary)">
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Entities involved <span class="form-hint">who appears in this event?</span></div>
+          <div class="pill-row" style="margin-bottom:6px">
+            <span class="doc-tag badge-info">Hanes Law Group <span class="remove">✕</span></span>
+            <span class="doc-tag" style="background:var(--color-background-success);color:var(--color-text-success)">Do Good Real Estate LLC <span class="remove">✕</span></span>
+          </div>
+          <button class="btn-sm">+ Add entity</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Source document <span class="form-hint">what doc proves this happened?</span></div>
+          <div class="pill-row" style="margin-bottom:6px">
+            <span class="doc-tag">Doc-12: Ohio SOS filing Aug 2017 <span class="remove">✕</span></span>
+          </div>
+          <button class="btn-sm">+ Add document</button>
+          <div style="font-size:10px;color:var(--color-text-secondary);margin-top:4px">No doc? You can still save — event will appear on timeline with a "needs citation" flag.</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-label">Note <span class="form-hint">optional — investigator context</span></div>
+          <textarea class="form-textarea" rows="2" style="background:var(--color-background-primary)" placeholder="Why does this event matter to the case?">LLC filed 6 weeks before nonprofit incorporated — suggests entities were pre-positioned</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-sm" style="margin-right:auto">Back</button>
+        <button class="btn-sm">Cancel</button>
+        <button class="btn-sm primary">Next: classify →</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md)">
+    <div class="sect-label">Step 3: Classify (what you see after clicking "Next")</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px">
+      <div>
+        <div class="form-row">
+          <div class="form-label">Event type</div>
+          <div class="chip-group">
+            <span class="chip">Entity formed</span>
+            <span class="chip on">Document filed</span>
+            <span class="chip">Property transfer</span>
+            <span class="chip">Financial event</span>
+            <span class="chip">Government action</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Severity <span class="form-hint">for display on timeline</span></div>
+          <div class="chip-group">
+            <span class="chip">Informational</span>
+            <span class="chip warn-on">High</span>
+            <span class="chip">Critical</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="form-row">
+          <div class="form-label">Link to finding <span class="form-hint">optional</span></div>
+          <select class="form-select" style="background:var(--color-background-primary)">
+            <option value="">No finding yet</option>
+            <option selected>Create new finding from this event</option>
+            <option>Link to existing finding…</option>
+          </select>
+        </div>
+        <div style="padding:8px 10px;background:var(--color-background-info);border-radius:4px;font-size:11px;color:var(--color-text-info)">
+          "Create new finding" will pre-fill the Add Finding drawer with this event's date, entities, and document — saves re-entering the same info.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px">
+    <div class="click-ref-title">Add event modal — click map</div>
+    <div class="cr-row" style="font-size:10px;color:var(--color-text-secondary);font-weight:500"><div></div><div>Click target</div><div>Outcome</div></div>
+    <div class="cr-row"><div class="cr-num">1</div><div>Step 1: Date + title fields</div><div style="color:var(--color-text-secondary)">Free text date or date picker; title is one-line. Clicking "Next" advances to step 2 — no validation until step 3 save</div></div>
+    <div class="cr-row"><div class="cr-num">2</div><div>Step 2: "Add entity" picker</div><div style="color:var(--color-text-secondary)">Lists existing case entities (persons, orgs, properties); also has "+ New entity" to create one inline without leaving the modal</div></div>
+    <div class="cr-row"><div class="cr-num">3</div><div>Step 2: "Add document" picker</div><div style="color:var(--color-text-secondary)">Lists case documents; selecting one also prompts for an optional page number reference. No doc is OK — event gets a "needs citation" tag on timeline</div></div>
+    <div class="cr-row"><div class="cr-num">4</div><div>Step 3: Event type chips</div><div style="color:var(--color-text-secondary)">Single-select; controls the icon shown on the timeline dot (document icon, house icon, dollar icon, etc.)</div></div>
+    <div class="cr-row"><div class="cr-num">5</div><div>Step 3: "Create new finding from this event"</div><div style="color:var(--color-text-secondary)">On save, modal closes, then immediately opens the Add Finding drawer with date, entities, doc pre-filled — investigator fills in description and weight only</div></div>
+    <div class="cr-row"><div class="cr-num">6</div><div>Step 3: "Link to existing finding…"</div><div style="color:var(--color-text-secondary)">Shows a searchable list of current findings; selecting one links the event to that finding; event appears on the timeline card with the finding badge (e.g. SR-024)</div></div>
+    <div class="cr-row"><div class="cr-num">7</div><div>"Back" button (step 2 and 3)</div><div style="color:var(--color-text-secondary)">Goes to previous step; all entered data is preserved</div></div>
+    <div class="cr-row"><div class="cr-num">8</div><div>Final save button</div><div style="color:var(--color-text-secondary)">Creates InvestigatorNote (if no finding link) or FindingDocument link (if linked); event appears on timeline immediately; if "create new finding" selected, opens Add Finding drawer next</div></div>
+    <div class="cr-row"><div class="cr-num">9</div><div>Click outside modal or Cancel</div><div style="color:var(--color-text-secondary)">If any step has content: "Discard?" confirmation. If empty: closes immediately</div></div>
+  </div>
+</div>
+
+<div id="states" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:14px">These are the edge cases and validation states both modals need to handle correctly. Getting these right is what separates a form that works from one that loses data or confuses the investigator mid-workflow.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">Validation states</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="step-row">
+          <div class="step-num" style="background:var(--color-background-danger);color:var(--color-text-danger)">!</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Empty required field on save</strong> — border turns red, label shows error text inline. No toast. Scroll to first error.</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num" style="background:var(--color-background-warning);color:var(--color-text-warning)">↓</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Weight="Traced" with no doc</strong> — auto-demotes to "Documented" silently when doc is removed. Shows "Evidence weight updated" toast.</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num" style="background:var(--color-background-info);color:var(--color-text-info)">→</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Rule auto-fill</strong> — selecting a signal rule pre-fills severity. Investigator can still override — the rule is a suggestion, not a lock.</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num" style="background:var(--color-background-success);color:var(--color-text-success)">✓</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Duplicate detection</strong> — if title text closely matches an existing finding, show "Possible duplicate: [Finding name]" link below title field.</div>
+        </div>
+      </div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">Abandon / discard logic</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="step-row">
+          <div class="step-num">1</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Form is empty</strong> — pressing ✕ or Escape closes immediately, no confirmation</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">2</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Form has content but not saved</strong> — pressing ✕ shows: "Discard changes? / Cancel · Discard"</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">3</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">"Save as draft" path</strong> — always available on Add Finding drawer even with incomplete data. Saves status=NEW, weight=SPECULATIVE.</div>
+        </div>
+        <div class="step-row">
+          <div class="step-num">4</div>
+          <div class="step-text"><strong style="color:var(--color-text-primary)">Back navigation (Add Event)</strong> — going back preserves all entered data in that step; never clears on back</div>
+        </div>
+      </div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">The "create finding from event" chain</div>
+      <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px">When investigator picks "Create new finding from this event" in step 3 of Add Event:</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-info" style="white-space:nowrap">Add event modal</span>
+          <span style="font-size:11px;color:var(--color-text-secondary)">Saves event to timeline</span>
+        </div>
+        <div style="padding-left:12px;border-left:1px solid var(--color-border-tertiary);font-size:10px;color:var(--color-text-secondary)">↓ modal closes</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-purple" style="white-space:nowrap">Add finding drawer</span>
+          <span style="font-size:11px;color:var(--color-text-secondary)">Opens with event data pre-filled</span>
+        </div>
+        <div style="padding-left:12px;border-left:1px solid var(--color-border-tertiary);font-size:10px;color:var(--color-text-secondary)">↓ investigator fills description + weight only</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-success" style="white-space:nowrap">Finding saved</span>
+          <span style="font-size:11px;color:var(--color-text-secondary)">Auto-linked back to timeline event</span>
+        </div>
+      </div>
+    </div>
+    <div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px">
+      <div class="sect-label">Keyboard / accessibility</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--color-text-secondary)">
+        <div><strong style="color:var(--color-text-primary)">Escape</strong> — closes drawer/modal (triggers discard check if dirty)</div>
+        <div><strong style="color:var(--color-text-primary)">Tab order</strong> — title → rule/type → severity → weight → description → documents → entities → note → save</div>
+        <div><strong style="color:var(--color-text-primary)">Cmd/Ctrl + Enter</strong> — triggers "Save finding" / "Next" from any field</div>
+        <div><strong style="color:var(--color-text-primary)">Drawer backdrop</strong> — clicking the dimmed main case view behind the drawer does NOT close it (investigator might be reading context)</div>
+        <div><strong style="color:var(--color-text-primary)">Modal backdrop</strong> — clicking outside the Add Event modal DOES trigger the discard check (it's a true modal, not a slide-in)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
