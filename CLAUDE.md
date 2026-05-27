@@ -1,5 +1,5 @@
 # CLAUDE.md — Catalyst System Map
-**Last updated:** 2026-05-15
+**Last updated:** 2026-05-27
 **Owner:** Tyler Collins (tjcollinsku@gmail.com)
 
 ---
@@ -120,132 +120,34 @@ Catalyst/
 
 ## DATA MODELS
 
-### Core
-- **Case** — name, status (ACTIVE/PAUSED/REFERRED/CLOSED), notes, referral_ref
-- **Document** — filename, sha256_hash, doc_type, ocr_status, extraction_status, is_generated
-- **Finding** — Two dimensions: `status` (NEW/NEEDS_EVIDENCE/DISMISSED/CONFIRMED) and
-  `evidence_weight` (SPECULATIVE/DIRECTIONAL/DOCUMENTED/TRACED). Also: rule_id, title,
-  description, severity, source (AUTO/MANUAL/AI), evidence_snapshot, trigger_doc FK
-- **FindingEntity** — links Finding to an entity
-- **FindingDocument** — links Finding to a source document with page reference
+→ Full model reference: **`docs/team/backend-engineer.md`**
 
-### Entity Models
-- **Person** — name, aliases[], date_of_birth, role_tags[]
-- **Organization** — name, ein, entity_number, state, org_type, formation_date
-- **Property** — parcel_number, address, county, assessed_value, purchase_price
-- **FinancialSnapshot** — org FK, tax_year, revenue, expenses, net_assets (from 990)
-- **Address** — normalized street/city/state/zip
-
-### Relationship Models
-- **PersonOrganization** — role_type (OFFICER, BOARD_MEMBER, COUNSEL, ADVISOR)
-- **PropertyTransaction** — grantor/grantee with polymorphic entity link
-- **Relationship** — person-to-person (FAMILY/BUSINESS/SOCIAL)
-- **TransactionChain** + **TransactionChainLink** — grouped property deals
-
-### Operational Models
-- **InvestigatorNote** — polymorphic target (any entity/finding)
-- **AuditLog** — append-only forensic log (NEVER UPDATE OR DELETE)
-- **SearchJob** — async background job tracker. Fields: `job_type`, `status`
-  (QUEUED/RUNNING/SUCCESS/FAILED), `query_params` JSON, `result` JSON. Case FK nullable.
+Key models for quick orientation:
+- **Case** — name, status (ACTIVE/PAUSED/REFERRED/CLOSED)
+- **Finding** — `status` (NEW/NEEDS_EVIDENCE/DISMISSED/CONFIRMED) × `evidence_weight`
+  (SPECULATIVE/DIRECTIONAL/DOCUMENTED/TRACED). Dedup key: `(case, rule_id, trigger_entity_id)`.
+  `evidence_snapshot` populated by every CRITICAL rule for referral PDF citations.
+- **AuditLog** — append-only. **NEVER UPDATE OR DELETE.**
+- **SearchJob** — async job tracker. Fields: `job_type`, `status`, `query_params`, `result`.
   Index on `(case, -created_at)` for reattach-on-mount.
 
 ---
 
-## SIGNAL RULES (15 active)
+## SIGNAL RULES
 
-| Rule | Severity | What It Detects |
-|------|----------|----------------|
-| SR-003 | HIGH | VALUATION_ANOMALY — Purchase price deviates >50% from assessed value |
-| SR-004 | HIGH | UCC_BURST — 3+ UCC amendments to same filing on the same calendar day |
-| SR-005 | HIGH | ZERO_CONSIDERATION — Zero-consideration transfer between related parties |
-| SR-006 | HIGH | SCHEDULE_L_MISSING — 990 Part IV Line 28 Yes but no Schedule L |
-| SR-010 | MEDIUM | MISSING_990 — Tax-exempt org has no Form 990 on file |
-| SR-012 | HIGH | NO_COI_POLICY — No conflict of interest policy despite material revenue |
-| SR-013 | HIGH | ZERO_OFFICER_PAY — $0 officer compensation at high-revenue org |
-| SR-015 | CRITICAL | INSIDER_SWAP — Related party on both sides of property transaction |
-| SR-017 | HIGH | BLANKET_LIEN — UCC blanket lien on charity-connected entity |
-| SR-021 | HIGH | REVENUE_SPIKE — Year-over-year revenue increase exceeds 100% |
-| SR-024 | HIGH | CHARITY_CONDUIT — Charity buys from family, transfers to insider |
-| SR-025 | CRITICAL | FALSE_DISCLOSURE — 990 denies related-party tx, evidence contradicts |
-| SR-026 | HIGH | CONTRACTOR_DENIAL — 990 denies contractors, permits show otherwise |
-| SR-028 | CRITICAL | MATERIAL_DIVERSION — 990 Part VI Line 5 Yes (self-disclosed misuse of assets) |
-| SR-029 | HIGH | LOW_PROGRAM_RATIO — <50% of expenses go to program services |
+→ Full rule table + dedup logic: **`docs/team/backend-engineer.md`**
 
-**Dedup key:** `(case, rule_id, trigger_entity_id)` with fallback to `trigger_doc` when no
-entity is present.
-
-**Finding.evidence_snapshot** is populated by every CRITICAL rule and the XML evaluator,
-capturing the exact fields/IDs that fired the rule for referral PDF citations.
+15 active rules. Severities: SR-015 INSIDER_SWAP, SR-025 FALSE_DISCLOSURE, SR-028
+MATERIAL_DIVERSION are CRITICAL. All others HIGH or MEDIUM.
 
 ---
 
 ## API ENDPOINTS
 
-### Case Management
-```
-GET/POST  /api/cases/                              → List / create cases
-GET       /api/cases/<uuid>/                       → Case detail + documents
-GET       /api/cases/<uuid>/dashboard/             → KPI metrics
-GET       /api/cases/<uuid>/graph/                 → Entity relationship graph
-POST      /api/cases/<uuid>/export/                → Export JSON/CSV
-```
+→ Exact endpoint list + JSON shapes: **`docs/architecture/api-contract.md`**
 
-### Documents
-```
-POST   /api/cases/<uuid>/documents/bulk/           → Upload files (multipart)
-POST   /api/cases/<uuid>/documents/process-pending/ → Batch OCR
-GET    /api/cases/<uuid>/documents/<uuid>/         → Document detail
-DELETE /api/cases/<uuid>/documents/<uuid>/         → Delete document
-POST   /api/cases/<uuid>/referral-pdf/             → Deterministic referral package PDF
-```
-
-### Findings
-```
-GET/POST  /api/cases/<uuid>/findings/              → List / create findings
-PATCH     /api/cases/<uuid>/findings/<uuid>/       → Update finding
-DELETE    /api/cases/<uuid>/findings/<uuid>/       → Delete finding
-POST      /api/cases/<uuid>/reevaluate-signals/    → Re-run all signal rules
-```
-
-### Financials & Entities
-```
-GET    /api/cases/<uuid>/financials/               → 990 financial snapshots
-GET    /api/entities/<type>/<uuid>/                → Entity detail
-POST   /api/cases/<uuid>/fetch-990s/               → Fetch 990 XML + create FinancialSnapshots
-```
-
-### AI
-```
-POST   /api/cases/<uuid>/ai/summarize/             → AI case summary
-POST   /api/cases/<uuid>/ai/ask/                   → Free-text AI chat
-POST   /api/cases/<uuid>/ai/analyze-patterns/      → Enqueue AI pattern job [ASYNC → 202]
-```
-
-### Research (async endpoints return 202 + job_id; frontend polls every 2s)
-```
-POST   /api/cases/<uuid>/research/irs/             → IRS TEOS lookup [ASYNC]
-POST   /api/cases/<uuid>/research/ohio-aos/        → Ohio AOS search [ASYNC]
-POST   /api/cases/<uuid>/research/parcels/         → County parcel search [ASYNC]
-POST   /api/cases/<uuid>/research/ohio-sos/        → Ohio SOS lookup [sync]
-POST   /api/cases/<uuid>/research/recorder/        → County Recorder URL builder [sync]
-POST   /api/cases/<uuid>/research/add-to-case/     → Import result as entity/note
-```
-
-### Async Jobs
-```
-GET    /api/jobs/<uuid>/                           → Poll a SearchJob
-GET    /api/cases/<uuid>/jobs/?limit=5             → List recent jobs (reattach-on-mount)
-```
-
-### Admin / Utility
-```
-POST   /api/admin/upload-sos-csv/                  → Upload Ohio SOS CSV
-GET    /api/admin/sos-csv-status/                  → Check which SOS CSVs exist
-GET    /api/health/                                → Health check
-GET    /api/search/                                → Full-text search
-GET    /api/activity-feed/                         → Recent audit log
-GET/POST/PATCH/DELETE  /api/cases/<uuid>/notes/    → Case notes CRUD
-```
+Pattern: research endpoints return `202 + job_id`; frontend polls `GET /api/jobs/<uuid>/`
+every 2s. AI pattern analysis also async (202). All others synchronous.
 
 ---
 
@@ -271,108 +173,44 @@ Backend model names appear only in API calls and TypeScript types.
 
 ## FRONTEND VIEWS
 
-| Route | Component | What It Does |
-|-------|-----------|-------------|
-| `/` | Dashboard | KPI cards, recent cases, activity feed |
-| `/cases` | CasesList | Table view, create case, filter/sort |
-| `/cases/:id` | CaseDetail | **5 tabs: Investigate, Research, Financials, Timeline, Referrals** |
-| `/search` | SearchView | Full-text search via Cmd+K command palette |
-| `/settings` | Settings | Theme, SOS CSV upload, keyboard shortcuts |
+→ Full tab specs, drill-down interaction model, node/edge encoding: **`docs/architecture/frontend-design-spec.md`**
 
-### Case Detail Tabs
+Routes: `/` Dashboard · `/cases` CasesList · `/cases/:id` CaseDetail (5 tabs) · `/search` · `/settings`
 
-1. **Investigate** — Cytoscape.js graph canvas (the "Web"). Four drill-down levels:
-   - Level 1: Web — knots/connections, toolbar (+ Knot, + Connection, + Angle, pending badge)
-   - Level 2: Profile — entity portrait, linked documents, connections, angles, quick capture
-   - Level 3: Angle — narrative editor, cited document cards, Lead panel (async AI suggestions)
-   - Level 4: Document — OCR text with Intake highlights, RAG search panel
+**Graph:** Cytoscape.js (`react-cytoscapejs` + `cytoscape-cose-bilkent`). D3 is used **only**
+for the Timeline brush. Do NOT use D3 force simulation for the graph.
 
-2. **Research** — IRS, Ohio SOS, Ohio AOS, County Recorder, County Auditor. Async polling. "+ Add to case" buttons.
-
-3. **Financials** — Year-over-year 990 table (TanStack Table). Anomaly highlighting → "Open/Create angle".
-
-4. **Timeline** — Brushable chronological rail (D3 brush only). "Cite in angle" picker.
-
-5. **Referrals** — "Generate Referral Package (PDF)" → `POST /api/cases/<uuid>/referral-pdf/`.
-
-### Graph: Cytoscape.js (NOT D3)
-D3 is used ONLY for the Timeline brush. The entity graph uses `react-cytoscapejs` +
-`cytoscape-cose-bilkent`. Do not use D3 force simulation for the graph.
-
-### Node + edge visual encoding
-- **Person knot:** blue fill, 2px blue border
-- **Organization knot:** teal fill, 2px teal border
-- **Selected knot:** white fill, 3px primary border, gold badge
-- **Proposed connection:** dashed gray
-- **Confirmed connection:** solid, color = highest-severity angle — CRITICAL: `#D85A30` / HIGH: `#BA7517` / MEDIUM: `#185FA5` / INFO: gray
-- **Manual connection:** dotted
-
-### What's NOT in the frontend
-- No standalone Entity Browser route (entity detail = Profile drill-down)
-- No Triage queue, Pipeline tab, Documents tab, or Overview tab
+**What's NOT in the frontend:** No standalone Entity Browser route, no Triage queue, Pipeline
+tab, Documents tab, or Overview tab.
 
 ---
 
 ## PROCESSING PIPELINE
 
-```
-Document Upload
-      │
-extraction.py ─── PDF text extraction (PyPDF2 → Tesseract OCR fallback)
-      │
-classification.py ─── Identify doc type (990, deed, bank statement, etc.)
-      │  └─ if IRS_990 → form990_parser.py (Parts IV/VI/VII → ingestion_metadata)
-      │
-entity_extraction.py ─── Rule-based: persons, orgs, properties
-      │
-ai_extraction.py ─── Claude AI fallback for messy documents
-      │
-entity_resolution.py ─── Fuzzy match against existing entities, dedup
-      │
-data_quality.py ─── Validate, log issues
-      │
-signal_rules.py ─── Run 15 fraud detection rules → persist as Findings
-```
+→ Full pipeline detail: **`docs/team/data-engineer.md`**
+
+`extraction.py` → `classification.py` → `entity_extraction.py` → `ai_extraction.py` →
+`entity_resolution.py` → `data_quality.py` → `signal_rules.py`
 
 ---
 
 ## TECHNOLOGY STACK
 
-### Backend
-- Python 3.11, Django 4.2, PostgreSQL 16 (Railway managed)
-- Gunicorn (2 workers), Django-Q2 (async jobs, Postgres ORM broker, 2-worker qcluster)
-- PyPDF2 + Tesseract OCR
-- Anthropic Claude API (Haiku for extraction, Sonnet for analysis)
+→ Full stack description: **`README.md`** ("What's in the box")
 
-### Frontend
-- React 18, TypeScript, Vite
-- **Cytoscape.js** (`react-cytoscapejs` + `cytoscape-cose-bilkent`) — the Web graph
-- D3.js — Timeline brush only
-- Radix UI, TanStack Table 8, sonner, cmdk, lucide-react, React Router DOM 6
-
-### Infrastructure
-- Docker (multi-stage: node:20-alpine + python:3.11-slim)
-- Railway (auto-deploy from GitHub main)
-- GitHub Actions CI (ruff + tsc + vite build)
-
-### Code Style (MUST FOLLOW)
-- **Ruff** with config in `pyproject.toml`
-- **Line length: 100 chars max** for all Python except connectors and tests
+**Code Style (MUST FOLLOW):**
+- **Ruff** — config in `pyproject.toml`. Line length: **100 chars max**.
   - E501 ignored in: `tests/`, `irs_connector.py`, `county_auditor_connector.py`,
     `county_recorder_connector.py`, `propublica_connector.py`, `verify_recorder_portals.py`
-  - **views.py is NOT exempt** — break long strings with parenthesized f-strings
+  - **`views.py` is NOT exempt** — break long strings with parenthesized f-strings.
 - Quote style: double quotes; indent: spaces; line endings: LF
 - Pre-commit hooks run ruff + ruff-format on every commit
 
 ---
 
-## KNOWN ISSUES (active)
+## KNOWN ISSUES
 
-- **ODNR ArcGIS parcel API** returning 404 from Railway — both primary and fallback URLs down
-- **Ohio SOS** requires manual CSV download from publicfiles.ohiosos.gov and admin upload
-- **form990_parser.py** is wired into `_process_uploaded_file` for IRS_990 docs but may be
-  partially superseded by the IRS TEOS XML parser (which also extracts Parts IV/VI/VII)
-- **Git pre-commit hook** points to Windows Python path — doesn't work in sandbox environments
+→ Full known-issues list: **`STATUS.md`** ("Known issues" section)
 
 ---
 
@@ -389,29 +227,16 @@ Located in `docs/team/`:
 
 ## COMMANDS
 
-### Development
-```bash
-cd backend && python manage.py runserver   # Django dev server (port 8000)
-cd frontend && npm run dev                 # Vite dev server (port 5173)
-docker-compose up                          # Full stack (web + worker + db)
-```
+→ Full quick-reference: **`README.md`** ("Quick command reference" section)
 
-### Build & Verify
 ```bash
-cd frontend && npm run build               # Production build
-cd frontend && npx tsc --noEmit            # Type check only
+docker-compose up                          # Full stack
+cd backend && python manage.py runserver   # Django only (port 8000)
+cd frontend && npm run dev                 # Vite only (port 5173)
 cd backend && ruff check .                 # Lint
-cd backend && python manage.py migrate     # Apply migrations
-```
-
-### Testing
-```bash
-python tests/api_health_check.py           # API smoke test (needs running server)
-```
-
-### Demo data
-```bash
-cd backend && python manage.py seed_demo   # Load Bright Future Foundation demo case
+cd frontend && npx tsc --noEmit            # Type check
+python tests/api_health_check.py           # API smoke test
+cd backend && python manage.py seed_demo   # Load demo case
 ```
 
 ---

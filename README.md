@@ -106,6 +106,31 @@ Vite runs on `http://127.0.0.1:5173`. API requests to `/api/*` proxy to Django a
 
 ---
 
+## Quick command reference
+
+```bash
+# Full stack (web server + async worker + database)
+docker-compose up
+
+# Backend only
+cd backend && python manage.py runserver        # Django dev server — port 8000
+cd backend && python manage.py migrate          # Apply migrations
+cd backend && ruff check .                      # Lint
+
+# Frontend only
+cd frontend && npm run dev                      # Vite dev server — port 5173
+cd frontend && npm run build                    # Production build
+cd frontend && npx tsc --noEmit                 # Type check only
+
+# Testing
+python tests/api_health_check.py               # API smoke test (requires running server)
+
+# Demo data
+cd backend && python manage.py seed_demo       # Load Bright Future Foundation demo case
+```
+
+---
+
 ## Workflow guardrails
 
 - Contributor standards: [CONTRIBUTING.md](CONTRIBUTING.md)
