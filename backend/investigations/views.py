@@ -12,7 +12,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
-from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 from django_q.tasks import async_task
 
@@ -1520,7 +1520,6 @@ def api_csrf_token(request):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def api_case_collection(request):
     if request.method == "GET":
@@ -1590,7 +1589,6 @@ def api_case_collection(request):
     return JsonResponse(serializer.data, status=201)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def api_case_detail(request, pk):
     case = get_object_or_404(Case, pk=pk)
@@ -1644,7 +1642,6 @@ def api_case_detail(request, pk):
     return JsonResponse(serialize_case_detail(case))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def api_case_document_collection(request, pk):
     case = get_object_or_404(Case, pk=pk)
@@ -1710,7 +1707,6 @@ def api_case_document_collection(request, pk):
     return JsonResponse(serializer.data, status=201)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def api_case_document_detail(request, pk, document_id):
     case = get_object_or_404(Case, pk=pk)
@@ -1743,7 +1739,22 @@ def api_case_document_detail(request, pk, document_id):
         doc_id = document.pk
         doc_hash = document.sha256_hash
         doc_filename = document.filename
+        doc_file_path = document.file_path
         document.delete()
+        # Clean up the physical file from storage — best-effort, non-blocking.
+        # The DB record is already gone; a storage orphan is recoverable via
+        # a batch scan. The reverse (DB record pointing to missing file) is worse.
+        if doc_file_path:
+            try:
+                from django.core.files.storage import default_storage
+
+                if default_storage.exists(doc_file_path):
+                    default_storage.delete(doc_file_path)
+            except Exception:
+                logger.warning(
+                    "document_file_delete_failed",
+                    extra={"doc_id": str(doc_id), "file_path": doc_file_path},
+                )
         AuditLog.log(
             action=AuditAction.DOCUMENT_DELETED,
             table_name="documents",
@@ -2156,7 +2167,10 @@ def api_case_signal_collection(request, pk):
         return sort_error
 
     ordering = _build_ordering_fields(order_by, direction)
-    signals_qs = Finding.objects.filter(case=case).order_by(*ordering)
+    signals_qs = Finding.objects.filter(case=case).prefetch_related(
+        "entity_links",
+        "document_links__document",
+    ).order_by(*ordering)
 
     # Optional filters
     raw_status = request.GET.get("status")
@@ -2213,7 +2227,6 @@ def api_case_signal_collection(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH"])
 def api_case_signal_detail(request, pk, signal_id):
     case = get_object_or_404(Case, pk=pk)
@@ -2954,7 +2967,6 @@ FINDING_SORT_FIELDS = {
 }
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def api_case_finding_collection(request, pk):
     """List or create findings for a case.
@@ -3036,7 +3048,6 @@ def api_case_finding_collection(request, pk):
     return JsonResponse(serialize_finding(finding), status=201)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def api_case_finding_detail(request, pk, finding_id):
     """Retrieve, update, or delete a single finding within a case."""
@@ -3159,7 +3170,6 @@ def api_finding_collection(request):
 NOTE_SORT_FIELDS = {"created_at", "updated_at", "target_type", "id"}
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def api_case_note_collection(request, pk):
     """List or create investigator notes for a case.
@@ -3232,7 +3242,6 @@ def api_case_note_collection(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def api_case_note_detail(request, pk, note_id):
     """Get, update, or delete a single investigator note."""
@@ -3930,7 +3939,6 @@ def document_upload(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_document_bulk_upload(request, pk):
     """Accept up to MAX_BULK_FILES files in a single multipart POST.
@@ -4007,7 +4015,6 @@ def api_case_document_bulk_upload(request, pk):
     return JsonResponse({"created": created, "errors": errors}, status=status_code)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_document_process_pending(request, pk):
     """Re-run the deferred-processing pipeline on documents that need it.
@@ -4077,7 +4084,6 @@ def api_case_document_process_pending(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_fetch_990s(request, pk):
     """Fetch and parse IRS Form 990 XML data directly from IRS TEOS.
@@ -4436,7 +4442,6 @@ def api_case_fetch_990s(request, pk):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_parcels(request, pk):
     """Enqueue a County Auditor (ODNR) parcel search job; return 202."""
@@ -4484,7 +4489,6 @@ def api_research_parcels(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_ohio_sos(request, pk):
     """Search Ohio Secretary of State business entity database.
@@ -4625,7 +4629,6 @@ def api_research_ohio_sos(request, pk):
         )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_ohio_aos(request, pk):
     """Enqueue an Ohio AOS audit-report search job; return 202."""
@@ -4663,7 +4666,6 @@ def api_research_ohio_aos(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_irs(request, pk):
     """Enqueue an IRS 990 search job; return 202 with a job id to poll.
@@ -4719,7 +4721,6 @@ def api_research_irs(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_recorder(request, pk):
     """Generate county recorder search URLs and metadata.
@@ -4877,7 +4878,6 @@ def api_research_recorder(request, pk):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def api_case_detection_collection(request, pk):
     """Detection collection endpoint removed — use Findings endpoints instead."""
@@ -4887,7 +4887,6 @@ def api_case_detection_collection(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def api_case_detection_detail(request, pk, detection_id):
     """Detection detail endpoint removed — use Findings endpoints instead."""
@@ -4902,7 +4901,6 @@ def api_case_detection_detail(request, pk, detection_id):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_reevaluate_signals(request, pk):
     """Re-run signal detection rules across all case documents.
@@ -5297,7 +5295,6 @@ def _generate_memo_fallback(case, findings, persons, orgs, properties, financial
     return "\n".join(lines)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_referral_memo(request, pk):
     """Generate an AI-powered referral memo document for a case.
@@ -5468,7 +5465,6 @@ def api_case_referral_memo(request, pk):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_ai_summarize(request, pk):
     """Summarize a signal, entity, or other evidence target for a case.
@@ -5497,7 +5493,6 @@ def api_ai_summarize(request, pk):
     return JsonResponse(result)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_ai_connections(request, pk):
     """Suggest hidden connections between entities in a case.
@@ -5522,7 +5517,6 @@ def api_ai_connections(request, pk):
     return JsonResponse(result)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_ai_narrative(request, pk):
     """Draft an investigative narrative from detection evidence.
@@ -5556,7 +5550,6 @@ def api_ai_narrative(request, pk):
     return JsonResponse(result)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_ai_ask(request, pk):
     """Free-form AI question about a case, with multi-turn conversation support.
@@ -5586,7 +5579,6 @@ def api_ai_ask(request, pk):
     return JsonResponse(result)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_ai_analyze_patterns(request, pk):
     """Enqueue a case-level AI pattern analysis job.
@@ -5639,7 +5631,6 @@ def api_ai_analyze_patterns(request, pk):
 # ──────────────────────────────────────────────────────────────────────
 # Research → Case Wiring: Add to Case
 # ──────────────────────────────────────────────────────────────────────
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_research_add_to_case(request, pk):
     """
@@ -6054,7 +6045,6 @@ def api_research_add_to_case(request, pk):
 # ───────────────────────────────────────────────────
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_admin_upload_sos_csv(request):
     """Upload an Ohio SOS CSV file to local storage.
@@ -6093,7 +6083,6 @@ def api_admin_upload_sos_csv(request):
         )
 
 
-@csrf_exempt
 @require_http_methods(["GET"])
 def api_admin_sos_csv_status(request):
     """Check status of locally stored Ohio SOS CSV files.
@@ -6124,7 +6113,6 @@ def api_admin_sos_csv_status(request):
 # ---------------------------------------------------------------------------
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def api_case_referral_pdf(request, pk):
     """Generate a deterministic, citation-bearing referral package PDF.
@@ -6280,7 +6268,6 @@ def api_case_fuzzy_candidates(request, pk):
     )
 
 
-@csrf_exempt
 @require_http_methods(["PATCH"])
 def api_case_fuzzy_candidate_detail(request, pk, candidate_id):
     """Resolve a fuzzy match candidate by accepting or dismissing it.

@@ -69,7 +69,7 @@ class OrganizationType(models.TextChoices):
     SOLE_PROPRIETORSHIP = "SOLE_PROP", "Sole Proprietorship"
     LAND_TRUST = "LAND_TRUST", "Land Trust"
     FARM_LLC = "FARM_LLC", "Farm / Agricultural LLC"
-    HMAIN_COMPANY = "HMAIN", "Hmain Company"
+    HMAIN_COMPANY = "HMAIN", "Holding Company"
     FILM_PRODUCTION = "FILM_PROD", "Film / Media Production"
     GOVERNMENT = "GOVERNMENT", "Government"
     CIC = "CIC", "CIC"
