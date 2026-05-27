@@ -20,6 +20,8 @@ from django.db import transaction
 
 from investigations import ai_proxy
 from investigations.models import (
+    AuditAction,
+    AuditLog,
     Case,
     Document,
     FinancialSnapshot,
@@ -371,13 +373,28 @@ def call_claude(context: dict[str, Any]) -> str:
     ) from last_exc
 
 
-def analyze_case(case_id: Any) -> dict[str, Any]:
-    """Run the AI pattern pass for one case. Returns a summary dict."""
+def analyze_case(case_id: Any, job: Any = None) -> dict[str, Any]:
+    """Run the AI pattern pass for one case. Returns a summary dict.
+
+    Parameters
+    ----------
+    case_id:
+        Primary key of the Case to analyze.
+    job:
+        Optional SearchJob instance (passed by run_ai_pattern_analysis in
+        jobs.py). When provided, each created Finding is linked back to this
+        job via Finding.ai_run, and the job's id and model version are stamped
+        into evidence_snapshot for chain-of-custody.
+    """
     case = Case.objects.get(pk=case_id)
     context, doc_ref_map = build_context_with_refs(case)
     raw = call_claude(context)
     patterns = parse_response(raw)
     kept, dropped = validate_patterns(patterns, doc_ref_map)
+
+    # Stamp every finding's evidence_snapshot with the job id and model version
+    # so the referral package can cite exactly which run produced each angle.
+    job_id_str = str(job.id) if job else None
 
     created = 0
     for p in kept:
@@ -392,16 +409,26 @@ def analyze_case(case_id: Any) -> dict[str, Any]:
                     rule_id="",
                     title=p["title"][:500],
                     description=p["description"],
+                    # Rationale is the AI's reasoning — it starts as AI_DRAFT.
+                    # The investigator can edit it (→ AI_ASSISTED) or replace
+                    # it entirely (→ HUMAN) via a PATCH to the finding.
                     narrative=p.get("rationale", ""),
+                    narrative_source="AI_DRAFT",
                     severity="INFORMATIONAL",
                     status="NEW",
                     evidence_weight=p["evidence_weight"],
                     source=FindingSource.AI,
+                    ai_run=job,
                     evidence_snapshot={
                         "rationale": p["rationale"],
                         "suggested_action": p["suggested_action"],
                         "doc_refs": p["doc_refs"],
                         "entity_refs": p.get("entity_refs", []),
+                        # Model version and job id for chain-of-custody.
+                        # If the model is ever updated, findings created under
+                        # the old version stay traceable to it.
+                        "ai_model": ai_proxy.MODEL_SONNET,
+                        "job_id": job_id_str,
                         # Map each [Doc-N] citation to a stable document UUID.
                         # The doc numbering is assigned at analysis time (newest
                         # first); if new documents are uploaded later, the same
@@ -441,6 +468,21 @@ def analyze_case(case_id: Any) -> dict[str, Any]:
                             )
                     except Exception:
                         logger.info("Skipping invalid entity_ref %s", entity_id)
+
+                # Audit each AI finding individually so the audit log can answer
+                # "which run created this angle?" via case_id + record_id.
+                AuditLog.log(
+                    action=AuditAction.AI_FINDING_CREATED,
+                    table_name="findings",
+                    record_id=finding.pk,
+                    case_id=case.pk,
+                    after_state={
+                        "title": finding.title,
+                        "evidence_weight": finding.evidence_weight,
+                        "job_id": job_id_str,
+                        "ai_model": ai_proxy.MODEL_SONNET,
+                    },
+                )
             created += 1
         except Exception as exc:  # noqa: BLE001 — drop bad pattern, keep rest
             logger.warning(
@@ -449,6 +491,20 @@ def analyze_case(case_id: Any) -> dict[str, Any]:
                 exc,
             )
             dropped += 1
+
+    # Audit the run-level result: how many findings were created vs. dropped.
+    AuditLog.log(
+        action=AuditAction.AI_PATTERN_RUN_COMPLETED,
+        table_name="search_jobs",
+        record_id=job.pk if job else None,
+        case_id=case.pk,
+        after_state={
+            "findings_created": created,
+            "patterns_dropped": dropped,
+            "ai_model": ai_proxy.MODEL_SONNET,
+            "job_id": job_id_str,
+        },
+    )
 
     return {
         "findings_created": created,

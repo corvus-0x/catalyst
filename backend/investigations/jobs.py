@@ -154,7 +154,7 @@ def run_irs_fetch_xml(job_id: str) -> None:
                                     filing.object_id.encode()
                                 ).hexdigest(),
                                 "file_size": len(xml_text.encode()),
-                                "ocr_status": OcrStatus.SKIPPED,
+                                "ocr_status": OcrStatus.NOT_NEEDED,
                                 "extraction_status": ExtractionStatus.COMPLETED,
                                 "extracted_text": xml_text[:50000],
                                 "is_generated": True,
@@ -360,7 +360,9 @@ def run_ai_pattern_analysis(job_id: str) -> None:
         from investigations import ai_pattern_augmentation
 
         case_id = job.query_params["case_id"]
-        summary = ai_pattern_augmentation.analyze_case(case_id)
+        # Pass the job object so analyze_case can link findings back to this
+        # run and stamp the model version into evidence_snapshot.
+        summary = ai_pattern_augmentation.analyze_case(case_id, job=job)
         _mark_success(job, summary)
     except Exception as exc:  # noqa: BLE001
         _mark_failed(job, exc)

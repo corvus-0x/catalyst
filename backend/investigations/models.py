@@ -1169,6 +1169,25 @@ class Finding(UUIDPrimaryKeyModel):
         default="",
         help_text="Investigator-written narrative for the referral package.",
     )
+    narrative_source = models.CharField(
+        max_length=20,
+        choices=[
+            ("HUMAN", "Human-authored"),
+            ("AI_DRAFT", "AI draft — not yet reviewed by investigator"),
+            ("AI_ASSISTED", "AI-assisted — investigator edited the AI draft"),
+        ],
+        default="HUMAN",
+        help_text=(
+            "Who authored the current narrative text. "
+            "Transitions: AI_DRAFT → AI_ASSISTED when investigator edits without "
+            "explicitly overriding the source label."
+        ),
+    )
+    narrative_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the most recent narrative write (human or AI).",
+    )
     severity = models.CharField(
         max_length=20,
         choices=Severity.choices,
@@ -1216,6 +1235,18 @@ class Finding(UUIDPrimaryKeyModel):
         blank=True,
         null=True,
         help_text="UUID of the entity this finding is primarily about.",
+    )
+    ai_run = models.ForeignKey(
+        "SearchJob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ai_findings",
+        help_text=(
+            "SearchJob (AI_PATTERN_ANALYSIS) that produced this finding. "
+            "Populated only when source=AI. Links the finding back to the exact "
+            "job ID and model version for chain-of-custody."
+        ),
     )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
@@ -1317,6 +1348,13 @@ class AuditAction(models.TextChoices):
 
     # System
     HASH_VERIFICATION_BATCH = "HASH_VERIFICATION_BATCH", "Batch hash verification completed"
+
+    # AI lifecycle
+    AI_EXTRACTION_COMPLETED = "AI_EXTRACTION_COMPLETED", "AI extraction completed on document"
+    AI_EXTRACTION_FAILED = "AI_EXTRACTION_FAILED", "AI extraction failed on document"
+    AI_PATTERN_RUN_COMPLETED = "AI_PATTERN_RUN_COMPLETED", "AI pattern analysis run completed"
+    AI_FINDING_CREATED = "AI_FINDING_CREATED", "AI-flagged pattern written as finding"
+    AI_FINDING_REVIEWED = "AI_FINDING_REVIEWED", "Investigator reviewed an AI-flagged finding"
 
 
 class AuditLog(UUIDPrimaryKeyModel):

@@ -621,8 +621,11 @@ Query params:
 - `status` — `"NEW"` | `"NEEDS_EVIDENCE"` | `"DISMISSED"` | `"CONFIRMED"`
 - `severity` — `"CRITICAL"` | `"HIGH"` | `"MEDIUM"` | `"LOW"` | `"INFORMATIONAL"`
 - `narrative` — free text; investigator writes this on the Angle view. May be empty string.
+- `narrative_source` — `"HUMAN"` | `"AI_DRAFT"` | `"AI_ASSISTED"`. Tracks whether the current narrative text was human-authored, AI-drafted, or AI-drafted then edited by the investigator. AI-pattern findings are created with `"AI_DRAFT"`. PATCH transitions: if `narrative_source` is not included, `AI_DRAFT` → `AI_ASSISTED` automatically; pass `narrative_source` explicitly to override.
+- `narrative_updated_at` — ISO 8601 datetime (nullable). Stamped whenever `narrative` is written.
+- `ai_run_id` — UUID string (nullable). For `source="AI"` findings, the ID of the `SearchJob` (AI_PATTERN_ANALYSIS) that created it. Links the finding to its exact job, model version, and run timestamp for chain-of-custody.
 - `investigator_note` — short rationale; required when dismissing. Different from `narrative`.
-- `evidence_snapshot` — arbitrary JSON dict; content varies by rule (see CLAUDE.md signal rules)
+- `evidence_snapshot` — arbitrary JSON dict; content varies by rule (see CLAUDE.md signal rules). AI findings also include `ai_model` and `job_id` keys.
 - `trigger_doc_id` / `trigger_doc_filename` — the document that fired the rule (nullable)
 - `trigger_entity_id` — the entity that fired the rule (nullable UUID string)
 - `entity_links` — array of objects linking this finding to entities. May be empty.
@@ -648,8 +651,13 @@ Creates a manual finding. **Body:**
 
 ### PATCH /api/cases/:id/findings/:finding_id/
 
-Updates status, narrative, evidence_weight, severity, investigator_note, title, legal_refs.  
+Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title, legal_refs.  
 **Body:** any subset of the above fields.
+
+**Narrative source rules:**
+- Include `narrative_source` when saving an AI-drafted narrative from the proxy: `"AI_DRAFT"`.
+- Omit `narrative_source` for human edits — the backend auto-transitions `AI_DRAFT` → `AI_ASSISTED`.
+- Pass `narrative_source: "HUMAN"` to explicitly mark a full human rewrite of an AI draft.
 
 **Validation rule:** setting `status: "DISMISSED"` requires a non-empty `investigator_note`.
 

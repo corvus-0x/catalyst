@@ -842,13 +842,23 @@ def _process_uploaded_file(
                     extraction_result = enhanced_extract(
                         extracted_text, doc_type=doc_type, use_ai=True
                     )
+                    ai_proposals = extraction_result.get("meta", {}).get("ai_proposals", 0)
                     logger.info(
                         "ai_extraction_merged",
                         extra={
                             "document_id": str(document.pk),
-                            "ai_proposals": (
-                                extraction_result.get("meta", {}).get("ai_proposals", 0)
-                            ),
+                            "ai_proposals": ai_proposals,
+                        },
+                    )
+                    AuditLog.log(
+                        action=AuditAction.AI_EXTRACTION_COMPLETED,
+                        table_name="documents",
+                        record_id=document.pk,
+                        case_id=document.case_id,
+                        after_state={
+                            "doc_type": doc_type,
+                            "ai_proposals": ai_proposals,
+                            "ai_model": extraction_result.get("meta", {}).get("ai_model", ""),
                         },
                     )
             except Exception:
@@ -858,6 +868,14 @@ def _process_uploaded_file(
                         "document_id": str(document.pk),
                         "reason": "AI extraction failed, using regex only",
                     },
+                )
+                AuditLog.log(
+                    action=AuditAction.AI_EXTRACTION_FAILED,
+                    table_name="documents",
+                    record_id=document.pk,
+                    case_id=document.case_id,
+                    after_state={"doc_type": doc_type, "reason": "AI extraction failed"},
+                    success=False,
                 )
 
             # --- Stage 2: Data quality validation on extracted financials ---

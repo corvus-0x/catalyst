@@ -716,6 +716,11 @@ def serialize_finding(finding) -> dict:
         "trigger_entity_id": (
             str(finding.trigger_entity_id) if finding.trigger_entity_id else None
         ),
+        "narrative_source": finding.narrative_source,
+        "narrative_updated_at": (
+            finding.narrative_updated_at.isoformat() if finding.narrative_updated_at else None
+        ),
+        "ai_run_id": (str(finding.ai_run_id) if finding.ai_run_id else None),
         "created_at": finding.created_at.isoformat(),
         "updated_at": finding.updated_at.isoformat(),
         "entity_links": [
@@ -741,6 +746,7 @@ def serialize_finding(finding) -> dict:
 _VALID_FINDING_STATUSES = {c.value for c in FindingStatus}
 _VALID_EVIDENCE_WEIGHTS = {c.value for c in EvidenceWeight}
 _VALID_SEVERITIES = {c.value for c in Severity}
+_VALID_NARRATIVE_SOURCES = {"HUMAN", "AI_DRAFT", "AI_ASSISTED"}
 
 
 class FindingIntakeSerializer:
@@ -846,6 +852,7 @@ class FindingUpdateSerializer:
     allowed_fields = {
         "title",
         "narrative",
+        "narrative_source",
         "severity",
         "status",
         "evidence_weight",
@@ -952,6 +959,18 @@ class FindingUpdateSerializer:
                 return False
             self.validated_data["legal_refs"] = lr
 
+        if "narrative_source" in self.initial_data:
+            ns = self.initial_data["narrative_source"]
+            if ns not in _VALID_NARRATIVE_SOURCES:
+                valid_list = ", ".join(sorted(_VALID_NARRATIVE_SOURCES))
+                self._errors = {
+                    "narrative_source": [
+                        f"Invalid narrative_source. Expected one of: {valid_list}."
+                    ]
+                }
+                return False
+            self.validated_data["narrative_source"] = ns
+
         return True
 
     def save(self) -> Finding:
@@ -963,6 +982,15 @@ class FindingUpdateSerializer:
             self.instance.title = self.validated_data["title"]
         if "narrative" in self.validated_data:
             self.instance.narrative = self.validated_data["narrative"]
+            # Smart transition (choice C): respect an explicit narrative_source
+            # if the caller sent one; otherwise promote AI_DRAFT → AI_ASSISTED
+            # (the human touched the AI's text) and leave HUMAN/AI_ASSISTED alone.
+            explicit_source = self.validated_data.get("narrative_source")
+            if explicit_source:
+                self.instance.narrative_source = explicit_source
+            elif self.instance.narrative_source == "AI_DRAFT":
+                self.instance.narrative_source = "AI_ASSISTED"
+            self.instance.narrative_updated_at = timezone.now()
         if "severity" in self.validated_data:
             self.instance.severity = self.validated_data["severity"]
         if "evidence_weight" in self.validated_data:
@@ -979,6 +1007,8 @@ class FindingUpdateSerializer:
             update_fields.append("title")
         if "narrative" in self.validated_data:
             update_fields.append("narrative")
+            update_fields.append("narrative_source")
+            update_fields.append("narrative_updated_at")
         if "severity" in self.validated_data:
             update_fields.append("severity")
         if "evidence_weight" in self.validated_data:
