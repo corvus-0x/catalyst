@@ -861,12 +861,15 @@ def _process_uploaded_file(
                             "ai_model": extraction_result.get("meta", {}).get("ai_model", ""),
                         },
                     )
-            except Exception:
+            except Exception as exc:
+                # Trim to 500 chars — Anthropic SDK errors can include full
+                # request bodies; we want the message, not the payload.
+                failure_reason = str(exc)[:500]
                 logger.warning(
                     "ai_extraction_skipped",
                     extra={
                         "document_id": str(document.pk),
-                        "reason": "AI extraction failed, using regex only",
+                        "reason": failure_reason,
                     },
                 )
                 AuditLog.log(
@@ -874,7 +877,7 @@ def _process_uploaded_file(
                     table_name="documents",
                     record_id=document.pk,
                     case_id=document.case_id,
-                    after_state={"doc_type": doc_type, "reason": "AI extraction failed"},
+                    after_state={"doc_type": doc_type, "reason": failure_reason},
                     success=False,
                 )
 

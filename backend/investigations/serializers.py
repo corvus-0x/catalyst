@@ -969,6 +969,17 @@ class FindingUpdateSerializer:
                     ]
                 }
                 return False
+            # narrative_source is metadata about the narrative text — it has no
+            # meaning without an accompanying text change. Reject standalone
+            # source updates so the field never drifts out of sync with the text.
+            if "narrative" not in self.initial_data:
+                self._errors = {
+                    "narrative_source": [
+                        "narrative_source can only be set alongside a narrative update. "
+                        "Include the narrative field in the same request."
+                    ]
+                }
+                return False
             self.validated_data["narrative_source"] = ns
 
         return True
