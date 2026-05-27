@@ -667,6 +667,41 @@ Updates status, narrative, narrative_source, evidence_weight, severity, investig
 
 **Response:** ✅ — `204 No Content`
 
+### POST /api/cases/:id/ai/ask/
+
+Enqueues a free-form investigative question. The tool-use loop (up to 6 Claude API calls,
+10–40 s) runs in a background worker — this endpoint never blocks.
+
+**Body:**
+```json
+{
+  "question": "string (required)",
+  "conversation_history": [
+    { "role": "user", "content": "..." },
+    { "role": "assistant", "content": "..." }
+  ]
+}
+```
+
+**Response:** `202 Accepted`
+```json
+{ "job_id": "uuid", "status_url": "/api/jobs/uuid/" }
+```
+
+Poll `GET /api/jobs/:id/`. On `SUCCESS`, `job.result` shape (`AiAskJobResult`):
+```json
+{
+  "answer": "prose response (four sections: data / assessment / exculpatory / thread)",
+  "sources": [{ "type": "tool_call", "id": "0", "label": "search_case_documents(...) → 3 matches" }],
+  "tool_calls_made": [...],
+  "tool_budget_exceeded": false,
+  "_model": "claude-sonnet-4-6",
+  "_usage": { "input_tokens": 4200, "output_tokens": 820 }
+}
+```
+
+On `FAILED`, `job.error_message` contains the reason (rate-limit, API error, etc.).
+
 ### POST /api/cases/:id/ai/analyze-patterns/
 
 Enqueues an AI pattern analysis job. Returns 409 if one is already in-flight.  
@@ -1267,7 +1302,7 @@ GET    /api/cases/:id/jobs/
 POST   /api/cases/:id/ai/summarize/
 POST   /api/cases/:id/ai/connections/
 POST   /api/cases/:id/ai/narrative/
-POST   /api/cases/:id/ai/ask/
+POST   /api/cases/:id/ai/ask/                 [ASYNC → 202]
 POST   /api/cases/:id/ai/analyze-patterns/    [ASYNC → 202]
 
 POST   /api/cases/:id/referral-pdf/

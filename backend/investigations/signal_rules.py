@@ -3,7 +3,7 @@ Signal Detection Engine for Catalyst.
 
 Evaluates cases and documents against the active signal rule set
 (SR-003, SR-004, SR-005, SR-006, SR-010, SR-012, SR-013, SR-015, SR-017,
-SR-021, SR-024, SR-025, SR-026, SR-028, SR-029).
+SR-021, SR-024, SR-025, SR-026, SR-028, SR-029, SR-030, SR-031).
 
 Design principles:
   - Rule evaluator functions are stateless and side-effect-free.
@@ -20,7 +20,8 @@ Entry points:
 
   evaluate_case(case, trigger_doc=None) -> list[SignalTrigger]
       Runs case-scoped cross-document rules: SR-003, SR-004, SR-010, SR-015,
-      SR-017, SR-021, SR-024, SR-025, SR-026, SR-029.
+      SR-017, SR-021, SR-024, SR-025, SR-026, SR-029, SR-030, and
+      XML-SIGNALS (includes SR-031).
       Call after every upload — case-level patterns may emerge with each new doc.
 
   persist_signals(case, triggers, trigger_doc=None) -> list[Signal]
@@ -199,6 +200,26 @@ RULE_REGISTRY: dict[str, RuleInfo] = {
             "Less than 50% of total expenses go to program services, with "
             "the remainder spent on real estate acquisition, construction, "
             "or other non-mission activities."
+        ),
+    ),
+    "SR-030": RuleInfo(
+        rule_id="SR-030",
+        severity="HIGH",
+        title="Related-Party Transaction Disclosed on Schedule L",
+        description=(
+            "One or more related-party transactions with a non-zero dollar amount "
+            "appear on IRS Form 990 Schedule L. Warrants review of whether the "
+            "transaction was arm's-length and properly authorized."
+        ),
+    ),
+    "SR-031": RuleInfo(
+        rule_id="SR-031",
+        severity="MEDIUM",
+        title="No Independent Board Members at Material-Revenue Organization",
+        description=(
+            "Form 990 Part VI reports zero independent voting members at an "
+            "organization with total revenue exceeding $250,000. A board with "
+            "no independent oversight cannot self-police conflicts of interest."
         ),
     ),
 }
@@ -1252,6 +1273,190 @@ def evaluate_sr029_low_program_ratio(case, trigger_doc=None) -> list[SignalTrigg
 
 
 # ---------------------------------------------------------------------------
+# SR-025 (network mode) — Schedule L party matches Relationship model
+#
+# Case-scoped. Fuzzy-matches Schedule L party names against Person and
+# Organization records already in the case. Uses difflib.SequenceMatcher
+# ratio >= 0.80 — same threshold as entity_resolution.py.
+# ---------------------------------------------------------------------------
+
+
+def evaluate_sr025_schedule_l_network(case, trigger_doc=None) -> list[SignalTrigger]:
+    """SR-025 network mode: Schedule L party name matches a case entity."""
+    from difflib import SequenceMatcher
+
+    from .models import Organization, Person, ScheduleLTransaction
+
+    _FUZZY_THRESHOLD = 0.80
+
+    txns = list(ScheduleLTransaction.objects.filter(case=case))
+    if not txns:
+        return []
+
+    persons = list(Person.objects.filter(case=case))
+    orgs = list(Organization.objects.filter(case=case))
+
+    def _similarity(a: str, b: str) -> float:
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    triggers = []
+    seen_pairs: set = set()  # (txn_id, entity_id) — avoid duplicate triggers
+
+    for txn in txns:
+        party = txn.party_name.strip()
+        if not party:
+            continue
+
+        amount_str = f"${txn.amount:,}" if txn.amount is not None else "unknown amount"
+
+        # Check persons
+        for person in persons:
+            pair = (txn.pk, person.pk)
+            if pair in seen_pairs:
+                continue
+            if _similarity(party, person.full_name) >= _FUZZY_THRESHOLD:
+                seen_pairs.add(pair)
+                triggers.append(
+                    SignalTrigger(
+                        rule_id="SR-025",
+                        severity="CRITICAL",
+                        title=RULE_REGISTRY["SR-025"].title,
+                        detected_summary=(
+                            f"Schedule L ({txn.tax_year}): related-party transaction "
+                            f"with '{party}' ({txn.relationship_description}) for "
+                            f"{amount_str} matches Person '{person.full_name}' "
+                            f"already in this case. "
+                            f"Transaction: {txn.transaction_description or 'not described'}."
+                        ),
+                        trigger_entity_id=person.pk,
+                        trigger_entity_type="person",
+                        trigger_doc=trigger_doc,
+                        evidence={
+                            "detection_mode": "schedule_l_network_person",
+                            "party_name": party,
+                            "matched_entity_id": str(person.pk),
+                            "matched_entity_name": person.full_name,
+                            "entity_type": "person",
+                            "relationship_description": txn.relationship_description,
+                            "transaction_description": txn.transaction_description,
+                            "amount": txn.amount,
+                            "tax_year": txn.tax_year,
+                        },
+                    )
+                )
+
+        # Check organizations
+        for org in orgs:
+            pair = (txn.pk, org.pk)
+            if pair in seen_pairs:
+                continue
+            if _similarity(party, org.name) >= _FUZZY_THRESHOLD:
+                seen_pairs.add(pair)
+                triggers.append(
+                    SignalTrigger(
+                        rule_id="SR-025",
+                        severity="CRITICAL",
+                        title=RULE_REGISTRY["SR-025"].title,
+                        detected_summary=(
+                            f"Schedule L ({txn.tax_year}): related-party transaction "
+                            f"with '{party}' ({txn.relationship_description}) for "
+                            f"{amount_str} matches Organization '{org.name}' "
+                            f"already in this case. "
+                            f"Transaction: {txn.transaction_description or 'not described'}."
+                        ),
+                        trigger_entity_id=org.pk,
+                        trigger_entity_type="organization",
+                        trigger_doc=trigger_doc,
+                        evidence={
+                            "detection_mode": "schedule_l_network_organization",
+                            "party_name": party,
+                            "matched_entity_id": str(org.pk),
+                            "matched_entity_name": org.name,
+                            "entity_type": "organization",
+                            "relationship_description": txn.relationship_description,
+                            "transaction_description": txn.transaction_description,
+                            "amount": txn.amount,
+                            "tax_year": txn.tax_year,
+                        },
+                    )
+                )
+
+    return triggers
+
+
+# ---------------------------------------------------------------------------
+# SR-030 — Schedule L Disclosure Flag
+#
+# Case-scoped. Fires when ScheduleLTransaction rows with amount > 0 exist
+# for any FinancialSnapshot in the case. Not an accusation — it surfaces
+# that related-party transactions were disclosed and should be reviewed.
+# ---------------------------------------------------------------------------
+
+
+def evaluate_sr030_schedule_l_disclosure(case, trigger_doc=None) -> list[SignalTrigger]:
+    from .models import ScheduleLTransaction
+
+    txns = list(
+        ScheduleLTransaction.objects.filter(
+            case=case,
+            amount__gt=0,
+        ).select_related("snapshot")
+    )
+
+    if not txns:
+        return []
+
+    # Group by tax year for a cleaner summary
+    by_year: dict[int, list] = {}
+    for t in txns:
+        by_year.setdefault(t.tax_year, []).append(t)
+
+    year_summaries = []
+    for year in sorted(by_year):
+        year_txns = by_year[year]
+        total = sum(t.amount for t in year_txns if t.amount)
+        year_summaries.append(
+            f"{year}: {len(year_txns)} transaction(s) totaling ${total:,}"
+        )
+
+    # Include a few party names so the summary is immediately useful
+    sample_parties = ", ".join(
+        sorted({t.party_name for t in txns if t.party_name})[:3]
+    )
+
+    evidence_txns = [
+        {
+            "party_name": t.party_name,
+            "relationship_description": t.relationship_description,
+            "transaction_description": t.transaction_description,
+            "amount": t.amount,
+            "tax_year": t.tax_year,
+        }
+        for t in txns[:10]  # cap evidence at 10 rows
+    ]
+
+    return [
+        SignalTrigger(
+            rule_id="SR-030",
+            severity="HIGH",
+            title=RULE_REGISTRY["SR-030"].title,
+            detected_summary=(
+                f"Schedule L discloses related-party transactions in this case: "
+                f"{'; '.join(year_summaries)}. "
+                f"Parties include: {sample_parties}. "
+                f"Review whether each transaction was arm's-length and properly "
+                f"authorized by independent board members."
+            ),
+            trigger_doc=trigger_doc,
+            evidence={
+                "transaction_count": len(txns),
+                "transactions": evidence_txns,
+            },
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
 
@@ -1276,7 +1481,7 @@ def evaluate_case(case, trigger_doc=None) -> list[SignalTrigger]:
     Run all case-scoped signal rules.
 
     Rules: SR-003, SR-004, SR-010, SR-015, SR-017, SR-021, SR-024, SR-025,
-    SR-026, SR-029, and XML-SIGNALS.
+    SR-026, SR-029, SR-030, and XML-SIGNALS (includes SR-031).
 
     Operates on all entities and documents in the case — call after every
     upload so cross-document patterns are detected as the case grows.
@@ -1295,8 +1500,10 @@ def evaluate_case(case, trigger_doc=None) -> list[SignalTrigger]:
     _run_rule("SR-021", evaluate_sr021_revenue_spike, triggers, case, trigger_doc)
     _run_rule("SR-024", evaluate_sr024_charity_conduit, triggers, case, trigger_doc)
     _run_rule("SR-025", evaluate_sr025_990_denies_related_party, triggers, case, trigger_doc)
+    _run_rule("SR-025-NET", evaluate_sr025_schedule_l_network, triggers, case, trigger_doc)
     _run_rule("SR-026", evaluate_sr026_990_denies_contractors, triggers, case, trigger_doc)
     _run_rule("SR-029", evaluate_sr029_low_program_ratio, triggers, case, trigger_doc)
+    _run_rule("SR-030", evaluate_sr030_schedule_l_disclosure, triggers, case, trigger_doc)
 
     # --- IRS XML structured data rules ---
     _run_rule("XML-SIGNALS", evaluate_xml_financial_snapshots, triggers, case, trigger_doc)
@@ -1333,10 +1540,12 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
 
     triggers: list[SignalTrigger] = []
 
-    snapshots = FinancialSnapshot.objects.filter(
-        case=case,
-        source="IRS_TEOS_XML",
-        raw_extraction__isnull=False,
+    snapshots = (
+        FinancialSnapshot.objects.filter(
+            case=case,
+            source="IRS_TEOS_XML",
+        )
+        .prefetch_related("schedule_l_transactions")
     )
 
     for snap in snapshots:
@@ -1516,27 +1725,131 @@ def evaluate_xml_financial_snapshots(case, trigger_doc=None) -> list[SignalTrigg
                     )
                 )
 
+        # --- SR-031: Zero independent board members at material-revenue org ---
+        # Use snap.num_independent_members (DB field) directly — cleaner than
+        # reading from raw_extraction dict.
+        if (
+            snap.num_independent_members is not None
+            and snap.num_independent_members == 0
+            and (snap.total_revenue or 0) > 250_000
+        ):
+            triggers.append(
+                SignalTrigger(
+                    rule_id="SR-031",
+                    severity="MEDIUM",
+                    title=RULE_REGISTRY["SR-031"].title,
+                    detected_summary=(
+                        f"990 XML ({org_name}, {tax_year}): 0 independent voting "
+                        f"members on a {snap.num_voting_members or '?'}-member board "
+                        f"at an organization with ${(snap.total_revenue or 0):,} in revenue. "
+                        f"A board with no independent oversight cannot detect or deter "
+                        f"self-dealing transactions."
+                    ),
+                    trigger_doc=trigger_doc,
+                    trigger_entity_id=snap.organization_id,
+                    trigger_entity_type="organization" if snap.organization_id else None,
+                    evidence={
+                        **snapshot_evidence,
+                        "num_independent_members": snap.num_independent_members,
+                        "num_voting_members": snap.num_voting_members,
+                        "total_revenue": snap.total_revenue,
+                    },
+                )
+            )
+
+        # --- SR-025 (contradiction mode): org denied related-party txns
+        #     but Schedule L data contradicts that denial ---
+        # This is the strongest version of SR-025: IRS data vs. IRS data.
+        # No text-pattern matching needed — it's all structured DB fields.
+        if snap.related_party_disclosed is False:
+            # Use the prefetch cache — no extra query per snapshot.
+            # The outer queryset already did .prefetch_related("schedule_l_transactions").
+            contradicting_txns = [
+                t for t in snap.schedule_l_transactions.all()
+                if (t.amount or 0) > 0
+            ]
+            if contradicting_txns:
+                txn_strs = [
+                    f"{t.party_name} ({t.relationship_description}): "
+                    f"${t.amount:,} — {t.transaction_description}"
+                    for t in contradicting_txns[:3]
+                ]
+                triggers.append(
+                    SignalTrigger(
+                        rule_id="SR-025",
+                        severity="CRITICAL",
+                        title=RULE_REGISTRY["SR-025"].title,
+                        detected_summary=(
+                            f"990 XML ({org_name}, {tax_year}): Part IV Line 28 "
+                            f"answered 'No' (no related-party transactions), but "
+                            f"Schedule L lists {len(contradicting_txns)} transaction(s) "
+                            f"with non-zero amounts. "
+                            f"Examples: {'; '.join(txn_strs)}. "
+                            f"This is a self-contradiction within the IRS filing."
+                        ),
+                        trigger_doc=trigger_doc,
+                        trigger_entity_id=snap.organization_id,
+                        trigger_entity_type="organization" if snap.organization_id else None,
+                        evidence={
+                            **snapshot_evidence,
+                            "detection_mode": "schedule_l_contradiction",
+                            "related_party_disclosed": False,
+                            "contradiction_transactions": [
+                                {
+                                    "party_name": t.party_name,
+                                    "relationship_description": t.relationship_description,
+                                    "transaction_description": t.transaction_description,
+                                    "amount": t.amount,
+                                }
+                                for t in contradicting_txns
+                            ],
+                        },
+                    )
+                )
+
         # --- SR-028: Material diversion self-disclosed on 990 Part VI Line 5 ---
         if gov.get("material_diversion_or_misuse") is True:
+            # Look up Schedule O explanation for Part VI Line 5 — quotes the
+            # org's own words verbatim in the referral memo.
+            sched_o_text = None
+            for entry in (snap.schedule_o_explanations or []):
+                ref = (entry.get("form_line_reference") or "").lower()
+                if "part vi" in ref or "line 5" in ref:
+                    sched_o_text = entry.get("explanation_text", "")
+                    break
+
+            sr028_evidence = {
+                **snapshot_evidence,
+                "material_diversion_or_misuse": True,
+                "form_field": "Form 990 Part VI Line 5",
+            }
+            if sched_o_text:
+                sr028_evidence["schedule_o_explanation"] = sched_o_text
+
+            if sched_o_text:
+                preview = sched_o_text[:200]
+                sr028_summary = (
+                    f"990 XML ({org_name}, {tax_year}): Organization disclosed "
+                    f"material diversion or misuse of assets in Part VI Line 5. "
+                    f'Schedule O states: "{preview}"'
+                )
+            else:
+                sr028_summary = (
+                    f"990 XML ({org_name}, {tax_year}): Organization disclosed "
+                    f"material diversion or misuse of assets in Part VI Line 5. "
+                    f"Schedule O explanation not available — pull the filing."
+                )
+
             triggers.append(
                 SignalTrigger(
                     rule_id="SR-028",
                     severity="CRITICAL",
                     title=RULE_REGISTRY["SR-028"].title,
-                    detected_summary=(
-                        f"990 XML ({org_name}, {tax_year}): Organization "
-                        f"disclosed material diversion or misuse of assets "
-                        f"in Part VI Line 5. Schedule O should contain the "
-                        f"written explanation; review immediately."
-                    ),
+                    detected_summary=sr028_summary,
                     trigger_doc=trigger_doc,
                     trigger_entity_id=snap.organization_id,
                     trigger_entity_type=("organization" if snap.organization_id else None),
-                    evidence={
-                        **snapshot_evidence,
-                        "material_diversion_or_misuse": True,
-                        "form_field": "Form 990 Part VI Line 5",
-                    },
+                    evidence=sr028_evidence,
                 )
             )
 
@@ -1559,6 +1872,8 @@ _RULE_TO_SIGNAL_TYPE: dict[str, str] = {
     "SR-025": "RELATED_PARTY_TX",
     "SR-026": "PROCUREMENT_BYPASS",
     "SR-029": "EXPENSE_RATIO",
+    "SR-030": "RELATED_PARTY_TX",
+    "SR-031": "GOVERNANCE_GAP",
 }
 
 

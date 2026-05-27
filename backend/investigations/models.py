@@ -1017,8 +1017,9 @@ class ScheduleLTransaction(UUIDPrimaryKeyModel):
     grants, business arrangements, and other transactions between the
     organization and its officers, directors, or family members.
 
-    Stored as a normalized table (not JSONField) so SR-025 can query
-    by ORM: ScheduleLTransaction.objects.filter(case=case, amount__gt=0)
+    Stored as a normalized table (not JSONField) so signal rules can query
+    by ORM. Intended usage pattern:
+        ScheduleLTransaction.objects.filter(case=case, amount__gt=0)
     """
 
     snapshot = models.ForeignKey(
@@ -1036,7 +1037,10 @@ class ScheduleLTransaction(UUIDPrimaryKeyModel):
         ),
     )
     tax_year = models.IntegerField(
-        help_text="Denormalized from snapshot.tax_year for query convenience.",
+        help_text=(
+            "Denormalized from snapshot.tax_year for query convenience. "
+            "Must be set to snapshot.tax_year at creation time — not automatically synced."
+        ),
     )
     party_name = models.CharField(
         max_length=500,
@@ -1060,10 +1064,11 @@ class ScheduleLTransaction(UUIDPrimaryKeyModel):
 
     class Meta:
         db_table = "schedule_l_transactions"
+        ordering = ["tax_year", "party_name"]
         indexes = [
-            models.Index(fields=["case"],     name="idx_sched_l_case"),
+            models.Index(fields=["case"], name="idx_sched_l_case"),
             models.Index(fields=["snapshot"], name="idx_sched_l_snapshot"),
-            models.Index(fields=["amount"],   name="idx_sched_l_amount"),
+            models.Index(fields=["amount"], name="idx_sched_l_amount"),
         ]
 
     def __str__(self) -> str:

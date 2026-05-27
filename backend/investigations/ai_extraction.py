@@ -72,9 +72,8 @@ def _get_client():
     return Anthropic(api_key=_get_api_key())
 
 
-# Model to use. Claude 3.5 Sonnet is the best balance of speed, cost, and
-# quality for structured extraction tasks.
-AI_MODEL = "claude-sonnet-4-20250514"
+# Model to use for structured extraction tasks.
+AI_MODEL = "claude-sonnet-4-6"
 
 # Maximum tokens for extraction responses. Structured JSON rarely exceeds this.
 MAX_TOKENS = 4096
@@ -356,6 +355,190 @@ You must respond with ONLY valid JSON matching this schema:
 
 
 # ---------------------------------------------------------------------------
+# Doc-type addendums — domain rules that layer on top of _SYSTEM_PROMPT_GENERAL
+# ---------------------------------------------------------------------------
+# Each addendum is appended to the general prompt when extracting that doc type.
+# They add terminology, edge cases, and signal flags specific to that document
+# format — derived from the document_schemas seed file used on the companion
+# platform. The base JSON format is never changed; addendums only add context.
+
+_DOC_TYPE_ADDENDUMS: dict[str, str] = {
+
+    "DEED": """
+DOC-TYPE RULES: RECORDED DEED
+- Grantor = seller/transferor. Grantee = buyer/recipient. Extract both as persons or orgs.
+- grantor_signatory_capacity: title under which grantor signed (managing member, president,
+  trustee, manager). Include in "reasoning" for that person.
+- Deed types: WD=Warranty Deed, QC/QUITCLAIM=Quitclaim, FD=Fiduciary (trust),
+  ED=Executor/Administrator (estate), CORRECTION=corrects prior instrument.
+  PT-PLAT means this parcel was created by subdivision platting — no seller.
+- Exempt transfer: conveyance number ending in "EX" or deed marked Exempt = $0 transfer
+  between related orgs. Flag in reasoning.
+- Consideration: Ohio deeds rarely state a price. Look for the county auditor conveyance fee
+  stamp. Implied price = fee ÷ 0.005 (Darke County rate). Flag if fee = $0 or Exempt.
+- resolution_reference: if deed says "pursuant to Resolution [number]" extract the number.
+  A blank authorization block on a corporate deed = potentially unauthorized transfer.
+- title_search_disclaimer: if deed contains "without benefit of a title search" — flag in
+  reasoning. Indicates no title review was done.
+- Recording date vs execution date: extract both. Note large gaps.
+- The attorney who prepared the deed often reappears on related transactions.
+""",
+
+    "PARCEL_RECORD": """
+DOC-TYPE RULES: COUNTY AUDITOR PARCEL RECORD
+- The date 11/11/1900 is a system placeholder meaning no recorded date — treat as null.
+- Owner name: if it contains TRUSTEE, TRUST, or IRREVOCABLE TRUST, extract the trust as
+  an org and the named trustee as a person with role "trustee".
+- If deeded owner address differs from taxpayer address, extract both; note the discrepancy
+  in reasoning — it is investigatively significant.
+- owner_entity_type: classify as individual, LLC, nonprofit, trust, or government.
+- Sales history deed types: PT-PLAT = parcel created by plat (no seller); EX suffix on
+  conveyance number = exempt transfer between orgs.
+- improvement_demolished: if current improvements = $0 but a prior year shows improvements
+  > $50,000 — flag in reasoning as "structure removed or demolished."
+- CAUV enrollment: land under Current Agricultural Use Valuation has artificially low assessed
+  value. If appraised value far exceeds assessed, flag in reasoning.
+- Tax delinquency: if outstanding tax balance appears — flag in reasoning.
+""",
+
+    "UCC": """
+DOC-TYPE RULES: UCC FINANCING STATEMENT
+- UCC1 = original financing statement (creates lien).
+  UCC3 = amendment (continuation, termination, assignment, debtor add/delete).
+- original_fs_number: for amendments, extract the FS number of the UNDERLYING original —
+  NOT the amendment's own document number.
+- filing_time: extract EXACT HH:MM:SS timestamp. Multiple amendments filed seconds or
+  minutes apart = coordinated batch submission. Flag in reasoning (UCC_BURST pattern).
+- packet_number: sequential filer-assigned numbers on batched amendments confirm coordinated
+  filing. Include in reasoning if present.
+- collateral description: extract verbatim. A blanket lien ("all assets," "all farm
+  equipment, livestock, crops, and proceeds") covering a charity's property = major signal.
+  Flag in reasoning.
+- Debtor entity type: extract whether individual or organization. A nonprofit as UCC debtor
+  is unusual — flag in reasoning.
+- Filer email addresses may reveal employee names at the creditor — extract as a person.
+""",
+
+    "UCC_FILING": """
+DOC-TYPE RULES: UCC FINANCING STATEMENT
+See UCC rules — RECORDER_INSTRUMENT and UCC_FILING are treated identically.
+- filing_time: extract EXACT HH:MM:SS for burst-detection.
+- original_fs_number: separate from the amendment document number.
+- blanket lien on charitable org = major signal.
+""",
+
+    "SOS_FILING": """
+DOC-TYPE RULES: SECRETARY OF STATE CORPORATE FILING
+- Extract ALL named individuals: incorporators, organizers, statutory agents, signatories,
+  attorneys, partners. For each: full name, role, and address if given.
+- dissolution_clause (nonprofit): the asset distribution language on dissolution should
+  name 501(c)(3) recipients. If vague ("charitable purposes") or names a specific org,
+  extract that org and note in reasoning.
+- receipt_addressee: the name on the filing receipt may differ from the legal entity name,
+  revealing a DBA or related entity. Extract as an org if it names an entity.
+- law_firm_filer: the attorney or firm that filed. Repeat filers across related entities
+  are a network signal — extract as a person with role "attorney/filer".
+- Continued Existence Notice: extract entity name and deadline date. The addressee is the
+  current statutory agent of record.
+- Charter Cancellation: extract entity, date, and reason. "Failure to file" = possibly
+  dormant but legally significant — flag in reasoning.
+""",
+
+    "CORP_FILING": """
+DOC-TYPE RULES: CORPORATE FILING (SOS)
+Same rules as SOS_FILING — Ohio Secretary of State articles, amendments, cancellations.
+- Extract all named individuals with their roles.
+- dissolution_clause verbatim for nonprofits.
+- receipt_addressee may reveal DBA or related entity.
+""",
+
+    "BUILDING_PERMIT": """
+DOC-TYPE RULES: BUILDING PERMIT
+- OWNER OR BUILDER field format: "Owner Name / Contractor Name" — split on "/".
+  Everything before "/" = property owner. Everything after "/" = contractor.
+  If no "/" present, the whole field is the owner name.
+- contractor_name: the construction company is the investigative link. Extract exactly.
+- work_description: copy the TYPE field verbatim. "NEW RESTAURANT & COMM. OUTREACH
+  FACILITY" is investigatively useful; do not paraphrase.
+- Multiple permits listing the same owner AND same contractor across different years =
+  a sole-source contractor pattern. Note in reasoning.
+- Large commercial construction on a nonprofit-owned property = flag in reasoning.
+""",
+
+    "AUDITOR": """
+DOC-TYPE RULES: GOVERNMENT / NONPROFIT AUDIT REPORT
+- Audit types differ critically:
+    Regular Audit = full financial audit, auditor expresses opinion.
+    AUP (Agreed-Upon Procedures) = LIMITED scope, NO opinion, does NOT look for
+      related-party transactions. Absence of a named entity in an AUP is NOT evidence
+      of no relationship.
+    Basic Audit = takes Board's written representation at face value — not independently
+      verified.
+- zero_activity: if all financial amounts are zero or report states no activity occurred,
+  flag in reasoning. Note audit type (AUP/Basic = unverified).
+- findings: extract EVERY org and person named in findings. "We did not receive a response
+  from Officials" in a finding = accountability failure — flag in reasoning.
+- over_appropriation: if a finding documents expenditures exceeding appropriations (spending
+  without council authorization), flag in reasoning.
+- Any entity or individual under investigation appearing by name — extract and note context.
+""",
+
+    "OCC_REPORT": """
+DOC-TYPE RULES: OCC / COUNTY AUDIT REPORT
+Same rules as AUDITOR doc type. Extract all named entities, org types, financial figures,
+and finding descriptions verbatim.
+""",
+
+    "CIC_REPORT": """
+DOC-TYPE RULES: CIC AUDIT REPORT
+CIC = Community Improvement Corporation. These entities frequently show zero activity.
+- zero_activity is especially significant here — a CIC with zero reported activity but
+  active property transactions elsewhere = potential shell.
+- Extract all board members and their affiliations if listed.
+""",
+
+    "WEB_ARCHIVE": """
+DOC-TYPE RULES: SCREENSHOT / WEB ARCHIVE
+- post_text: copy the COMPLETE post text verbatim — every word, hashtag, emoji.
+  Do not summarize or abbreviate under any circumstances.
+- Extract ALL named entities from post text: every person and organization mentioned.
+- transaction_described: if the post describes a property deal, agreement, or financial
+  arrangement — extract parties, property, and what was agreed to as a relationship.
+- Platform: Facebook (blue/reactions), Twitter/X (@ handles), NextDoor (neighborhood),
+  government portal (.gov URL or official seal).
+- Post date vs screenshot date: extract the post date as shown in the screenshot.
+- Comments: extract commenter names and text verbatim as persons/relationships.
+""",
+
+    "REFERRAL_MEMO": """
+DOC-TYPE RULES: CORRESPONDENCE / COMPLAINT LETTER / REFERRAL MEMO
+- full_text: extract the complete letter text verbatim.
+- from_name and to_name: extract sender and recipient as persons.
+- from_org and to_org: extract sender and recipient organizations.
+- subject_entity: the primary org the letter concerns — extract as org.
+- violations_alleged: list every law/statute cited (IRC 4941, Ohio Rev. Code 1716, etc.).
+- is_draft: true if the document contains placeholder text like "[Date]", "[Name]",
+  or blank signature blocks.
+- relief_requested: what specific action is being requested — include in reasoning.
+- Extract ALL org and person names mentioned in the body as entities.
+""",
+}
+
+
+def _build_system_prompt(doc_type: str) -> str:
+    """Combine the base general prompt with a doc-type-specific addendum.
+
+    Returns the base prompt unchanged if no addendum exists for this doc type.
+    The addendum adds domain-specific rules (terminology, edge cases, signal
+    flags) without altering the required JSON output format.
+    """
+    addendum = _DOC_TYPE_ADDENDUMS.get(doc_type, "")
+    if not addendum:
+        return _SYSTEM_PROMPT_GENERAL
+    return _SYSTEM_PROMPT_GENERAL + addendum
+
+
+# ---------------------------------------------------------------------------
 # Core extraction functions
 # ---------------------------------------------------------------------------
 
@@ -401,7 +584,7 @@ def ai_extract_entities(
     )
 
     return _call_claude(
-        system_prompt=_SYSTEM_PROMPT_GENERAL,
+        system_prompt=_build_system_prompt(doc_type),
         user_prompt=user_prompt,
         parse_fn=_parse_general_response,
     )
@@ -1053,9 +1236,13 @@ def enhanced_extract(
         return regex_result
 
     # Step 2: AI extraction (based on document type)
-    if doc_type == "IRS_990":
+    # IRS_990 and IRS_990T → specialized 990 extractor (handles OCR noise on forms)
+    # OBITUARY and DEATH_RECORD → specialized obituary extractor (family network mapping)
+    # All other types → general entity extractor with a doc-type-specific system prompt
+    #   addendum from _DOC_TYPE_ADDENDUMS (DEED, PARCEL_RECORD, UCC, SOS_FILING, etc.)
+    if doc_type in ("IRS_990", "IRS_990T"):
         ai_result = ai_extract_990(text)
-    elif doc_type == "OBITUARY":
+    elif doc_type in ("OBITUARY", "DEATH_RECORD"):
         ai_result = ai_extract_obituary(text)
     else:
         ai_result = ai_extract_entities(text, doc_type=doc_type)
@@ -1091,11 +1278,11 @@ def reprocess_document(document_id: str) -> AIExtractionResult | None:
         logger.warning("reprocess_doc_no_text", extra={"doc_id": document_id})
         return None
 
-    doc_type = doc.document_type if hasattr(doc, "document_type") else "OTHER"
+    doc_type = doc.doc_type if hasattr(doc, "doc_type") else "OTHER"
 
-    if doc_type == "IRS_990":
+    if doc_type in ("IRS_990", "IRS_990T"):
         return ai_extract_990(text)
-    elif doc_type == "OBITUARY":
+    elif doc_type in ("OBITUARY", "DEATH_RECORD"):
         return ai_extract_obituary(text)
     else:
         return ai_extract_entities(text, doc_type=doc_type)

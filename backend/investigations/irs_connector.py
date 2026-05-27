@@ -306,6 +306,16 @@ class Parsed990:
     num_employees: Optional[int] = None
     num_volunteers: Optional[int] = None
 
+    # Schedule data extracted from IRS XML
+    schedule_l_transactions: list[dict] = field(default_factory=list)
+    # [{party_name, relationship_description, transaction_description, amount}, ...]
+
+    schedule_r_orgs: list[dict] = field(default_factory=list)
+    # [{name, ein, org_type, description}, ...]
+
+    schedule_o_explanations: list[dict] = field(default_factory=list)
+    # [{form_line_reference, explanation_text}, ...]
+
     # Metadata
     source_object_id: str = ""
     source_batch_id: str = ""
@@ -970,6 +980,51 @@ def _grp_int(elem, grp_tag: str, val_tag: str) -> Optional[int]:
     return _int(grp, val_tag)
 
 
+def _parse_schedules(return_data, result: "Parsed990") -> None:
+    """Parse Schedule L, R, and O from the ReturnData element.
+
+    Schedules are siblings to <IRS990> inside <ReturnData>, not children of it.
+    Uses the same _tag(), _text(), and _int() helpers as the rest of the parser.
+    Called at the end of parse_990_xml() after _parse_990_full() / _parse_990ez().
+    """
+    # --- Schedule L: Transactions with Interested Persons ---
+    sched_l = return_data.find(_tag("IRS990ScheduleL"))
+    if sched_l is not None:
+        for grp in sched_l.findall(_tag("TransactionsRelatedOrgGrp")):
+            result.schedule_l_transactions.append({
+                "party_name":               _text(grp, "NameOfInterested"),
+                "relationship_description": _text(grp, "RelationshipWithOrganizationTxt"),
+                "transaction_description":  _text(grp, "Desc"),
+                "amount":                   _int(grp, "TransactionAmt"),
+            })
+
+    # --- Schedule R: Related Organizations and Unrelated Partnerships ---
+    sched_r = return_data.find(_tag("IRS990ScheduleR"))
+    if sched_r is not None:
+        for grp in sched_r.findall(_tag("IdRelatedTaxExemptOrgGrp")):
+            # Organization name is nested: <OrganizationName><BusinessNameLine1Txt>
+            name_parent = grp.find(_tag("OrganizationName"))
+            name = _text(name_parent, "BusinessNameLine1Txt") if name_parent is not None else ""
+            result.schedule_r_orgs.append({
+                "name":        name,
+                "ein":         _text(grp, "EIN"),
+                "org_type":    _text(grp, "ExemptCodeSectionTxt"),
+                "description": _text(grp, "PrimaryActivitiesTxt"),
+            })
+
+    # --- Schedule O: Supplemental Information ---
+    sched_o = return_data.find(_tag("IRS990ScheduleO"))
+    if sched_o is not None:
+        for detail in sched_o.findall(_tag("SupplementalInformationDetail")):
+            explanation = _text(detail, "ExplanationTxt")
+            if not explanation:
+                continue  # Skip empty entries
+            result.schedule_o_explanations.append({
+                "form_line_reference": _text(detail, "FormAndLineReferenceDesc"),
+                "explanation_text":    explanation,
+            })
+
+
 def parse_990_xml(
     xml_text: str, source_object_id: str = "", source_batch_id: str = ""
 ) -> Parsed990:
@@ -1034,6 +1089,18 @@ def parse_990_xml(
     else:
         logger.warning("No recognized IRS990/990EZ/990PF element in XML")
         result.parse_quality = 0.1
+
+    # Parse Schedule L/R/O regardless of form type — they are siblings to
+    # IRS990 in ReturnData and present on all full 990 variants.
+    _parse_schedules(return_data, result)
+
+    # If actual Schedule L transactions were parsed, ensure schedule_l_required
+    # is True so run_irs_fetch_xml can reliably populate
+    # FinancialSnapshot.related_party_disclosed from GovernanceData.schedule_l_required.
+    # This overrides a "No" checkbox answer when the filing itself contains
+    # Schedule L data — the presence of transactions is the authoritative signal.
+    if result.schedule_l_transactions:
+        result.governance.schedule_l_required = True
 
     return result
 
@@ -1436,6 +1503,9 @@ def parsed_990_to_dict(parsed: Parsed990) -> dict:
         "source": "IRS_TEOS_XML",
         "source_object_id": parsed.source_object_id,
         "source_batch_id": parsed.source_batch_id,
+        "schedule_l_transactions": parsed.schedule_l_transactions,
+        "schedule_r_orgs": parsed.schedule_r_orgs,
+        "schedule_o_explanations": parsed.schedule_o_explanations,
     }
 
 

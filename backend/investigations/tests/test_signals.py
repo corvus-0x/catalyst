@@ -24,6 +24,7 @@ from ..models import (
     Case,
     Document,
     FinancialInstrument,
+    FinancialSnapshot,
     Finding,
     FindingSource,
     FindingStatus,
@@ -32,6 +33,7 @@ from ..models import (
     Organization,
     Person,
     Property,
+    ScheduleLTransaction,
     Severity,
 )
 from ..serializers import FindingUpdateSerializer, serialize_finding
@@ -52,8 +54,10 @@ from ..signal_rules import (
     evaluate_sr021_revenue_spike,
     evaluate_sr024_charity_conduit,
     evaluate_sr025_990_denies_related_party,
+    evaluate_sr025_schedule_l_network,
     evaluate_sr026_990_denies_contractors,
     evaluate_sr029_low_program_ratio,
+    evaluate_sr030_schedule_l_disclosure,
     evaluate_xml_financial_snapshots,
     persist_signals,
 )
@@ -1958,3 +1962,291 @@ class EvaluateDocumentIntegrationTests(TestCase):
         doc = _make_document(self.case, extracted_text=None)
         result = evaluate_document(self.case, doc)
         self.assertIsInstance(result, list)
+
+
+class SR030ScheduleLDisclosureTests(TestCase):
+    """SR-030 fires when ScheduleLTransaction rows with amount > 0 exist."""
+
+    def setUp(self):
+        self.case = _make_case()
+        self.doc = _make_document(self.case, doc_type="IRS_990")
+        self.snap = FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            tax_year=2022,
+            ein="82-0045001",
+            total_revenue=1_000_000,
+        )
+
+    def _make_txn(self, amount):
+        return ScheduleLTransaction.objects.create(
+            snapshot=self.snap,
+            case=self.case,
+            tax_year=2022,
+            party_name="Jay Example",
+            relationship_description="Officer",
+            transaction_description="Lease",
+            amount=amount,
+        )
+
+    def test_fires_when_transaction_with_amount_exists(self):
+        self._make_txn(24000)
+        triggers = evaluate_sr030_schedule_l_disclosure(self.case)
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-030")
+        self.assertEqual(triggers[0].severity, "HIGH")
+        self.assertIn("Jay Example", triggers[0].detected_summary)
+        self.assertIn("24,000", triggers[0].detected_summary)
+
+    def test_does_not_fire_with_no_transactions(self):
+        triggers = evaluate_sr030_schedule_l_disclosure(self.case)
+        self.assertEqual(triggers, [])
+
+    def test_does_not_fire_when_amount_is_null(self):
+        self._make_txn(None)
+        triggers = evaluate_sr030_schedule_l_disclosure(self.case)
+        self.assertEqual(triggers, [])
+
+    def test_evidence_snapshot_contains_transaction_details(self):
+        self._make_txn(50000)
+        triggers = evaluate_sr030_schedule_l_disclosure(self.case)
+        ev = triggers[0].evidence
+        self.assertEqual(ev["transactions"][0]["party_name"], "Jay Example")
+        self.assertEqual(ev["transactions"][0]["amount"], 50000)
+
+
+class SR031ZeroIndependentMembersTests(TestCase):
+    """SR-031 fires when num_independent_members=0 and total_revenue > 250,000."""
+
+    def setUp(self):
+        self.case = _make_case()
+        self.doc = _make_document(self.case, doc_type="IRS_990")
+
+    def _make_snap(self, independent_members, revenue, source="IRS_TEOS_XML"):
+        return FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            tax_year=2022,
+            ein="82-0045001",
+            num_independent_members=independent_members,
+            total_revenue=revenue,
+            source=source,
+            raw_extraction={
+                "governance": {"independent_voting_members": independent_members},
+                "financials": {"total_revenue": revenue},
+                "tax_year": 2022,
+                "taxpayer_name": "Test Org",
+            },
+        )
+
+    def test_fires_when_zero_independent_and_high_revenue(self):
+        self._make_snap(independent_members=0, revenue=500_000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr031 = [t for t in triggers if t.rule_id == "SR-031"]
+        self.assertEqual(len(sr031), 1)
+        self.assertIn("0 independent", sr031[0].detected_summary)
+
+    def test_does_not_fire_when_has_independent_members(self):
+        self._make_snap(independent_members=3, revenue=500_000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr031 = [t for t in triggers if t.rule_id == "SR-031"]
+        self.assertEqual(sr031, [])
+
+    def test_does_not_fire_below_revenue_threshold(self):
+        self._make_snap(independent_members=0, revenue=100_000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr031 = [t for t in triggers if t.rule_id == "SR-031"]
+        self.assertEqual(sr031, [])
+
+    def test_does_not_fire_when_independent_members_is_null(self):
+        self._make_snap(independent_members=None, revenue=500_000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr031 = [t for t in triggers if t.rule_id == "SR-031"]
+        self.assertEqual(sr031, [])
+
+
+class SR025ScheduleLContradictionTests(TestCase):
+    """
+    SR-025 contradiction mode: org told IRS 'no related-party txns'
+    but ScheduleLTransaction rows say otherwise.
+    """
+
+    def setUp(self):
+        self.case = _make_case()
+        self.doc = _make_document(self.case, doc_type="IRS_990")
+        self.snap = FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            tax_year=2022,
+            ein="82-0045001",
+            related_party_disclosed=False,   # org said "No" to Part IV Line 28
+            source="IRS_TEOS_XML",
+            raw_extraction={
+                "governance": {"schedule_l_required": False},
+                "financials": {},
+                "officers": [],
+                "tax_year": 2022,
+                "taxpayer_name": "Test Charity",
+            },
+        )
+
+    def _make_txn(self, amount):
+        return ScheduleLTransaction.objects.create(
+            snapshot=self.snap,
+            case=self.case,
+            tax_year=2022,
+            party_name="Jay Example",
+            relationship_description="Officer",
+            transaction_description="Lease",
+            amount=amount,
+        )
+
+    def test_contradiction_fires_when_disclosure_false_but_txns_exist(self):
+        self._make_txn(24000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr025 = [t for t in triggers if t.rule_id == "SR-025"]
+        self.assertGreaterEqual(len(sr025), 1)
+        contradiction = next(
+            (t for t in sr025 if "contradiction" in t.detected_summary.lower()
+             or "Schedule L" in t.detected_summary),
+            None,
+        )
+        self.assertIsNotNone(contradiction, "Expected a Schedule L contradiction trigger")
+        self.assertEqual(contradiction.severity, "CRITICAL")
+        ev = contradiction.evidence
+        self.assertIn("contradiction_transactions", ev)
+        self.assertEqual(ev["contradiction_transactions"][0]["party_name"], "Jay Example")
+
+    def test_does_not_fire_when_related_party_disclosed_true(self):
+        self.snap.related_party_disclosed = True
+        self.snap.save(update_fields=["related_party_disclosed"])
+        self._make_txn(24000)
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr025_contr = [
+            t for t in triggers if t.rule_id == "SR-025"
+            and "contradiction" in t.detected_summary.lower()
+        ]
+        self.assertEqual(sr025_contr, [])
+
+    def test_does_not_fire_when_no_schedule_l_rows(self):
+        # No ScheduleLTransaction rows — no contradiction to detect
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr025_contr = [
+            t for t in triggers if t.rule_id == "SR-025"
+            and "Schedule L" in t.detected_summary
+        ]
+        self.assertEqual(sr025_contr, [])
+
+
+class SR025ScheduleLNetworkTests(TestCase):
+    """SR-025 network mode: Schedule L party name matches a Person or Org in case."""
+
+    def setUp(self):
+        self.case = _make_case()
+        self.doc = _make_document(self.case, doc_type="IRS_990")
+        self.snap = FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            tax_year=2022,
+            ein="82-0045001",
+            source="IRS_TEOS_XML",
+            raw_extraction={},
+        )
+
+    def _make_txn(self, party_name, amount=24000):
+        return ScheduleLTransaction.objects.create(
+            snapshot=self.snap,
+            case=self.case,
+            tax_year=2022,
+            party_name=party_name,
+            relationship_description="Officer",
+            transaction_description="Lease",
+            amount=amount,
+        )
+
+    def test_fires_when_party_matches_person(self):
+        person = _make_person(self.case, "Jay Example")
+        self._make_txn("Jay Example")  # exact match
+        triggers = evaluate_sr025_schedule_l_network(self.case)
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].rule_id, "SR-025")
+        self.assertEqual(triggers[0].severity, "CRITICAL")
+        self.assertEqual(triggers[0].trigger_entity_id, person.pk)
+        self.assertIn("Jay Example", triggers[0].detected_summary)
+
+    def test_does_not_fire_on_low_similarity(self):
+        _make_person(self.case, "Ronald Smith")  # completely different name
+        self._make_txn("Jay Example")
+        triggers = evaluate_sr025_schedule_l_network(self.case)
+        self.assertEqual(triggers, [])
+
+    def test_fires_when_party_matches_organization(self):
+        org = _make_org(self.case, "Example Farms LLC")
+        self._make_txn("Example Farms LLC")
+        triggers = evaluate_sr025_schedule_l_network(self.case)
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0].trigger_entity_id, org.pk)
+
+    def test_does_not_fire_when_no_schedule_l_rows(self):
+        _make_person(self.case, "Jay Example")
+        triggers = evaluate_sr025_schedule_l_network(self.case)
+        self.assertEqual(triggers, [])
+
+
+class SR028ScheduleOEnrichmentTests(TestCase):
+    """SR-028 evidence_snapshot includes Schedule O explanation when available."""
+
+    def setUp(self):
+        self.case = _make_case()
+        self.doc = _make_document(self.case, doc_type="IRS_990")
+
+    def _make_snap(self, schedule_o_explanations=None):
+        return FinancialSnapshot.objects.create(
+            case=self.case,
+            document=self.doc,
+            tax_year=2022,
+            ein="82-0045001",
+            source="IRS_TEOS_XML",
+            schedule_o_explanations=schedule_o_explanations or [],
+            raw_extraction={
+                "governance": {"material_diversion_or_misuse": True},
+                "financials": {},
+                "officers": [],
+                "tax_year": 2022,
+                "taxpayer_name": "Test Charity",
+            },
+        )
+
+    def test_sr028_includes_schedule_o_text_in_evidence(self):
+        self._make_snap(schedule_o_explanations=[
+            {
+                "form_line_reference": "Part VI Line 5",
+                "explanation_text": "The organization became aware of a $50,000 diversion.",
+            }
+        ])
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr028 = [t for t in triggers if t.rule_id == "SR-028"]
+        self.assertEqual(len(sr028), 1)
+        ev = sr028[0].evidence
+        self.assertIn("schedule_o_explanation", ev)
+        self.assertIn("50,000 diversion", ev["schedule_o_explanation"])
+
+    def test_sr028_still_fires_without_schedule_o(self):
+        self._make_snap(schedule_o_explanations=[])
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr028 = [t for t in triggers if t.rule_id == "SR-028"]
+        self.assertEqual(len(sr028), 1)
+        ev = sr028[0].evidence
+        self.assertNotIn("schedule_o_explanation", ev)
+
+    def test_sr028_summary_quotes_schedule_o_when_available(self):
+        self._make_snap(schedule_o_explanations=[
+            {
+                "form_line_reference": "Part VI Line 5",
+                "explanation_text": "Unauthorized withdrawal detected.",
+            }
+        ])
+        triggers = evaluate_xml_financial_snapshots(self.case)
+        sr028 = [t for t in triggers if t.rule_id == "SR-028"]
+        self.assertIn("Schedule O states", sr028[0].detected_summary)
+        self.assertIn("Unauthorized withdrawal", sr028[0].detected_summary)
