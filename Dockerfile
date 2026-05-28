@@ -64,12 +64,4 @@ EXPOSE 8000
 # Run collectstatic + migrate, then start qcluster worker in background
 # and gunicorn in foreground. The worker processes async research jobs
 # (IRS 990, Ohio AOS, parcel search). Without it, jobs queue but never run.
-CMD python manage.py collectstatic --noinput && \
-    python manage.py migrate --noinput && \
-    python manage.py qcluster & \
-    gunicorn catalyst.wsgi:application \
-    --bind 0.0.0.0:${PORT:-8000} \
-    --workers 2 \
-    --timeout 120 \
-    --access-logfile - \
-    --error-logfile -
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py qcluster & gunicorn catalyst.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120 --access-logfile - --error-logfile -"]
