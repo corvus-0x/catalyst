@@ -10,7 +10,7 @@ The customer of the output is the investigator with the badge and the subpoena p
 
 ## Contact
 
-- **GitHub:** [tjcollinsku](https://github.com/tjcollinsku)
+- **GitHub:** [tjcollinsku](https://github.com/corvus-0x)
 - **LinkedIn:** [tylerjcollins](https://www.linkedin.com/in/tylerjcollins/)
 - **Email:** tjcollinsku@gmail.com
 
