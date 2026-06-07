@@ -9,7 +9,7 @@
 
 Built backwards from a real Ohio nonprofit investigation. Five agency referrals filed.
 
-<!-- demo GIF removed pending re-record against the demo workspace -->
+![Catalyst Demo](docs/catalyst-demo.gif)
 
 ---
 
