@@ -62,6 +62,18 @@ The deliverable is a **deterministic referral package** — not an AI summary. A
 
 ---
 
+## How this is built
+
+AI-first, on purpose. Claude Code writes most of the implementation inside a harness this repo defines:
+
+- **`.claude/skills/`**: `new-connector` scaffolds a failure-isolated public-records connector with its tests, `smoke-test` runs the live API health check, `session-wrap` closes out a working session with the docs updated.
+- **`.github/workflows/`**: Claude reviews every PR (`claude-code-review.yml`) alongside CodeRabbit. CI gates the merge.
+- **Strict TDD throughout.** The failing test lands before the implementation does. 921 tests hold the line.
+
+What ships in a referral package, how evidence is weighed, and when an entity merge is confirmed stay human decisions.
+
+---
+
 ## Tech stack
 
 | Layer | Technology |
