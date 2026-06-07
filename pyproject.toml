@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "**/migrations",
+  "Example Project Files",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*.py" = ["E501"]
+"**/county_auditor_connector.py" = ["E501"]
+"**/county_recorder_connector.py" = ["E501"]
+"**/irs_connector.py" = ["E501"]
+"**/ohio_sos_connector.py" = ["E501"]
+
+"**/verify_recorder_portals.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      # Auto-fix import sorting and other fixable issues, then verify nothing
+      # unfixable remains. Format is applied (not just checked) so style
+      # differences from different OS line-endings never block the build.
+      - name: Ruff lint (auto-fix)
+        run: ruff check --fix --config ../pyproject.toml .
+
+      - name: Ruff format (auto-fix)
+        run: ruff format --config ../pyproject.toml .
+
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: catalyst_db
+          POSTGRES_USER: catalyst_user
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U catalyst_user -d catalyst_db"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgres://catalyst_user:ci_test_password@localhost:5432/catalyst_db
+      DJANGO_SECRET_KEY: ci-not-secret
+      ANTHROPIC_API_KEY: ci-dummy-key
+      # Auth off in CI to mirror local dev (docker-compose.yml defaults this to
+      # False). Without it, settings.py defaults REQUIRE_AUTH to True and every
+      # API test gets 401. The auth middleware itself is unit-tested in
+      # investigations/tests/test_steps_1_through_4.py.
+      CATALYST_REQUIRE_AUTH: "False"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Migrate
+        run: python manage.py migrate
+      - name: Run backend tests
+        run: python manage.py test investigations
+
+  frontend-check:
+    name: Frontend Lint, Test & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build

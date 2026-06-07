@@ -1,0 +1,99 @@
+
+# ═══════════════════════════════════════════════════════════════
+# .gitignore — Catalyst Intelligence Triage Platform
+# ═══════════════════════════════════════════════════════════════
+
+# ── Environment variables (CRITICAL — never commit) ───────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+pytest-cache-files-*/
+
+# ── Django ────────────────────────────────────────────────────
+*.sqlite3
+db.sqlite3
+staticfiles/
+media/
+
+# ── Docker ────────────────────────────────────────────────────
+*.log
+docker-compose.override.yml
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+
+# ── Binary documents (keep docs in markdown) ──────────────────
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.pptx
+~$*
+
+# ── Frontend (Node/Vite) ─────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# ── Investigation data (never commit case evidence) ──────────
+# The case_data/ directory contains investigation-specific files:
+# evidence PDFs, IRS bulk data, analysis artifacts, reports.
+# These are NOT part of the software project.
+case_data/
+Example Project Files/
+*.zip
+*.bak
+evidence/
+To The AG/
+
+# ── Runtime artifacts ─────────────────────────────────────────
+chromadb_data/
+database/
+
+# ── Legacy directories (can be deleted locally) ──────────────
+Irs 990 XML/
+
+# ── Vite temp files ──────────────────────────────────────────
+*.timestamp-*.mjs
+
+# ── Claude / Cowork session artifacts ────────────────────────
+.claude/
+# …but track shared, version-controlled skills (not personal settings)
+!.claude/
+!.claude/skills/
+!.claude/skills/**
+.claude/settings.local.json
+docs/architecture/Tyler_Collins_Resume_2026_v5.pdf
+.playwright-mcp/
+.superpowers/
+"HTML wireframes/"
+
+# Claude Code local state
+.claude/worktrees/
+.claude/settings.json
+.claude/agents/
