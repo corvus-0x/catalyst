@@ -16,14 +16,17 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BASE_URL = sys.argv[1] if len(
-    sys.argv) > 1 else "https://catalyst-production-9566.up.railway.app"
+# Default to the local stack. The check creates write artifacts (case, finding,
+# note, document) — pass the production URL explicitly when you really mean it:
+#   python tests/api_health_check.py https://catalyst-production-9566.up.railway.app
+BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +136,25 @@ def api_post(
     except Exception as e:
         duration = (time.time() - start) * 1000
         return 0, str(e)[:500], duration
+
+
+def api_delete(path: str, timeout: int = 30) -> int:
+    """Make a DELETE request with CSRF token. Returns the status code (0 on error)."""
+    global _CSRF_TOKEN
+    if not _CSRF_TOKEN:
+        _CSRF_TOKEN = _get_csrf_token()
+    try:
+        req = urllib.request.Request(f"{BASE_URL}{path}", method="DELETE")
+        req.add_header("Accept", "application/json")
+        if _CSRF_TOKEN:
+            req.add_header("X-CSRFToken", _CSRF_TOKEN)
+            req.add_header("Cookie", f"csrftoken={_CSRF_TOKEN}")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except Exception:
+        return 0
 
 
 def check(
@@ -397,61 +419,9 @@ if CASE_ID:
     # ---------------------------------------------------------------------------
     print("--- Section 4: AI Endpoints ---")
 
-    if FINDING_ID:
-        # AI Summarize
-        status, body, dur = api_post(
-            f"/api/cases/{CASE_ID}/ai/summarize/", {"target_id": FINDING_ID,
-                                                    "target_type": "finding"}
-        )
-        check(
-            "AI summarize (finding)",
-            "/api/cases/{id}/ai/summarize/",
-            "POST",
-            status,
-            body,
-            dur,
-            expected_statuses=[200, 503],
-        )
-
-    # AI Connections — needs an entity
-    status, ent_body, _ = api_get("/api/entities/")
-    ENTITY_ID = None
-    ENTITY_TYPE = None
-    if isinstance(ent_body, list) and len(ent_body) > 0:
-        ENTITY_ID = ent_body[0].get("id")
-        ENTITY_TYPE = ent_body[0].get("type", "organization")
-
-    if ENTITY_ID:
-        status, body, dur = api_post(
-            f"/api/cases/{CASE_ID}/ai/connections/",
-            {"entity_id": ENTITY_ID, "entity_type": ENTITY_TYPE},
-        )
-        check(
-            "AI connections",
-            "/api/cases/{id}/ai/connections/",
-            "POST",
-            status,
-            body,
-            dur,
-            expected_statuses=[200, 503],
-        )
-
-    # AI Narrative — needs detection IDs
-    status, find_body, _ = api_get(f"/api/cases/{CASE_ID}/findings/")
-    if isinstance(find_body, list) and len(find_body) > 0:
-        find_ids = [f["id"] for f in find_body[:3]]
-        status, body, dur = api_post(
-            f"/api/cases/{CASE_ID}/ai/narrative/", {"finding_ids": find_ids}
-        )
-        check(
-            "AI narrative",
-            "/api/cases/{id}/ai/narrative/",
-            "POST",
-            status,
-            body,
-            dur,
-            expected_statuses=[200, 503],
-        )
+    # NOTE: /ai/summarize/, /ai/connections/, and /ai/narrative/ were cut in
+    # the Session 32 reframe and have no URL routes — the only AI endpoints
+    # are /ai/ask/ and /ai/analyze-patterns/ (both async, 202).
 
     # AI Ask — async endpoint, enqueues a job and returns 202 + job_id
     status, body, dur = api_post(
@@ -476,21 +446,30 @@ if CASE_ID:
     # These endpoints may have @csrf_exempt decorators, but we verify they work
     # with a proper CSRF token when present.
 
+    # Track artifacts created by the write tests so Section 6 can clean up.
+    CREATED: dict[str, Optional[str]] = {
+        "case": None, "document": None, "finding": None, "note": None,
+    }
+
     # api_case_collection (POST to create case)
     status, body, dur = api_post(
         "/api/cases/", {"name": "CSRF Test Case", "status": "ACTIVE"})
     check(
         "POST case creation (CSRF)", "/api/cases/", "POST", status, body, dur, expected_status=201
     )
+    if isinstance(body, dict):
+        CREATED["case"] = body.get("id")
 
     # api_case_document_collection (POST to upload document)
-    # Note: This endpoint expects multipart/form-data in practice, but we test JSON payload
+    # Note: This endpoint expects multipart/form-data in practice, but we test JSON payload.
+    # The hash must be unique per run — (case, sha256_hash) is a unique constraint,
+    # so a fixed hash would 400 on every run after the first.
     status, body, dur = api_post(
         f"/api/cases/{CASE_ID}/documents/",
         {
             "filename": "csrf-test.txt",
             "file_path": "generated/csrf-test.txt",
-            "sha256_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sha256_hash": uuid.uuid4().hex + uuid.uuid4().hex,
             "file_size": 1,
             "doc_type": "OTHER",
             "is_generated": True,
@@ -500,6 +479,8 @@ if CASE_ID:
     )
     check("POST document (CSRF)",
           "/api/cases/{id}/documents/", "POST", status, body, dur, expected_status=201)
+    if isinstance(body, dict):
+        CREATED["document"] = body.get("id")
 
     # api_case_finding_collection (POST to create finding)
     status, body, dur = api_post(
@@ -519,6 +500,8 @@ if CASE_ID:
         dur,
         expected_status=201,
     )
+    if isinstance(body, dict):
+        CREATED["finding"] = body.get("id")
 
     # api_case_note_collection (POST to create note)
     status, body, dur = api_post(
@@ -538,6 +521,8 @@ if CASE_ID:
         dur,
         expected_status=201,
     )
+    if isinstance(body, dict):
+        CREATED["note"] = body.get("id")
 
     # api_case_reevaluate_findings (POST to trigger re-evaluation)
     status, body, dur = api_post(
@@ -576,6 +561,44 @@ if CASE_ID:
         body,
         dur,
     )
+
+    # -----------------------------------------------------------------------
+    # SECTION 4b: Cleanup — remove artifacts the write tests created so
+    # repeated runs don't pollute the target case (or production).
+    # -----------------------------------------------------------------------
+    print("--- Section 4b: Cleanup ---")
+
+    cleaned, failed_cleanup = [], []
+    if CREATED["finding"]:
+        ok = api_delete(f"/api/cases/{CASE_ID}/findings/{CREATED['finding']}/") == 204
+        (cleaned if ok else failed_cleanup).append("finding")
+    if CREATED["note"]:
+        ok = api_delete(f"/api/cases/{CASE_ID}/notes/{CREATED['note']}/") == 204
+        (cleaned if ok else failed_cleanup).append("note")
+    if CREATED["document"]:
+        ok = api_delete(f"/api/cases/{CASE_ID}/documents/{CREATED['document']}/") == 204
+        (cleaned if ok else failed_cleanup).append("document")
+    if CREATED["case"]:
+        # Cases have no DELETE endpoint (audit trail) — close the test case
+        # and label it so it is unmistakably a health-check artifact.
+        try:
+            payload = json.dumps(
+                {"status": "CLOSED", "notes": "Health-check artifact — safe to ignore."}
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                f"{BASE_URL}/api/cases/{CREATED['case']}/", data=payload, method="PATCH"
+            )
+            req.add_header("Content-Type", "application/json")
+            if _CSRF_TOKEN:
+                req.add_header("X-CSRFToken", _CSRF_TOKEN)
+                req.add_header("Cookie", f"csrftoken={_CSRF_TOKEN}")
+            with urllib.request.urlopen(req, timeout=30):
+                cleaned.append("case (closed)")
+        except Exception:
+            failed_cleanup.append("case")
+    print(f"   Cleaned up: {', '.join(cleaned) or 'nothing to clean'}")
+    if failed_cleanup:
+        print(f"   WARNING — could not clean up: {', '.join(failed_cleanup)}")
 
 else:
     print("   SKIP: No cases found — cannot test case-specific endpoints")
