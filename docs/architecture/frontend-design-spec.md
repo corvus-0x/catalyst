@@ -127,17 +127,22 @@ Proposed connections sit as dashed edges in the web. A badge on the toolbar show
 
 ## 4. Tab Layout
 
-The Case Detail page has five tabs. Referrals is deferred — backend exists, UI is a stretch goal.
+The Case Detail page has six tabs (sixth added after this spec's v3.0: the
+investigation replay, renamed "Replay" in Session 46 to avoid sitting next to
+"Investigate" as a near-duplicate label).
 
 ```
-[ Investigate ]  [ Research ]  [ Financials ]  [ Timeline ]  [ Referrals ]
+[ Investigate ]  [ Research ]  [ Financials ]  [ Timeline ]  [ Referrals ]  [ Replay ]
 ```
 
 - **Investigate** — the web view. This is the primary tab. Recruiter demo starts here.
 - **Research** — external data source queries with async job polling.
 - **Financials** — year-over-year 990 table with anomaly highlighting.
 - **Timeline** — brushable chronological event rail.
-- **Referrals** — deterministic PDF export (backend done in Session 33; UI is a button, deferred).
+- **Referrals** — deterministic PDF export (shipped — working "Generate Referral Package (PDF)" button).
+- **Replay** — chronological investigation steps (`InvestigationStep` model): question asked,
+  source consulted, what was found, which angle it triggered. Filters by origin
+  (Investigator / Lead / External) and status (Resolved / Open / Dead end).
 
 ---
 
@@ -925,7 +930,7 @@ session decision, not a code change.
 | ID | Decision | Notes |
 |----|---------|-------|
 | OQ-1 | Cytoscape.js for web graph | Better interaction model than D3 for click/select/zoom |
-| OQ-2 | Five tabs: Investigate, Research, Financials, Timeline, Referrals | Referrals deferred |
+| OQ-2 | Five tabs: Investigate, Research, Financials, Timeline, Referrals | Superseded: Referrals shipped (working PDF export) and a sixth tab, Replay (investigation steps), was added — renamed from "Investigation" in Session 46 |
 | OQ-3 | Four-level navigation: Web → Profile → Angle → Document | Breadcrumb always visible below Level 1 |
 | OQ-4 | Angle = Finding model, Connection = Relationship/PersonOrganization, Profile = entity + FinancialSnapshot[] | No new backend models needed |
 | OQ-5 | Active = NEEDS_EVIDENCE, Confirmed = CONFIRMED, Exhausted = DISMISSED | |

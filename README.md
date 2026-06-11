@@ -1,7 +1,7 @@
 # Catalyst — Intelligence Triage Platform
 
 ![CI](https://github.com/corvus-0x/catalyst/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/backend%20tests-921%20passing-brightgreen?style=flat)
+![Tests](https://img.shields.io/badge/backend%20tests-924%20passing-brightgreen?style=flat)
 ![Railway](https://img.shields.io/badge/Railway-deployed-blue?style=flat)
 ![Claude API](https://img.shields.io/badge/Claude_API-integrated-blueviolet?style=flat)
 
@@ -68,7 +68,7 @@ AI-first, on purpose. Claude Code writes most of the implementation inside a har
 
 - **`.claude/skills/`**: `new-connector` scaffolds a failure-isolated public-records connector with its tests, `smoke-test` runs the live API health check, `session-wrap` closes out a working session with the docs updated.
 - **`.github/workflows/`**: Claude reviews every PR (`claude-code-review.yml`) alongside CodeRabbit. CI gates the merge.
-- **Strict TDD throughout.** The failing test lands before the implementation does. 921 tests hold the line.
+- **Strict TDD throughout.** The failing test lands before the implementation does. 924 tests hold the line.
 
 What ships in a referral package, how evidence is weighed, and when an entity merge is confirmed stay human decisions.
 
@@ -88,7 +88,7 @@ What ships in a referral package, how evidence is weighed, and when an entity me
 
 ## Test surface
 
-921 backend tests covering connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, and data quality validators. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
+924 backend tests covering connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, data quality validators, and the referral PDF exporter. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
 
 ```bash
 # Run the full suite (inside Docker):

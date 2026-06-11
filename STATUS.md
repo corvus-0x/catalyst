@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-06-05 (Session 45 — demo GIF; port 5174; graph visual rework → Gotham/Maltego style)
+**Last updated:** 2026-06-11 (Session 46 — full product audit; referral PDF + fresh-session CSRF fixes shipped to prod; Replay tab; deterministic health check)
 
 This project is in active development. This file is updated every time
 the state of a major component changes — and at the end of every working
@@ -28,11 +28,11 @@ running on Railway.
 | Ohio Auditor of State connector | Scrapes audit reports, finds Findings for Recovery | ASP.NET ViewState postback |
 | County Recorder connector | All 88 Ohio counties mapped to recorder portals; auto-parses uploaded deeds | URL builder + document parser |
 | Ohio Secretary of State connector | Local CSV search (admin uploads CSVs from publicfiles.ohiosos.gov) | Switched from runtime download after SOS started returning 403s |
-| Case detail UI | 5 tabs at `/cases/:id`: Investigate (the graph/"Web"), Research, Financials, Timeline, Referrals | React + Vite, dark/light/auto themes, keyboard shortcuts. Documents open in a drawer; fuzzy "pending connections" review is folded into the Investigate tab (no standalone Documents/Match Review tabs). |
+| Case detail UI | 6 tabs at `/cases/:id`: Investigate (the graph/"Web"), Research, Financials, Timeline, Referrals, Replay (investigation step-by-step story) | React + Vite, dark/light/auto themes, keyboard shortcuts. Documents open in a drawer; fuzzy "pending connections" review is folded into the Investigate tab (no standalone Documents/Match Review tabs). Replay tab renamed from "Investigation" in Session 46 (sat confusingly next to "Investigate"). |
 | Entity relationship graph | Cytoscape.js graph (`react-cytoscapejs` + `cose-bilkent`) — the primary investigation canvas ("Web") | Gotham/Maltego visual style: small markers (22-54px), labels right, node size scales with finding count (hub entity visually dominant), entity-type icons (person silhouette / building), 1px border ring, directed arrowheads on confirmed edges, dot-grid canvas. D3 is used only for the Timeline brush. |
-| Referral package PDF exporter | Deterministic, citation-bearing PDF generation with cover page, findings, financial summary, and document index with SHA-256 chain of custody | The central deliverable — what a professional investigator reads |
+| Referral package PDF exporter | Deterministic, citation-bearing PDF generation with cover page, findings, financial summary, and document index with SHA-256 chain of custody | The central deliverable — what a professional investigator reads. Was hard-broken (500) by three invalid ORM lookups until Session 46; now fixed, regression-tested (`test_referral_pdf.py`), and verified live on Railway. |
 | Fraud signal detection engine | 15 pattern rules (cut from 29, plus the new SR-028 self-disclosed material diversion) grounded in real investigation patterns — valuation anomalies, insider swaps, false disclosures, revenue spikes | Each rule tied to a real anomaly source. `Finding.evidence_snapshot` captures the exact 990 fields / transaction ids / entity ids that fired each rule for the referral PDF citations. |
-| Demo case ("Bright Future Foundation") | Pre-loaded investigation with 4 persons, 2 orgs, 2 properties, 6 years of financials, 7 documents, and 9 confirmed findings | `python manage.py seed_demo` — shows the full pipeline working |
+| Demo case ("Bright Future Foundation") | Pre-loaded investigation with 4 persons, 2 orgs, 2 properties, 6 years of financials (incl. governance answers), 7 documents, 10 findings (8 confirmed — every one citing source documents), and a 7-step investigation replay | `python manage.py seed_demo` — shows the full pipeline working |
 | AI free-text Q&A | Claude-powered ask-about-this-case, wired into ConnectKnotsModal (angle title suggestion) and AngleView Lead panel (`/ai/ask/`) | Async endpoint (202 + job_id); frontend polls transparently. The older summarize/connections/narrative endpoints were deleted in Session 43. |
 | Document workspace | Open any document and see its text, extracted entities, linked findings, and sticky notes in one panel | Entities are clickable — navigate to entity detail |
 | Sticky notes (quick captures) | Attach notes to any document, entity (knot), or angle — full create/edit/delete on knots (ProfilePanel) and create/delete on angles (AngleView) | Backend supports `target_type` = person/organization/finding/document. Temp-id bug fixed Session 44 — notes created in the same session now edit/delete correctly. |
@@ -47,7 +47,7 @@ running on Railway.
 | Re-run signal rules | Re-fires all 15 fraud-detection rules against the case (useful after adding new documents). | ↺ button in InvestigateTab toolbar (wired 2026-06-04). Graph + dashboard refresh on completion. |
 | Match Review (fuzzy entity-match queue) | When the resolver finds an incoming name similar but not identical to an existing person/org, it surfaces the pair on a "Match Review" tab on Case Detail with a pending-count badge. Investigators accept (mark MERGED) or dismiss; resolution is persisted on `FuzzyMatchCandidate` rows. | Replaces silent-merge behavior that would have corrupted evidence chain-of-custody on referrals. The data plane is intentionally separate from the actual data merge — investigator decisions are recorded as input for a future merge tool. |
 | Data-quality validators wired into resolution path | `data_quality.validate_ein` / `validate_person` / `validate_property` run inline during entity resolution and property creation. Issues are logged at WARNING (errors) / INFO (warnings) and the EIN normalizer auto-corrects formatting. Property warnings surface on `Document.extraction_notes` for UI visibility. | Catches OCR garbage (state-abbrev "names", form-label false positives), placeholder EINs, negative valuations, and 990 line-item math errors. |
-| Backend test suite | 921 backend tests across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, and extraction routing. 0 red. | CI runs backend test suite (postgres:16-alpine service container) + ruff + tsc + vite on every push. |
+| Backend test suite | 924 backend tests across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, extraction routing, and the referral PDF endpoint. 0 red. | CI runs backend test suite (postgres:16-alpine service container) + ruff + tsc + vite on every push. |
 | Docker dev environment | `docker compose up -d` starts all four services: postgres, Django runserver (hot reload via volume mount), Vite dev server (HMR), Django-Q2 worker. | `docker compose exec backend python manage.py seed_demo` loads the Bright Future Foundation demo. |
 
 ---
@@ -80,6 +80,73 @@ structural rewrites.
 | Component | Status |
 |-----------|--------|
 | Repo presentation | This file, `README.md`, `CLAUDE.md` — now reconciled to the shipped graph-first app. Updated at the end of each session going forward. |
+
+**Recently completed (Session 46, June 11 2026):**
+
+Full product audit (code + portfolio readiness) run against a live local stack,
+followed by a fix sweep — 5 commits, deployed to Railway (`c5ca466`), prod
+reseeded and verified end-to-end.
+
+- **Referral PDF was hard-broken (500) — the product's central deliverable.**
+  Three invalid ORM lookups in `api_case_referral_pdf`: `persondocument__`/
+  `orgdocument__` (real related names are `document_links`), a
+  `prefetch_related("finding_entities", ...)` (real name `entity_links`), and
+  `order_by("created_at")` on Document (field is `uploaded_at`). *Why it shipped
+  broken with 921 green tests:* zero tests referenced the endpoint — coverage
+  breadth ≠ coverage of what matters. Added `test_referral_pdf.py` (3 regression
+  tests asserting 200 + `%PDF` magic bytes) so it can't silently regress.
+- **Every write action 403'd in a fresh browser session.** The backend CSRF
+  endpoint (SEC-024) existed, and its docstring even said "the React SPA calls
+  this once on startup" — but the SPA never did. Tyler's dev browser had a stale
+  `csrftoken` cookie masking the bug; any recruiter's clean browser hit it
+  immediately. *Approach chosen:* lazy memoized bootstrap inside `fetchApi`
+  (fetch `/api/csrf/` once when the cookie is missing, share the in-flight
+  promise) rather than an eager App-mount fetch — self-heals on any first write
+  and doesn't couple app bootstrap to backend availability.
+- **Health check rewritten — its "flakiness" was three determinism bugs, not
+  randomness.** (1) It derived `CASE_ID` from `case_list[0]`, so reseeding
+  changed which case it tested; (2) a fixed `"a"*64 sha256` tripped the
+  `(case, sha256_hash)` unique constraint on every run after the first;
+  (3) it tested `/ai/summarize|connections|narrative/` — endpoints deleted in
+  Session 43 that 404 whenever the first-listed case had findings. Also:
+  **it defaulted to production** and left "CSRF Test Case" artifacts there on
+  every casual run. Now defaults to localhost (prod must be passed explicitly),
+  uses a unique hash per run, tests only live endpoints, and deletes its
+  artifacts (closing the test case — cases are non-deletable by design).
+  Deterministic 30/30, verified twice consecutively, local and prod.
+- **"Investigation" tab renamed "Replay"** (Tyler's call from three options) —
+  it sat next to "Investigate" and read as a duplicate. Seeded a 7-step replay
+  arc mirroring how the founding investigation actually unfolded ($0-comp
+  question → SOS lookup → both deeds → 990 contradiction), deliberately covering
+  every origin (Investigator/Lead/External) and status (Resolved/Open/Dead end)
+  so all filter chips have content.
+- **All 8 confirmed demo angles now cite source documents.** The Referrals tab
+  itself was warning "6 confirmed angles have no cited documents — referral
+  package will be incomplete," contradicting the core "every finding traces to
+  a cited document" pitch. Seed now writes a per-rule citation map. Governance
+  fields seeded too — COI policy = **No** is SR-012's evidence, Line 28 = **Yes**
+  with no Schedule L is SR-006/SR-025's premise; blank dashes were hiding the
+  story.
+- **OQ-15 completed:** Financials anomaly tooltips now show "Open existing
+  angle" (when a non-dismissed angle exists for the rule) above "Start new
+  angle," deep-linking via the same `handleOpenAngle` path the Replay tab uses.
+  Lookup fails open — on fetch error the button just hides.
+- **Security: X-Forwarded-For trust gated** behind `TRUST_PROXY_HEADERS`
+  (auto-on via Railway's built-in `RAILWAY_ENVIRONMENT`, so prod needed no
+  config change). Direct traffic now keys rate limits on `REMOTE_ADDR` —
+  previously a direct caller could spoof a fresh IP per request and bypass the
+  per-IP buckets. AI per-case rate counter switched to atomic
+  `cache.add`/`incr` (was racy get/set).
+- **Prod operations:** Railway auto-deploy SUCCESS → `seed_demo --reset`
+  (demo case `7a2fff17…`) → purged 3 accumulated "CSRF Test Case" rows
+  (children first; `RESTRICT` FKs) → verified: referral PDF 200 + `%PDF`
+  (15,210 bytes), health check 30/30 with self-cleanup, 8/8 confirmed angles
+  cited, governance fields present.
+- **Audit verdicts worth keeping:** git history is clean (no secrets, only
+  `.env.example`; scanned all commits), AuditLog append-only holds (zero
+  UPDATE/DELETE anywhere), banned-vocabulary check passes (all matches are
+  code comments, none user-visible), README quickstart works from a cold
+  clone, connector wiring table matches `urls.py` exactly.
 
 **Recently completed (Session 45, June 5 2026):**
 
@@ -516,6 +583,9 @@ In rough priority order. Subject to change as the rebuild progresses.
 - **Fuzzy match "Accept" is review-only — no automated data merge yet.** When an investigator marks a candidate MERGED, the system records the decision but does not yet reassign FK references or fold aliases. A future merge tool will operate on the queue of MERGED candidates. Documented in the PATCH endpoint.
 - **form990_parser.py may be partially superseded.** It is wired into `_process_uploaded_file` for IRS_990 docs but the IRS TEOS XML pipeline also extracts Parts IV/VI/VII. Both paths are currently active; consolidation is deferred.
 - **Git pre-commit hook points to a Windows Python path** and does not run in sandbox/CI environments. Tyler commits from his local machine where the hook works.
+- **Vite-in-Docker misses file changes on Windows bind mounts.** After editing frontend source, the dev server can keep serving the stale cached module (inotify events don't cross the bind mount). If a change doesn't show up, `docker restart catalyst_frontend`. Bit the Session 46 verification — the CSRF fix looked unapplied until the container restarted.
+- **Deferred from the Session 46 audit (LOW):** API error copy surfaces raw strings like "403 Forbidden" in the Research/Referrals panels (largely mooted by the CSRF fix, but the copy path remains); the jobs API exposes raw exception strings in `error_message` (useful for a single-user tool, would need sanitizing for multi-user).
+- **Health check leaves one CLOSED case per production run by design** — labeled "Health-check artifact — safe to ignore" (cases are non-deletable to protect the audit trail; finding/note/document artifacts are deleted).
 
 ---
 

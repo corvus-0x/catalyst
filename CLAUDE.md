@@ -1,5 +1,5 @@
 # CLAUDE.md — Catalyst System Map
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-11
 **Owner:** Tyler Collins (tjcollinsku@gmail.com)
 
 ---
@@ -93,7 +93,7 @@ Catalyst/
 │   ├── team/                    ← Specialist briefing books
 │   └── superpowers/plans/       ← Implementation plans
 │
-├── tests/                       ← 555+ backend tests + API health check
+├── tests/                       ← 924 backend tests + API health check (defaults to localhost)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── railway.json
@@ -174,7 +174,8 @@ Backend model names appear only in API calls and TypeScript types.
 
 → Full tab specs, drill-down interaction model, node/edge encoding: **`docs/architecture/frontend-design-spec.md`**
 
-Routes: `/` Dashboard · `/cases` CasesList · `/cases/:id` CaseDetail (5 tabs) · `/search` · `/settings`
+Routes: `/` Dashboard · `/cases` CasesList · `/cases/:id` CaseDetail (6 tabs: Investigate ·
+Research · Financials · Timeline · Referrals · Replay) · `/search` · `/settings`
 
 **Graph:** Cytoscape.js (`react-cytoscapejs` + `cytoscape-cose-bilkent`). D3 is used **only**
 for the Timeline brush. Do NOT use D3 force simulation for the graph.
