@@ -495,8 +495,20 @@ export default function InvestigateTab({
   }, [leadJob.status]);
 
   /* ── Navigation ── */
+  function sameEntry(a: NavEntry, b: NavEntry): boolean {
+    if (a.kind !== b.kind) return false;
+    switch (a.kind) {
+      case "web":      return true;
+      case "profile":  return a.entityId === (b as typeof a).entityId;
+      case "angle":    return a.angleId === (b as typeof a).angleId;
+      case "document": return a.documentId === (b as typeof a).documentId;
+    }
+  }
+
   function navigate(entry: NavEntry) {
-    setNavStack((s) => [...s, entry]);
+    // Re-clicking the current level (e.g. a double-fired canvas tap) must not
+    // stack a duplicate breadcrumb crumb.
+    setNavStack((s) => (sameEntry(s[s.length - 1], entry) ? s : [...s, entry]));
     setWebSelectedEdge(null);
     if (entry.kind === "angle") {
       onAngleActive?.(entry.angleId);

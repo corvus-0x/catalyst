@@ -2532,7 +2532,7 @@ def api_search(request):
                 {
                     "type": "finding",
                     "id": str(f.pk),
-                    "title": f"{f.rule_id} — {f.severity}",
+                    "title": f"{f.rule_id} — {f.severity}" if f.rule_id else f.severity,
                     "subtitle": f"Finding — {f.status}",
                     "snippet": f.title[:200] if f.title else "",
                     "relevance": round(float(f.rank), 4),
@@ -3761,7 +3761,11 @@ def api_case_graph(request, pk):
                     "id": str(f.pk),
                     "layer": "finding",
                     "date": f.created_at.isoformat(),
-                    "label": f"{f.rule_id}: {(f.title or '')[:60]}",
+                    "label": (
+                        f"{f.rule_id}: {(f.title or '')[:60]}"
+                        if f.rule_id
+                        else (f.title or "")[:60]
+                    ),
                     "metadata": {
                         "severity": f.severity,
                         "rule_id": f.rule_id,
@@ -5776,15 +5780,15 @@ def api_case_referral_pdf(request, pk):
             status=FindingStatus.CONFIRMED,
             evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
         )
-        .prefetch_related("finding_entities", "finding_documents")
+        .prefetch_related("entity_links", "document_links")
         .order_by("-severity", "created_at")
     )
 
-    persons_qs = Person.objects.filter(persondocument__document__case=case).distinct()
-    orgs_qs = Organization.objects.filter(orgdocument__document__case=case).distinct()
+    persons_qs = Person.objects.filter(document_links__document__case=case).distinct()
+    orgs_qs = Organization.objects.filter(document_links__document__case=case).distinct()
     entities = {"persons": persons_qs, "organizations": orgs_qs}
 
-    documents_qs = case.documents.all().order_by("created_at")
+    documents_qs = case.documents.all().order_by("uploaded_at")
     financials_qs = FinancialSnapshot.objects.filter(case=case).order_by("tax_year")
 
     from .referral_export import ReferralPDFGenerator

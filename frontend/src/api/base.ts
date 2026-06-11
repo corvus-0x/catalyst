@@ -21,6 +21,27 @@ function getCookie(name: string): string {
 /** HTTP methods that require a CSRF token. */
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
+/**
+ * In-flight CSRF bootstrap request, memoized so concurrent mutating calls
+ * share one fetch instead of racing. The backend endpoint (SEC-024) sets the
+ * `csrftoken` cookie via Django's `ensure_csrf_cookie`; without this primer a
+ * fresh browser session has no cookie and every write request 403s.
+ */
+let csrfBootstrap: Promise<void> | null = null;
+
+/** Ensure the csrftoken cookie exists, fetching /api/csrf/ once if missing. */
+async function ensureCsrfCookie(): Promise<void> {
+  if (getCookie("csrftoken")) return;
+  if (!csrfBootstrap) {
+    csrfBootstrap = fetch("/api/csrf/", { method: "GET" })
+      .then(() => undefined)
+      .finally(() => {
+        csrfBootstrap = null;
+      });
+  }
+  await csrfBootstrap;
+}
+
 /** Thrown whenever the API returns a non-2xx status code. */
 export class ApiError extends Error {
   readonly status: number;
@@ -73,6 +94,7 @@ export async function fetchApi<T>(
   }
 
   if (MUTATING_METHODS.has(method.toUpperCase())) {
+    await ensureCsrfCookie();
     const csrf = getCookie("csrftoken");
     if (csrf) {
       headers["X-CSRFToken"] = csrf;
