@@ -966,7 +966,7 @@ class FinancialSnapshot(UUIDPrimaryKeyModel):
     source = models.CharField(
         max_length=20,
         default="EXTRACTED",
-        help_text="EXTRACTED (from document OCR), PROPUBLICA (API), MANUAL",
+        help_text="EXTRACTED (from document OCR), IRS_TEOS_XML (TEOS pipeline), MANUAL",
     )
     confidence = models.FloatField(default=1.0, help_text="0.0–1.0 extraction confidence")
     raw_extraction = models.JSONField(default=dict, blank=True)

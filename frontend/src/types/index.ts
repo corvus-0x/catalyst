@@ -1288,26 +1288,10 @@ export interface ExportBody {
 
 // ---------------------------------------------------------------------------
 // Utility / AI endpoints
-// POST /api/cases/:id/ai/summarize/
-// POST /api/cases/:id/ai/connections/
-// POST /api/cases/:id/ai/narrative/
 // POST /api/cases/:id/ai/ask/
+// (summarize / connections / narrative were cut in the Session 32 reframe —
+//  the only live AI endpoints are ai/ask/ and ai/analyze-patterns/)
 // ---------------------------------------------------------------------------
-
-/** Response from POST /api/cases/:id/ai/summarize/ */
-export interface AiSummaryResponse {
-  summary: string;
-}
-
-/** Response from POST /api/cases/:id/ai/connections/ */
-export interface AiConnectionsResponse {
-  connections: string;
-}
-
-/** Response from POST /api/cases/:id/ai/narrative/ */
-export interface AiNarrativeResponse {
-  narrative: string;
-}
 
 /** Body and response from POST /api/cases/:id/ai/ask/ */
 export interface AiAskBody {

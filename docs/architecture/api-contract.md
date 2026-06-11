@@ -493,7 +493,7 @@ Imports a research result as an entity or note.
 **Key field notes:**
 - All monetary fields are **integers** (not strings — these are stored as IntegerField on the model)
 - YoY percentage fields (`*_yoy_pct`) are floats — only present on rows index ≥ 1 (first year has no prior year to compare)
-- `source` — `"IRS_XML"` for data from TEOS pipeline, `"AI_EXTRACTED"` for parsed documents
+- `source` — `"IRS_TEOS_XML"` for data from the TEOS pipeline, `"EXTRACTED"` for data parsed from uploaded documents (free-form CharField; treat as `string`, not an enum)
 - `confidence` — float 0.0–1.0
 
 **TypeScript implication:**
@@ -1299,9 +1299,6 @@ POST   /api/cases/:id/research/add-to-case/
 GET    /api/jobs/:job_id/
 GET    /api/cases/:id/jobs/
 
-POST   /api/cases/:id/ai/summarize/
-POST   /api/cases/:id/ai/connections/
-POST   /api/cases/:id/ai/narrative/
 POST   /api/cases/:id/ai/ask/                 [ASYNC → 202]
 POST   /api/cases/:id/ai/analyze-patterns/    [ASYNC → 202]
 

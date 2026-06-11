@@ -99,7 +99,7 @@ docker compose exec backend python manage.py test investigations
 
 ## The founding investigation
 
-This platform was built from a real public-records investigation into a nonprofit organization, conducted using only publicly available filings — IRS Form 990s, Secretary of State records, county recorder filings, audit reports. The investigation produced formal referrals to four federal and state agencies. Identifying details have been intentionally removed from this public repository; verification documentation is available on request.
+This platform was built from a real public-records investigation into a nonprofit organization, conducted using only publicly available filings — IRS Form 990s, Secretary of State records, county recorder filings, audit reports. The investigation produced formal referrals to five federal and state agencies. Identifying details have been intentionally removed from this public repository; verification documentation is available on request.
 
 ---
 
