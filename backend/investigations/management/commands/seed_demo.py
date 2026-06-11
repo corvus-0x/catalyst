@@ -49,6 +49,7 @@ from investigations.models import (
     FindingEntity,
     FindingSource,
     FindingStatus,
+    InvestigationStep,
     InvestigatorNote,
     OcrStatus,
     Organization,
@@ -724,6 +725,14 @@ class Command(BaseCommand):
                     "net_assets_eoy": snap_data["net_assets_eoy"],
                     "num_employees": 2,
                     "num_voting_members": 4,
+                    # Governance answers are part of the fraud story — the COI
+                    # policy is deliberately absent (SR-012) and Line 28 is
+                    # answered Yes with no Schedule L attached (SR-006/SR-025).
+                    "num_independent_members": 1,
+                    "has_coi_policy": False,
+                    "has_whistleblower_policy": False,
+                    "has_document_retention_policy": False,
+                    "related_party_disclosed": True,
                     "officer_compensation_total": 0,
                     "source": "EXTRACTED",
                     "confidence": 1.0,
@@ -989,20 +998,47 @@ class Command(BaseCommand):
                         defaults={"context_note": "Trigger entity for this rule"},
                     )
 
-            # Link to trigger document if available
-            if finding_data["rule_id"] in ["SR-003", "SR-005"]:
-                doc = (
-                    docs.get("Deed_1250_Oak_St.pdf")
-                    if (finding_data["rule_id"] == "SR-003")
-                    else docs.get("Deed_875_Elm_Ave.pdf")
-                )
+            # Cite source documents — every confirmed angle must carry document
+            # evidence or the referral package flags it as incomplete.
+            citation_map = {
+                "SR-003": [("Deed_1250_Oak_St.pdf", "Page 1", "Transaction evidence")],
+                "SR-005": [("Deed_875_Elm_Ave.pdf", "Page 1", "Transaction evidence")],
+                "SR-006": [
+                    ("BFF_Form990_2021.pdf", "Part IV, Line 28",
+                     "Line 28 answered Yes; Schedule L absent"),
+                ],
+                "SR-012": [
+                    ("BFF_Form990_2021.pdf", "Part VI", "No COI policy disclosed"),
+                ],
+                "SR-013": [
+                    ("BFF_Form990_2021.pdf", "Part VII", "$0 officer compensation reported"),
+                ],
+                "SR-015": [
+                    ("Deed_1250_Oak_St.pdf", "Page 1", "BFF purchase from Mitchell Dev"),
+                    ("Deed_875_Elm_Ave.pdf", "Page 1", "$0 transfer to James Mitchell"),
+                    ("Mitchell_Dev_Formation.pdf", "Page 1",
+                     "Sarah Mitchell listed as manager"),
+                ],
+                "SR-021": [
+                    ("BFF_Form990_2021.pdf", "Part I", "Revenue trend across filings"),
+                ],
+                "SR-025": [
+                    ("BFF_Form990_2021.pdf", "Part IV", "Contradictory disclosure"),
+                    ("Deed_1250_Oak_St.pdf", "Page 1", "Insider transaction on record"),
+                ],
+                "SR-029": [
+                    ("BFF_Form990_2021.pdf", "Part I", "Program expense ratio 38%"),
+                ],
+            }
+            for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
+                doc = docs.get(doc_filename)
                 if doc:
                     FindingDocument.objects.get_or_create(
                         finding=finding,
                         document=doc,
                         defaults={
-                            "page_reference": "Page 1",
-                            "context_note": "Transaction evidence",
+                            "page_reference": page_ref,
+                            "context_note": note,
                         },
                     )
 
@@ -1077,6 +1113,129 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 "  ✓ AI: Timeline compression: multiple transactions within 30-day window"
             )
+        )
+
+        # ────────────────────────────────────────────────────────────────
+        # 11b. INVESTIGATION REPLAY STEPS
+        # The Replay tab tells the story of how the case unfolded — each
+        # step records the question asked, the source consulted, what was
+        # found, and the Angle it produced. Covers every origin (T/C/X)
+        # and status (RESOLVED/OPEN/DEAD_END) so all filter chips have data.
+        # ────────────────────────────────────────────────────────────────
+
+        self.stdout.write("Creating investigation replay steps...")
+
+        def _finding_by_rule(rule_id):
+            return Finding.objects.filter(case=case, rule_id=rule_id).first()
+
+        steps_data = [
+            {
+                "step_number": 1,
+                "question": "Why does a $4.2M nonprofit report $0 officer compensation?",
+                "source": "IRS TEOS — Form 990 (2016–2021)",
+                "what_was_found": (
+                    "Part VII shows $0 compensation for every officer in every "
+                    "filed year, while revenue grew from $85K to $4.2M. "
+                    "Implausible at this scale — flagged for compensation routing."
+                ),
+                "who_originated": "T",
+                "triggered_finding": _finding_by_rule("SR-013"),
+                "triggered_question": "Who pays Sarah Mitchell, if not the foundation?",
+                "status": "RESOLVED",
+            },
+            {
+                "step_number": 2,
+                "question": "Who controls Mitchell Development Group LLC?",
+                "source": "Ohio SOS — business filings",
+                "what_was_found": (
+                    "Formation filing lists Sarah Mitchell as manager and James "
+                    "Mitchell as member. Same people lead Bright Future "
+                    "Foundation — the two entities share their principals."
+                ),
+                "who_originated": "T",
+                "triggered_finding": None,
+                "triggered_question": "Do any transactions connect BFF and Mitchell Dev?",
+                "status": "RESOLVED",
+            },
+            {
+                "step_number": 3,
+                "question": "Do any property transactions connect BFF and Mitchell Dev?",
+                "source": "County Recorder — deed search",
+                "what_was_found": (
+                    "BFF bought 1250 Oak Street from Mitchell Dev for $425K — "
+                    "136% above the $180K assessed value. Insiders on both "
+                    "sides of an above-market purchase."
+                ),
+                "who_originated": "C",
+                "triggered_finding": _finding_by_rule("SR-003"),
+                "triggered_question": "Did insiders also receive property directly?",
+                "status": "RESOLVED",
+            },
+            {
+                "step_number": 4,
+                "question": "Did insiders receive property directly from Mitchell Dev?",
+                "source": "County Recorder — grantee search",
+                "what_was_found": (
+                    "875 Elm Avenue transferred to James Mitchell for $0 six "
+                    "weeks after the Oak Street sale. Two legs of an insider "
+                    "swap, both within a 49-day window."
+                ),
+                "who_originated": "T",
+                "triggered_finding": _finding_by_rule("SR-015"),
+                "triggered_question": "Does the 990 disclose these related-party transactions?",
+                "status": "RESOLVED",
+            },
+            {
+                "step_number": 5,
+                "question": "Does the 990 disclose these related-party transactions?",
+                "source": "IRS Form 990 (2021) — Part IV / Schedule L",
+                "what_was_found": (
+                    "Part IV Line 28 answered Yes, but no Schedule L was filed "
+                    "and the narrative sections claim arm's-length dealing — "
+                    "the form contradicts the county recorder record."
+                ),
+                "who_originated": "C",
+                "triggered_finding": _finding_by_rule("SR-025"),
+                "triggered_question": "Where does the $4.2M in revenue actually come from?",
+                "status": "RESOLVED",
+            },
+            {
+                "step_number": 6,
+                "question": "Tip: does a second LLC ('BF Community Partners') also hold assets?",
+                "source": "Ohio SOS — name search",
+                "what_was_found": (
+                    "No active or dissolved registration found under that name "
+                    "or close variants. Tip does not check out."
+                ),
+                "who_originated": "X",
+                "triggered_finding": None,
+                "triggered_question": "",
+                "status": "DEAD_END",
+            },
+            {
+                "step_number": 7,
+                "question": "Where does the $4.2M in revenue actually come from?",
+                "source": "IRS Form 990 — Part VIII revenue detail",
+                "what_was_found": (
+                    "Contributions line carries nearly all revenue; no donor "
+                    "detail available in the public filing. Needs Schedule B "
+                    "equivalent via subpoena — flagged for the referral package."
+                ),
+                "who_originated": "T",
+                "triggered_finding": None,
+                "triggered_question": "",
+                "status": "OPEN",
+            },
+        ]
+
+        for step_data in steps_data:
+            InvestigationStep.objects.get_or_create(
+                case=case,
+                step_number=step_data["step_number"],
+                defaults=step_data,
+            )
+        self.stdout.write(
+            self.style.SUCCESS(f"  ✓ {len(steps_data)} investigation replay steps")
         )
 
         # ────────────────────────────────────────────────────────────────

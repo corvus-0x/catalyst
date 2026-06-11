@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
-import { fetchFinancials, fetch990s } from "../api";
+import { fetchAngles, fetchFinancials, fetch990s } from "../api";
 import type { FinancialSnapshot, FinancialsResponse } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,14 @@ import type { FinancialSnapshot, FinancialsResponse } from "../types";
 interface FinancialsTabProps {
   caseId: string;
   onStartAngle?: (prefilledName: string) => void;
+  /** Deep-link into an existing angle on the Investigate tab (spec OQ-15). */
+  onOpenAngle?: (angleId: string, angleTitle: string) => void;
+}
+
+/** Minimal handle to an existing angle for a rule (id + title for deep-link). */
+interface AngleRef {
+  id: string;
+  title: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,9 +157,14 @@ interface AnomalyCellProps {
   ruleLabel: string;
   explanation: string;
   onStartAngle?: (prefilledName: string) => void;
+  /** Existing angle for this rule, if one exists — enables "Open existing angle" (OQ-15). */
+  existingAngle?: AngleRef | null;
+  onOpenAngle?: (angleId: string, angleTitle: string) => void;
 }
 
-function AnomalyCell({ value, ruleId, ruleLabel, explanation, onStartAngle }: AnomalyCellProps) {
+function AnomalyCell({
+  value, ruleId, ruleLabel, explanation, onStartAngle, existingAngle, onOpenAngle,
+}: AnomalyCellProps) {
   const [open, setOpen] = useState(false);
   const prefilledName = `${ruleLabel} — anomaly detected`;
 
@@ -189,10 +202,23 @@ function AnomalyCell({ value, ruleId, ruleLabel, explanation, onStartAngle }: An
             {explanation}
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {onStartAngle && (
+            {existingAngle && onOpenAngle && (
               <button
                 type="button"
                 className="btn-primary"
+                style={{ fontSize: 11, width: "100%" }}
+                onClick={() => {
+                  setOpen(false);
+                  onOpenAngle(existingAngle.id, existingAngle.title);
+                }}
+              >
+                Open existing angle
+              </button>
+            )}
+            {onStartAngle && (
+              <button
+                type="button"
+                className={existingAngle ? "btn-secondary" : "btn-primary"}
                 style={{ fontSize: 11, width: "100%" }}
                 onClick={() => { setOpen(false); onStartAngle(prefilledName); }}
               >
@@ -230,12 +256,33 @@ function GovernanceCell({ value }: { value: boolean | null }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabProps) {
+export default function FinancialsTab({ caseId, onStartAngle, onOpenAngle }: FinancialsTabProps) {
   const [response, setResponse] = useState<FinancialsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetching990, setFetching990] = useState(false);
   const [fetch990Error, setFetch990Error] = useState<string | null>(null);
+
+  // rule_id → existing angle, for the "Open existing angle" tooltip button
+  // (spec OQ-15). Confirmed angles win over other statuses; dismissed are
+  // excluded entirely. Lookup failure is non-fatal — the button just hides.
+  const [angleByRule, setAngleByRule] = useState<Map<string, AngleRef>>(new Map());
+
+  useEffect(() => {
+    fetchAngles(caseId, { limit: 100 })
+      .then((data) => {
+        const map = new Map<string, AngleRef>();
+        for (const f of data.results) {
+          if (!f.rule_id || f.status === "DISMISSED") continue;
+          const existing = map.get(f.rule_id);
+          if (!existing || f.status === "CONFIRMED") {
+            map.set(f.rule_id, { id: f.id, title: f.title });
+          }
+        }
+        setAngleByRule(map);
+      })
+      .catch(() => setAngleByRule(new Map()));
+  }, [caseId]);
 
   // -------------------------------------------------------------------------
   // Data loading
@@ -464,6 +511,8 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                       ruleLabel="Revenue spike"
                       explanation={revenueSpikeTitle(s) ?? "Revenue increased more than 100% year-over-year."}
                       onStartAngle={onStartAngle}
+                      existingAngle={angleByRule.get("SR-021") ?? null}
+                      onOpenAngle={onOpenAngle}
                     />
                   );
                 }
@@ -505,6 +554,8 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                       ruleLabel="Low program ratio"
                       explanation={lowProgramTitle(s) ?? "Less than 50% of expenses go to program services."}
                       onStartAngle={onStartAngle}
+                      existingAngle={angleByRule.get("SR-029") ?? null}
+                      onOpenAngle={onOpenAngle}
                     />
                   );
                 }
@@ -535,6 +586,8 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                       ruleLabel="Zero officer pay"
                       explanation={zeroCompTitle(s) ?? "$0 officer compensation at a high-revenue organization."}
                       onStartAngle={onStartAngle}
+                      existingAngle={angleByRule.get("SR-013") ?? null}
+                      onOpenAngle={onOpenAngle}
                     />
                   );
                 }
@@ -620,6 +673,8 @@ export default function FinancialsTab({ caseId, onStartAngle }: FinancialsTabPro
                         `(Line 28 = Yes). Transactions continued. This is not an accidental omission.`
                       }
                       onStartAngle={onStartAngle}
+                      existingAngle={angleByRule.get("SR-025") ?? null}
+                      onOpenAngle={onOpenAngle}
                     />
                   );
                 }

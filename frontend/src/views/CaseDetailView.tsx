@@ -101,7 +101,7 @@ export default function CaseDetailView() {
     { value: "financials",    label: "Financials" },
     { value: "timeline",      label: "Timeline" },
     { value: "referrals",     label: "Referrals" },
-    { value: "investigation", label: "Investigation" },
+    { value: "investigation", label: "Replay" },
   ];
 
   return (
@@ -185,6 +185,7 @@ export default function CaseDetailView() {
                 setActiveTab("investigate");
                 toast(`Switch to "+ Angle" in the toolbar to create: ${prefilledName}`);
               }}
+              onOpenAngle={handleOpenAngle}
             />
           </Suspense>
         </Tabs.Content>
