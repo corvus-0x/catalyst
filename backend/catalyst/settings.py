@@ -84,6 +84,16 @@ MIDDLEWARE = [
 RATE_LIMIT_READ = os.getenv("RATE_LIMIT_READ", "200/minute")
 RATE_LIMIT_WRITE = os.getenv("RATE_LIMIT_WRITE", "30/minute")
 
+# SEC-025 follow-up: only trust X-Forwarded-For for rate-limit IP keying when
+# running behind a trusted reverse proxy. Without a proxy in front, XFF is
+# client-controlled — a direct caller could spoof a new IP per request and
+# bypass the per-IP buckets entirely. RAILWAY_ENVIRONMENT is set on every
+# Railway deploy, so production picks this up with no config change.
+TRUST_PROXY_HEADERS = (
+    os.getenv("TRUST_PROXY_HEADERS", "").lower() == "true"
+    or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+)
+
 ROOT_URLCONF = "catalyst.urls"
 
 TEMPLATES = [

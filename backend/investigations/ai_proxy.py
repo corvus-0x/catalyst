@@ -137,15 +137,17 @@ def _check_rate_limit(case_id: str) -> bool:
     sufficient for cost-control and abuse prevention.
     """
     key = f"ai_rate:{case_id}"
-    count = cache.get(key, 0)
-    if count >= RATE_LIMIT:
-        return False
-    # On the first call in a new window, set the TTL; otherwise just increment.
-    if count == 0:
-        cache.set(key, 1, RATE_WINDOW)
-    else:
-        cache.set(key, count + 1, RATE_WINDOW)
-    return True
+    # cache.add() is atomic — it only writes if the key is absent, which both
+    # starts the window and counts the first call without a get/set race.
+    if cache.add(key, 1, RATE_WINDOW):
+        return True
+    try:
+        count = cache.incr(key)
+    except ValueError:
+        # Key expired between add() and incr() — start a fresh window.
+        cache.add(key, 1, RATE_WINDOW)
+        return True
+    return count <= RATE_LIMIT
 
 
 # ---------------------------------------------------------------------------

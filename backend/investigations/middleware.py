@@ -168,15 +168,21 @@ class RateLimitMiddleware:
         self._request_count = 0
 
     def _get_client_ip(self, request) -> str:
-        """Return the real client IP, trusting X-Forwarded-For when behind a proxy.
+        """Return the real client IP, trusting X-Forwarded-For only behind a proxy.
 
         Railway (and most cloud platforms) prepend the real client IP as the
         first entry in X-Forwarded-For. REMOTE_ADDR alone would return the
         proxy IP, causing all users to share one rate-limit bucket.
+
+        XFF is only honoured when settings.TRUST_PROXY_HEADERS is on (set
+        automatically on Railway). For direct traffic the header is
+        client-controlled — trusting it would let a caller spoof a fresh IP
+        per request and bypass the per-IP buckets.
         """
-        forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+        if getattr(settings, "TRUST_PROXY_HEADERS", False):
+            forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
         return request.META.get("REMOTE_ADDR", "unknown")
 
     def _is_write_method(self, method: str) -> bool:
