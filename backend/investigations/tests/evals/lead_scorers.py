@@ -49,7 +49,7 @@ def faithfulness(leads, support_flags: list[bool]) -> tuple[float, list[bool]]:
 
 
 def overreach(leads, overreach_flags: list[bool]) -> tuple[float, list[bool]]:
-    """Inverse risk: over-claiming leads / total. 0.0 when there are no leads."""
+    """Overreach rate: over-claiming leads / total. 0.0 when there are no leads."""
     if not leads:
         return 0.0, []
     over = sum(1 for flag in overreach_flags if flag)

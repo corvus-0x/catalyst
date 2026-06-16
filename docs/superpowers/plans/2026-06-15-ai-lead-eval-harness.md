@@ -569,12 +569,12 @@ class JudgeSupportTests(TestCase):
         mock_get_client.return_value = _mock_client_returning(
             {"results": [{"index": 0, "supported": True}, {"index": 1, "supported": False}]}
         )
-        flags = lead_judge.judge_support([_lead(), _lead()], _DOC_REF_MAP, _CONTEXT)
+        flags = lead_judge.judge_support([_lead(), _lead()], _CONTEXT)
         self.assertEqual(flags, [True, False])
 
     def test_no_leads_returns_empty_without_calling_claude(self):
         # No patch needed: must short-circuit before any client call.
-        self.assertEqual(lead_judge.judge_support([], _DOC_REF_MAP, _CONTEXT), [])
+        self.assertEqual(lead_judge.judge_support([], _CONTEXT), [])
 
 
 class JudgeOverreachTests(TestCase):

@@ -42,10 +42,26 @@ class LeadQualityEval(TestCase):
         super().tearDownClass()
 
     def test_fixtures(self):
-        self.assertTrue(os.environ.get("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY required")
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            self.skipTest(
+                "This eval requires ANTHROPIC_API_KEY; run it with --tag=eval and a real key set."
+            )
 
         for fixture in GOLDEN_CASES:
-            with self.subTest(fixture=fixture["id"]):
+            with self.subTest(fixture=fixture.get("id", "<no id>")):
+                # Guard hand-authored fixtures: a malformed dict should fail with a
+                # clear message here, not a cryptic KeyError deep in the gate below.
+                for required in ("id", "expect_clean", "thresholds"):
+                    self.assertIn(
+                        required, fixture, f"fixture is missing required key {required!r}"
+                    )
+                for required in ("faithfulness", "overreach"):
+                    self.assertIn(
+                        required,
+                        fixture["thresholds"],
+                        f"[{fixture['id']}] thresholds is missing required key {required!r}",
+                    )
+
                 case = seed_case(fixture)
                 analyze_case(case.id)  # real Claude; persists Finding rows
                 leads = list(Finding.objects.filter(case=case, source=FindingSource.AI))

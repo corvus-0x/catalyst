@@ -11,10 +11,12 @@ from typing import Any
 
 from investigations.models import (
     Case,
+    CaseStatus,
     Document,
     FinancialSnapshot,
     OcrStatus,
     Organization,
+    OrganizationType,
     Person,
 )
 
@@ -35,7 +37,7 @@ def seed_case(fixture: dict[str, Any]) -> Case:
     """Insert a Case plus its persons, organizations, documents, and financial
     snapshots from a fixture dict. Returns the Case. No Claude, no OCR.
     """
-    case = Case.objects.create(name=fixture["case_name"], status="ACTIVE")
+    case = Case.objects.create(name=fixture["case_name"], status=CaseStatus.ACTIVE)
 
     persons_by_key: dict[str, Person] = {}
     for p in fixture.get("persons", []):
@@ -51,7 +53,7 @@ def seed_case(fixture: dict[str, Any]) -> Case:
             case=case,
             name=o["name"],
             ein=o.get("ein", ""),
-            org_type=o.get("org_type", "OTHER"),
+            org_type=o.get("org_type", OrganizationType.OTHER),
         )
 
     docs_by_key: dict[str, Document] = {}
@@ -62,6 +64,9 @@ def seed_case(fixture: dict[str, Any]) -> Case:
             filename=d["filename"],
             file_path=f"eval/{case.id}/{d['filename']}",
             sha256_hash=_sha256(d),
+            # Floor at 1 byte: file_size is a required (non-null) field and a real
+            # uploaded document is never 0 bytes, so empty-text fixtures still get a
+            # plausible nonzero size rather than implying an empty file.
             file_size=max(len(text.encode("utf-8")), 1),
             doc_type=d.get("doc_type", "OTHER"),
             ocr_status=OcrStatus.COMPLETED,

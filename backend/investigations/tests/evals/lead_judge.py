@@ -65,6 +65,8 @@ def _judge_call(system: str, payload: dict[str, Any]) -> dict[str, Any]:
         system=system,
         messages=[{"role": "user", "content": json.dumps(payload)}],
     )
+    if not response.content:
+        raise JudgeError("Claude API returned an unexpected empty response (no content blocks).")
     raw = (response.content[0].text or "").strip()
     if raw.startswith("```"):
         raw = "\n".join(
