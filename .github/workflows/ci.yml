@@ -72,7 +72,10 @@ jobs:
       - name: Migrate
         run: python manage.py migrate
       - name: Run backend tests
-        run: python manage.py test investigations
+        # Exclude the @tag("eval") suite (investigations/tests/evals): it makes
+        # live Claude API calls and is meant to be run on demand with a real
+        # ANTHROPIC_API_KEY, never in CI.
+        run: python manage.py test investigations --exclude-tag=eval
 
   frontend-check:
     name: Frontend Lint, Test & Build
