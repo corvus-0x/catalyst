@@ -97,3 +97,6 @@ docs/architecture/Tyler_Collins_Resume_2026_v5.pdf
 .claude/worktrees/
 .claude/settings.json
 .claude/agents/
+
+# Eval harness run artifacts (regenerated per run)
+backend/investigations/tests/evals/results/
