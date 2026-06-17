@@ -283,6 +283,31 @@ export interface TopRuleSummary {
   count: number;
 }
 
+export type CaseQualityStatus = "READY" | "NEEDS_REVIEW" | "BLOCKED";
+export type CaseQualityGrade = "Strong" | "Review needed" | "Blocked";
+export type CaseQualityIssueStatus = "WARN" | "FAIL";
+export type CaseQualityTargetTab =
+  | "investigate"
+  | "research"
+  | "financials"
+  | "timeline"
+  | "referrals";
+
+export interface CaseQualityIssue {
+  key: string;
+  label: string;
+  status: CaseQualityIssueStatus;
+  summary: string;
+  target_tab?: CaseQualityTargetTab;
+}
+
+export interface CaseQuality {
+  score: number;
+  status: CaseQualityStatus;
+  grade: CaseQualityGrade;
+  top_issues: CaseQualityIssue[];
+}
+
 /**
  * Response from GET /api/cases/:id/dashboard/.
  *
@@ -330,6 +355,8 @@ export interface DashboardResponse {
     ai_enhanced_count: number;
     total_documents_processed: number;
   };
+  /** Optional during partial deploys; render nothing if absent. */
+  quality?: CaseQuality;
 }
 
 // ---------------------------------------------------------------------------
@@ -1306,6 +1333,7 @@ export interface ReferralReadinessResponse {
   status: ReferralReadinessStatus;
   summary: string;
   items: ReferralReadinessItem[];
+  quality: CaseQuality;
 }
 
 /**

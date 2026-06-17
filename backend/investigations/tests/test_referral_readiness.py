@@ -30,6 +30,11 @@ class ReferralReadinessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()
 
+    def _get_dashboard(self):
+        response = self.client.get(reverse("api_case_dashboard", args=[self.case.pk]))
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
     def _document(self, suffix="a", **overrides):
         data = {
             "case": self.case,
@@ -68,6 +73,12 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "BLOCKED")
+        self.assertEqual(payload["quality"]["status"], "BLOCKED")
+        self.assertEqual(payload["quality"]["grade"], "Blocked")
+        self.assertLessEqual(payload["quality"]["score"], 69)
+        top_labels = [issue["label"] for issue in payload["quality"]["top_issues"]]
+        self.assertIn("Referral target", top_labels)
+        self.assertIn("Confirmed angles", top_labels)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["referral_target"]["status"], "FAIL")
         self.assertEqual(by_key["confirmed_angles"]["status"], "FAIL")
@@ -79,6 +90,8 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "BLOCKED")
+        self.assertEqual(payload["quality"]["status"], "BLOCKED")
+        self.assertLessEqual(payload["quality"]["score"], 69)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["citation_coverage"]["status"], "FAIL")
         self.assertEqual(by_key["citation_coverage"]["count"], 1)
@@ -91,6 +104,8 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "BLOCKED")
+        self.assertEqual(payload["quality"]["status"], "BLOCKED")
+        self.assertLessEqual(payload["quality"]["score"], 69)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["evidence_weight"]["status"], "FAIL")
 
@@ -122,6 +137,13 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "NEEDS_REVIEW")
+        self.assertEqual(payload["quality"]["status"], "NEEDS_REVIEW")
+        self.assertEqual(payload["quality"]["grade"], "Review needed")
+        self.assertLessEqual(payload["quality"]["score"], 89)
+        self.assertLessEqual(len(payload["quality"]["top_issues"]), 3)
+        self.assertTrue(
+            all(issue["status"] == "WARN" for issue in payload["quality"]["top_issues"])
+        )
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["pending_connections"]["status"], "WARN")
         self.assertEqual(by_key["pending_extraction"]["status"], "WARN")
@@ -140,6 +162,8 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "BLOCKED")
+        self.assertEqual(payload["quality"]["status"], "BLOCKED")
+        self.assertLessEqual(payload["quality"]["score"], 69)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["failed_extraction"]["status"], "FAIL")
 
@@ -151,4 +175,18 @@ class ReferralReadinessTests(TestCase):
         payload = self._get_readiness()
 
         self.assertEqual(payload["status"], "READY")
+        self.assertEqual(payload["quality"]["status"], "READY")
+        self.assertEqual(payload["quality"]["grade"], "Strong")
+        self.assertEqual(payload["quality"]["score"], 100)
+        self.assertEqual(payload["quality"]["top_issues"], [])
         self.assertTrue(all(item["status"] == "PASS" for item in payload["items"]))
+
+    def test_dashboard_quality_matches_readiness_quality(self):
+        self._target()
+        finding = self._confirmed_finding(evidence_weight=EvidenceWeight.TRACED)
+        FindingDocument.objects.create(finding=finding, document=self._document())
+
+        readiness = self._get_readiness()
+        dashboard = self._get_dashboard()
+
+        self.assertEqual(dashboard["quality"], readiness["quality"])

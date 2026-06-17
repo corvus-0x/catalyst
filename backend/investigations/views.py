@@ -2210,10 +2210,66 @@ def _readiness_item(key, label, status, summary, count=None, target_tab=None):
     return item
 
 
-@require_http_methods(["GET"])
-def api_case_referral_readiness(request, pk):
-    """Return a conservative referral-readiness checklist for a case."""
-    case = get_object_or_404(Case, pk=pk)
+READINESS_QUALITY_WEIGHTS = {
+    "citation_coverage": 25,
+    "evidence_weight": 20,
+    "confirmed_angles": 20,
+    "failed_extraction": 15,
+    "referral_target": 10,
+    "pending_connections": 4,
+    "pending_extraction": 3,
+    "active_jobs": 3,
+}
+
+
+def _build_case_quality(items):
+    """Score case handoff quality from referral-readiness checklist items."""
+    raw_score = 0.0
+    for item in items:
+        weight = READINESS_QUALITY_WEIGHTS[item["key"]]
+        if item["status"] == "PASS":
+            raw_score += weight
+        elif item["status"] == "WARN":
+            raw_score += weight / 2
+
+    fail_count = sum(1 for item in items if item["status"] == "FAIL")
+    warn_count = sum(1 for item in items if item["status"] == "WARN")
+    if fail_count:
+        status = "BLOCKED"
+        grade = "Blocked"
+        max_score = 69
+    elif warn_count:
+        status = "NEEDS_REVIEW"
+        grade = "Review needed"
+        max_score = 89
+    else:
+        status = "READY"
+        grade = "Strong"
+        max_score = 100
+
+    top_issues = [
+        {
+            "key": item["key"],
+            "label": item["label"],
+            "status": item["status"],
+            "summary": item["summary"],
+            **({"target_tab": item["target_tab"]} if "target_tab" in item else {}),
+        }
+        for severity in ["FAIL", "WARN"]
+        for item in items
+        if item["status"] == severity
+    ][:3]
+
+    return {
+        "score": min(round(raw_score), max_score),
+        "status": status,
+        "grade": grade,
+        "top_issues": top_issues,
+    }
+
+
+def build_case_readiness(case):
+    """Build referral readiness and quality details for a case."""
 
     target_count = ReferralTarget.objects.filter(case=case).count()
     confirmed_qs = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
@@ -2375,11 +2431,26 @@ def api_case_referral_readiness(request, pk):
         status = "READY"
         summary = "This case is ready for referral export."
 
+    return {
+        "status": status,
+        "summary": summary,
+        "items": items,
+        "quality": _build_case_quality(items),
+    }
+
+
+@require_http_methods(["GET"])
+def api_case_referral_readiness(request, pk):
+    """Return a conservative referral-readiness checklist for a case."""
+    case = get_object_or_404(Case, pk=pk)
+    readiness = build_case_readiness(case)
+
     return JsonResponse(
         {
-            "status": status,
-            "summary": summary,
-            "items": items,
+            "status": readiness["status"],
+            "summary": readiness["summary"],
+            "items": readiness["items"],
+            "quality": readiness["quality"],
         }
     )
 
@@ -5282,6 +5353,7 @@ def api_case_dashboard(request, pk):
         }
         for y in yearly
     ]
+    readiness = build_case_readiness(case)
 
     return JsonResponse(
         {
@@ -5322,6 +5394,7 @@ def api_case_dashboard(request, pk):
                 "ai_enhanced_count": ai_enhanced,
                 "total_documents_processed": total_docs,
             },
+            "quality": readiness["quality"],
         }
     )
 

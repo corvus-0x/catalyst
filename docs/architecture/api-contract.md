@@ -169,6 +169,20 @@ interface CaseListResponse {
     "extraction_success_rate": 0.86,
     "ai_enhanced_count": 3,
     "total_documents_processed": 7
+  },
+  "quality": {
+    "score": 82,
+    "status": "NEEDS_REVIEW",
+    "grade": "Review needed",
+    "top_issues": [
+      {
+        "key": "pending_connections",
+        "label": "Pending connections",
+        "status": "WARN",
+        "summary": "2 pending connections need review.",
+        "target_tab": "investigate"
+      }
+    ]
   }
 }
 ```
@@ -177,6 +191,7 @@ interface CaseListResponse {
 - All monetary values are **strings** (Decimal), not numbers. Parse with `parseFloat()` or a currency formatter.
 - `timeline` is `Array<{year: number, revenue: string, expenses: string}>`.
 - `top_rules` is `Array<{rule_id: string, summary: string, count: number}>`.
+- `quality` is the same case-quality object returned by `/referral-readiness/`.
 
 ### GET /api/cases/:id/graph/
 
@@ -750,7 +765,13 @@ Returns a conservative checklist showing whether the case is ready for referral 
       "count": 0,
       "target_tab": "investigate"
     }
-  ]
+  ],
+  "quality": {
+    "score": 100,
+    "status": "READY",
+    "grade": "Strong",
+    "top_issues": []
+  }
 }
 ```
 
@@ -773,6 +794,19 @@ interface ReferralReadinessResponse {
   status: "READY" | "NEEDS_REVIEW" | "BLOCKED";
   summary: string;
   items: ReferralReadinessItem[];
+  quality: CaseQuality;
+}
+interface CaseQuality {
+  score: number;
+  status: "READY" | "NEEDS_REVIEW" | "BLOCKED";
+  grade: "Strong" | "Review needed" | "Blocked";
+  top_issues: Array<{
+    key: string;
+    label: string;
+    status: "WARN" | "FAIL";
+    summary: string;
+    target_tab?: "investigate" | "research" | "financials" | "timeline" | "referrals";
+  }>;
 }
 ```
 
