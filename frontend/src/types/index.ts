@@ -779,6 +779,8 @@ export interface UpdateFindingBody {
   status?: FindingStatus;
   investigator_note?: string;
   legal_refs?: string[];
+  add_document_ids?: UUID[];
+  remove_document_ids?: UUID[];
 }
 
 /** Summary counts from GET /api/signal-summary/ */
@@ -1268,6 +1270,30 @@ export interface AddToCaseBody {
 // POST /api/cases/:id/referral-memo/   → { "memo": string }
 // POST /api/cases/:id/export/          → file download
 // ---------------------------------------------------------------------------
+
+export type ReferralReadinessStatus = "READY" | "NEEDS_REVIEW" | "BLOCKED";
+export type ReferralReadinessItemStatus = "PASS" | "WARN" | "FAIL";
+export type ReferralReadinessTargetTab =
+  | "investigate"
+  | "research"
+  | "financials"
+  | "timeline"
+  | "referrals";
+
+export interface ReferralReadinessItem {
+  key: string;
+  label: string;
+  status: ReferralReadinessItemStatus;
+  summary: string;
+  count?: number;
+  target_tab?: ReferralReadinessTargetTab;
+}
+
+export interface ReferralReadinessResponse {
+  status: ReferralReadinessStatus;
+  summary: string;
+  items: ReferralReadinessItem[];
+}
 
 /**
  * Response from POST /api/cases/:id/referral-memo/ (AI-generated narrative).

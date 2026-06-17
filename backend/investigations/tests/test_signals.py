@@ -26,6 +26,7 @@ from ..models import (
     FinancialInstrument,
     FinancialSnapshot,
     Finding,
+    FindingDocument,
     FindingSource,
     FindingStatus,
     InstrumentType,
@@ -1663,12 +1664,63 @@ class FindingUpdateSerializerTests(TestCase):
         self.case = _make_case()
         self.finding = _make_finding(self.case, rule_id="SR-010")
 
+    def _document(self, suffix="a", case=None):
+        return Document.objects.create(
+            case=case or self.case,
+            filename=f"evidence-{suffix}.pdf",
+            file_path=f"cases/test/evidence-{suffix}.pdf",
+            sha256_hash=suffix * 64,
+            file_size=1024,
+            doc_type="DEED",
+            ocr_status=OcrStatus.COMPLETED,
+        )
+
     def test_confirm_finding(self):
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)
         self.assertTrue(s.is_valid(), s.errors)
         s.save()
         self.finding.refresh_from_db()
         self.assertEqual(self.finding.status, FindingStatus.CONFIRMED)
+
+    def test_add_document_ids_creates_finding_document_links(self):
+        document = self._document()
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertTrue(s.is_valid(), s.errors)
+        s.save()
+
+        self.assertTrue(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+
+    def test_remove_document_ids_deletes_finding_document_links(self):
+        document = self._document()
+        FindingDocument.objects.create(finding=self.finding, document=document)
+        s = FindingUpdateSerializer(
+            data={"remove_document_ids": [str(document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertTrue(s.is_valid(), s.errors)
+        s.save()
+
+        self.assertFalse(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+
+    def test_document_ids_must_belong_to_same_case(self):
+        other_case = _make_case("Other Case")
+        other_document = self._document(suffix="b", case=other_case)
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(other_document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertFalse(s.is_valid())
+        self.assertIn("add_document_ids", s.errors)
 
     def test_escalate_finding(self):
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)

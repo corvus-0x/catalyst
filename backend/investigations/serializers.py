@@ -8,6 +8,7 @@ from .models import (
     Document,
     EvidenceWeight,
     Finding,
+    FindingDocument,
     FindingSource,
     FindingStatus,
     Severity,
@@ -858,6 +859,8 @@ class FindingUpdateSerializer:
         "evidence_weight",
         "investigator_note",
         "legal_refs",
+        "add_document_ids",
+        "remove_document_ids",
     }
 
     def __init__(self, data=None, instance=None):
@@ -959,6 +962,26 @@ class FindingUpdateSerializer:
                 return False
             self.validated_data["legal_refs"] = lr
 
+        for field in ("add_document_ids", "remove_document_ids"):
+            if field not in self.initial_data:
+                continue
+            doc_ids = self.initial_data[field]
+            if not isinstance(doc_ids, list) or not all(isinstance(v, str) for v in doc_ids):
+                self._errors = {field: [f"{field} must be a list of document UUID strings."]}
+                return False
+            documents = list(Document.objects.filter(case=self.instance.case, id__in=doc_ids))
+            found_ids = {str(doc.id) for doc in documents}
+            missing_ids = sorted(set(doc_ids) - found_ids)
+            if missing_ids:
+                self._errors = {
+                    field: [
+                        "Unknown document id(s) for this case: "
+                        f"{', '.join(missing_ids)}."
+                    ]
+                }
+                return False
+            self.validated_data[field] = documents
+
         if "narrative_source" in self.initial_data:
             ns = self.initial_data["narrative_source"]
             if ns not in _VALID_NARRATIVE_SOURCES:
@@ -1029,4 +1052,15 @@ class FindingUpdateSerializer:
 
         self.instance.updated_at = timezone.now()
         self.instance.save(update_fields=update_fields)
+
+        for document in self.validated_data.get("add_document_ids", []):
+            FindingDocument.objects.get_or_create(finding=self.instance, document=document)
+
+        remove_documents = self.validated_data.get("remove_document_ids", [])
+        if remove_documents:
+            FindingDocument.objects.filter(
+                finding=self.instance,
+                document__in=remove_documents,
+            ).delete()
+
         return self.instance

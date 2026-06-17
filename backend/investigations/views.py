@@ -23,11 +23,14 @@ from .models import (
     Document,
     DocumentType,
     EvidenceWeight,
+    ExtractionStatus,
     FinancialInstrument,
     FinancialSnapshot,
     Finding,
     FindingEntity,
     FindingStatus,
+    FuzzyMatchCandidate,
+    FuzzyMatchStatus,
     InvestigationStep,
     InvestigatorNote,
     JobStatus,
@@ -2190,6 +2193,195 @@ def api_case_referral_target_detail(request, pk, target_id):
             setattr(target, field, value)
     target.save()
     return JsonResponse(_serialize_target(target))
+
+
+def _readiness_item(key, label, status, summary, count=None, target_tab=None):
+    """Build one referral-readiness checklist item."""
+    item = {
+        "key": key,
+        "label": label,
+        "status": status,
+        "summary": summary,
+    }
+    if count is not None:
+        item["count"] = count
+    if target_tab:
+        item["target_tab"] = target_tab
+    return item
+
+
+@require_http_methods(["GET"])
+def api_case_referral_readiness(request, pk):
+    """Return a conservative referral-readiness checklist for a case."""
+    case = get_object_or_404(Case, pk=pk)
+
+    target_count = ReferralTarget.objects.filter(case=case).count()
+    confirmed_qs = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
+    confirmed_count = confirmed_qs.count()
+    eligible_count = confirmed_qs.filter(
+        evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
+    ).count()
+    uncited_count = (
+        confirmed_qs.annotate(citation_count=Count("document_links"))
+        .filter(citation_count=0)
+        .count()
+    )
+    pending_fuzzy_count = FuzzyMatchCandidate.objects.filter(
+        case=case,
+        status=FuzzyMatchStatus.PENDING,
+    ).count()
+    source_docs = Document.objects.filter(case=case, is_generated=False)
+    pending_doc_count = source_docs.filter(
+        Q(ocr_status=OcrStatus.PENDING)
+        | Q(extraction_status__in=[ExtractionStatus.PENDING, ExtractionStatus.PARTIAL])
+    ).count()
+    failed_doc_count = source_docs.filter(
+        Q(ocr_status=OcrStatus.FAILED) | Q(extraction_status=ExtractionStatus.FAILED)
+    ).count()
+    active_job_count = SearchJob.objects.filter(
+        case=case,
+        status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
+    ).count()
+
+    items = [
+        _readiness_item(
+            "referral_target",
+            "Referral target",
+            "PASS" if target_count else "FAIL",
+            (
+                f"{target_count} referral target"
+                f"{'' if target_count == 1 else 's'} selected."
+                if target_count
+                else "Select at least one agency before exporting a referral package."
+            ),
+            target_count,
+            "referrals",
+        ),
+        _readiness_item(
+            "confirmed_angles",
+            "Confirmed angles",
+            "PASS" if confirmed_count else "FAIL",
+            (
+                f"{confirmed_count} confirmed angle"
+                f"{'' if confirmed_count == 1 else 's'} ready for review."
+                if confirmed_count
+                else "Confirm at least one angle before creating a referral package."
+            ),
+            confirmed_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "citation_coverage",
+            "Citation coverage",
+            "PASS" if confirmed_count and uncited_count == 0 else "FAIL",
+            (
+                "Every confirmed angle has at least one cited document."
+                if confirmed_count and uncited_count == 0
+                else (
+                    f"{uncited_count} confirmed angle"
+                    f"{'' if uncited_count == 1 else 's'} missing cited documents."
+                    if confirmed_count
+                    else "Confirmed angles need cited documents before export."
+                )
+            ),
+            uncited_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "evidence_weight",
+            "Referral evidence weight",
+            (
+                "PASS"
+                if confirmed_count and eligible_count == confirmed_count
+                else "FAIL"
+                if confirmed_count and eligible_count == 0
+                else "WARN"
+            ),
+            (
+                "All confirmed angles are documented or traced."
+                if confirmed_count and eligible_count == confirmed_count
+                else (
+                    "Confirmed angles must be documented or traced to appear in the PDF."
+                    if confirmed_count
+                    else "Confirmed angles need documented or traced evidence weight."
+                )
+            ),
+            confirmed_count - eligible_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "pending_connections",
+            "Pending connections",
+            "WARN" if pending_fuzzy_count else "PASS",
+            (
+                f"{pending_fuzzy_count} pending connection"
+                f"{'' if pending_fuzzy_count == 1 else 's'} need review."
+                if pending_fuzzy_count
+                else "No pending connection reviews."
+            ),
+            pending_fuzzy_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "pending_extraction",
+            "Pending Intake",
+            "WARN" if pending_doc_count else "PASS",
+            (
+                f"{pending_doc_count} source document"
+                f"{'' if pending_doc_count == 1 else 's'} still pending Intake."
+                if pending_doc_count
+                else "No source documents are waiting on Intake."
+            ),
+            pending_doc_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "failed_extraction",
+            "Failed Intake",
+            "FAIL" if failed_doc_count else "PASS",
+            (
+                f"{failed_doc_count} source document"
+                f"{'' if failed_doc_count == 1 else 's'} failed Intake."
+                if failed_doc_count
+                else "No source documents have failed Intake."
+            ),
+            failed_doc_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "active_jobs",
+            "Active research",
+            "WARN" if active_job_count else "PASS",
+            (
+                f"{active_job_count} research job"
+                f"{'' if active_job_count == 1 else 's'} still running."
+                if active_job_count
+                else "No active research jobs."
+            ),
+            active_job_count,
+            "research",
+        ),
+    ]
+
+    fail_count = sum(1 for item in items if item["status"] == "FAIL")
+    warn_count = sum(1 for item in items if item["status"] == "WARN")
+    if fail_count:
+        status = "BLOCKED"
+        summary = f"{fail_count} blocker{'' if fail_count == 1 else 's'} before referral export."
+    elif warn_count:
+        status = "NEEDS_REVIEW"
+        summary = f"{warn_count} item{'' if warn_count == 1 else 's'} should be reviewed."
+    else:
+        status = "READY"
+        summary = "This case is ready for referral export."
+
+    return JsonResponse(
+        {
+            "status": status,
+            "summary": summary,
+            "items": items,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

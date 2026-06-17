@@ -651,8 +651,21 @@ Creates a manual finding. **Body:**
 
 ### PATCH /api/cases/:id/findings/:finding_id/
 
-Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title, legal_refs.  
+Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title,
+legal_refs, and cited document links.  
 **Body:** any subset of the above fields.
+
+Citation link fields:
+```json
+{
+  "add_document_ids": ["uuid"],
+  "remove_document_ids": ["uuid"]
+}
+```
+
+Both arrays are optional. Every document ID must belong to the same case as the finding.
+`add_document_ids` creates `FindingDocument` citation rows; `remove_document_ids` deletes those
+citation rows but does not delete the underlying documents.
 
 **Narrative source rules:**
 - Include `narrative_source` when saving an AI-drafted narrative from the proxy: `"AI_DRAFT"`.
@@ -718,6 +731,50 @@ Then poll `/api/jobs/:id/`. On SUCCESS, `job.result.findings_created` and `job.r
 
 **Route:** `/cases/:id` → Referrals tab  
 **Purpose:** Generate the PDF referral package.
+
+### GET /api/cases/:id/referral-readiness/
+
+Returns a conservative checklist showing whether the case is ready for referral export.  
+**Response:** ✅
+
+```json
+{
+  "status": "READY" | "NEEDS_REVIEW" | "BLOCKED",
+  "summary": "This case is ready for referral export.",
+  "items": [
+    {
+      "key": "citation_coverage",
+      "label": "Citation coverage",
+      "status": "PASS" | "WARN" | "FAIL",
+      "summary": "Every confirmed angle has at least one cited document.",
+      "count": 0,
+      "target_tab": "investigate"
+    }
+  ]
+}
+```
+
+**Status rules:**
+- `BLOCKED` — at least one checklist item is `FAIL`; do not generate the referral package.
+- `NEEDS_REVIEW` — no blockers, but at least one item is `WARN`.
+- `READY` — every checklist item is `PASS`.
+
+**TypeScript implication:**
+```typescript
+interface ReferralReadinessItem {
+  key: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL";
+  summary: string;
+  count?: number;
+  target_tab?: "investigate" | "research" | "financials" | "timeline" | "referrals";
+}
+interface ReferralReadinessResponse {
+  status: "READY" | "NEEDS_REVIEW" | "BLOCKED";
+  summary: string;
+  items: ReferralReadinessItem[];
+}
+```
 
 ### POST /api/cases/:id/referral-pdf/
 

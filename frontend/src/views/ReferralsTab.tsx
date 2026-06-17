@@ -11,21 +11,31 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Pencil, Trash2, FileDown, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  FileDown,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import {
   getReferralTargets,
   createReferralTarget,
   updateReferralTarget,
   deleteReferralTarget,
-  fetchAngles,
+  fetchReferralReadiness,
   generateReferralPdf,
 } from "../api";
 import type {
   ReferralTarget,
   ReferralStatus,
+  ReferralReadinessItem,
+  ReferralReadinessResponse,
   CreateReferralTargetParams,
   UpdateReferralTargetParams,
-  FindingItem,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -221,28 +231,47 @@ function ReferralTargetModal({ caseId, target, onSaved, onDeleted, onClose }: Mo
 }
 
 // ---------------------------------------------------------------------------
-// ChecklistStrip
+// ReadinessPanel
 // ---------------------------------------------------------------------------
 
-function ChecklistStrip({ confirmedCount, uncitedCount }: { confirmedCount: number; uncitedCount: number }) {
-  if (confirmedCount === 0) return null;
+const READINESS_LABEL: Record<ReferralReadinessResponse["status"], string> = {
+  READY: "Ready",
+  NEEDS_REVIEW: "Needs review",
+  BLOCKED: "Blocked",
+};
 
-  if (uncitedCount === 0) {
-    return (
-      <div className="ref-checklist ref-checklist--ok">
-        <CheckCircle2 size={14} />
-        <span>All {confirmedCount} confirmed angle{confirmedCount !== 1 ? "s" : ""} have cited documents ✓</span>
-      </div>
-    );
-  }
+function readinessIcon(item: ReferralReadinessItem) {
+  if (item.status === "PASS") return <CheckCircle2 size={14} />;
+  if (item.status === "WARN") return <AlertTriangle size={14} />;
+  return <AlertCircle size={14} />;
+}
 
+function ReadinessPanel({ readiness }: { readiness: ReferralReadinessResponse }) {
   return (
-    <div className="ref-checklist ref-checklist--warn">
-      <AlertTriangle size={14} />
-      <span>
-        {uncitedCount} confirmed angle{uncitedCount !== 1 ? "s" : ""} {uncitedCount !== 1 ? "have" : "has"} no
-        cited documents — referral package will be incomplete.
-      </span>
+    <div className={`ref-readiness ref-readiness--${readiness.status.toLowerCase()}`}>
+      <div className="ref-readiness__summary">
+        <div>
+          <p className="ref-readiness__eyebrow">Referral readiness</p>
+          <h3 className="ref-readiness__status">
+            {READINESS_LABEL[readiness.status]}
+          </h3>
+        </div>
+        <p className="ref-readiness__text">{readiness.summary}</p>
+      </div>
+      <div className="ref-readiness__items">
+        {readiness.items.map((item) => (
+          <div
+            key={item.key}
+            className={`ref-readiness-item ref-readiness-item--${item.status.toLowerCase()}`}
+          >
+            {readinessIcon(item)}
+            <div>
+              <p className="ref-readiness-item__label">{item.label}</p>
+              <p className="ref-readiness-item__summary">{item.summary}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -253,7 +282,7 @@ function ChecklistStrip({ confirmedCount, uncitedCount }: { confirmedCount: numb
 
 export default function ReferralsTab({ caseId }: ReferralsTabProps) {
   const [targets, setTargets]                 = useState<ReferralTarget[]>([]);
-  const [confirmedAngles, setConfirmedAngles] = useState<FindingItem[]>([]);
+  const [readiness, setReadiness]             = useState<ReferralReadinessResponse | null>(null);
   const [loading, setLoading]                 = useState(true);
   const [showModal, setShowModal]             = useState(false);
   const [editTarget, setEditTarget]           = useState<ReferralTarget | null>(null);
@@ -264,17 +293,24 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
     setLoading(true);
     Promise.all([
       getReferralTargets(caseId),
-      fetchAngles(caseId, { status: "CONFIRMED", limit: 100 }),
+      fetchReferralReadiness(caseId),
     ])
-      .then(([targetsRes, anglesRes]) => {
+      .then(([targetsRes, readinessRes]) => {
         setTargets(targetsRes.results);
-        setConfirmedAngles(anglesRes.results);
+        setReadiness(readinessRes);
       })
       .catch(() => toast.error("Failed to load referrals data."))
       .finally(() => setLoading(false));
   }, [caseId]);
 
-  const uncitedCount = confirmedAngles.filter((a) => a.document_links.length === 0).length;
+  async function refreshReadiness() {
+    try {
+      const next = await fetchReferralReadiness(caseId);
+      setReadiness(next);
+    } catch {
+      toast.error("Failed to refresh referral readiness.");
+    }
+  }
 
   function handleSaved(saved: ReferralTarget, wasEdit: boolean) {
     setTargets((prev) => {
@@ -287,11 +323,13 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
       return [...prev, saved];
     });
     toast.success(wasEdit ? "Agency updated." : "Agency added.");
+    void refreshReadiness();
   }
 
   function handleDeleted(id: string) {
     setTargets((prev) => prev.filter((t) => t.id !== id));
     toast.success("Agency removed.");
+    void refreshReadiness();
   }
 
   async function handleGeneratePdf() {
@@ -345,7 +383,7 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
       </div>
 
       {/* Checklist strip */}
-      <ChecklistStrip confirmedCount={confirmedAngles.length} uncitedCount={uncitedCount} />
+      {readiness && <ReadinessPanel readiness={readiness} />}
 
       {/* Agency table */}
       {targets.length === 0 ? (
@@ -407,7 +445,7 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
           type="button"
           className="btn-secondary ref-pdf-btn"
           onClick={handleGeneratePdf}
-          disabled={pdfLoading}
+          disabled={pdfLoading || readiness?.status === "BLOCKED"}
         >
           {pdfLoading ? (
             <><Loader2 size={14} className="spin" /> Generating…</>
@@ -415,10 +453,16 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
             <><FileDown size={14} /> Generate Referral Package (PDF)</>
           )}
         </button>
-        {uncitedCount > 0 && !pdfLoading && (
+        {readiness?.status === "BLOCKED" && !pdfLoading && (
           <p className="ref-pdf-warn">
             <AlertTriangle size={12} />
-            {uncitedCount} angle{uncitedCount !== 1 ? "s" : ""} uncited — PDF may be incomplete.
+            Resolve readiness blockers before generating the referral package.
+          </p>
+        )}
+        {readiness?.status === "NEEDS_REVIEW" && !pdfLoading && (
+          <p className="ref-pdf-warn">
+            <AlertTriangle size={12} />
+            Review the checklist before export; the package can still be generated.
           </p>
         )}
         {pdfError && (
