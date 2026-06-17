@@ -1,19 +1,41 @@
-# Case Workspace Design — the Confirmation-Centered Reframe
+# Case Workspace Design — the Confirmation-Centered Reframe (v2)
 
-**Status:** Design (pre-build). Supersedes the linear "phase" model for case-detail layout.
+**Status:** Design (pre-build). Refines, does not replace, `frontend-design-spec.md`.
 **Audience:** Anyone building or reviewing the case-detail frontend. Read with
 `frontend-design-spec.md` (current component/graph spec) and `api-contract.md`.
 
-> **No PII.** This document was distilled from a real investigation replay that is kept
-> out of the repo. All case-specific names, EINs, addresses, and org names are deliberately
-> excluded. Only structural lessons and tool-level gaps remain.
+> **No PII.** Distilled from a real investigation replay kept out of the repo. All
+> case-specific names, EINs, addresses, and org names are deliberately excluded.
+
+> **v2 incorporates two design reviews.** Changes from v1: realized *inside the Investigate
+> tab* (not a shell rewrite); backend quality score kept (UI surfaces grade + counts);
+> connectedness is a warning, not a gate; replay is a hybrid; dismissed findings are
+> filter-gated in the workspace and opt-in to the package; added Angle-lifecycle, count-formula,
+> recipient-gap, and shared-state sections; workspace gaps renamed `WS-GAP-*`.
+
+---
+
+## 0. Relationship to the existing frontend spec
+
+This is an **evolution inside the Investigate tab**, not a new shell.
+
+- The six-tab route shell (`CaseDetailView`: Investigate · Research · Financials · Timeline ·
+  Referrals · Replay) and its routing/back-button behavior **stay unchanged**.
+- The reframe is realized **within the Investigate tab** — which already is the web-home — by
+  adding the context panel, the credibility header, shared selection state, and feeder actions.
+- Financials, Timeline, Research, Documents remain their own surfaces (full screen space when
+  open); they become **referential feeders** by gaining shared-context-aware actions, not by
+  losing their views.
+- Where this doc and `frontend-design-spec.md` disagree about the *internal* layout of the
+  Investigate tab, this doc governs **once the corresponding piece is built**; until then the
+  spec describes shipped behavior. Update the spec section-by-section as pieces land.
 
 ---
 
 ## 1. The organizing principle
 
-**The confirmed Angle (Finding) is the atom of "done." The Web is the home. Every other
-surface is a *feeder* into Angles — not a destination.**
+**The confirmed Angle (Finding) is the atom of "done." The Web is the home surface of the
+Investigate tab. Every other surface is a *feeder* into Angles — not a destination.**
 
 - "Ready to refer" is measured in **confirmations**, never in completeness or phases.
 - A case becomes referable when it has enough **referral-grade Angles**, even while most of
@@ -29,8 +51,8 @@ surface is a *feeder* into Angles — not a destination.**
    Doc cite,         └────┬─────┘    Timeline event cite,
    graph connect)         │          signal rule fires)
                           ▼
-        CONFIRM = substantiated + cited + connected
-                  + written to the overreach standard
+        CONFIRM (tie-off gate) = substantiated + cited + weighted
+                  + overreach-reviewed
                           │
                           ▼
                    REFERRAL PACKAGE
@@ -42,152 +64,232 @@ surface is a *feeder* into Angles — not a destination.**
 
 Distilled from replaying one real end-to-end investigation:
 
-1. **The investigation is accretive with an unknown, growing denominator.** It expanded from
-   one subject to multiple counties, multiple entities, and dozens of people. You cannot know
-   how many "pieces" exist at the start, and the count grows as you work. **Therefore any
-   "% complete" gauge is a lie** — it would shrink as the case grew.
-2. **Ready ≠ complete.** The real case was correctly referred to multiple agencies with ~36
-   questions still open — because those open questions ("requires subpoena," "FOIA the loan
-   file," "bank records") are **the recipient's job.** The recipient has subpoena power; the
-   investigator's job is credibility, not completeness.
-3. **A fired signal rule is the *birth* of an Angle, not proof of one.** One auto-flagged
-   CRITICAL finding turned out to be a misidentification and was dismissed. Counting "fired
-   signals" toward readiness would have made the case look *more* ready while carrying a false
-   accusation. Substantiation — not firing — is what counts.
-4. **The work is non-linear.** The real path was ~14 main steps plus ~9 dead-end branches,
-   with constant back-and-forth. A linear Intake→…→Refer "phase" model is the wrong shape and
-   is explicitly rejected here.
+1. **Accretive, unknown, growing denominator.** The case expanded from one subject to multiple
+   counties and entities; you cannot know how many "pieces" exist at the start, and the count
+   grows. **Any "% complete" gauge is a lie** — it would shrink as the case grew.
+2. **Ready ≠ complete.** The real case was correctly referred with ~36 questions still open —
+   those open questions ("requires subpoena," "FOIA the loan file") are **the recipient's job.**
+   The investigator's job is credibility, not completeness.
+3. **A fired signal rule is the *birth* of an Angle, not proof.** An auto-flagged CRITICAL
+   finding turned out to be a misidentification and was dismissed. Substantiation counts, not
+   firing.
+4. **Non-linear.** ~14 main steps + ~9 dead-end branches with constant back-and-forth. A linear
+   Intake→…→Refer "phase" model is the wrong shape and is rejected.
 
 ---
 
-## 3. Layout — web-home + one context panel + referential feeders
-
-Not a row of co-equal tabs. A workspace shell:
+## 3. Layout — web-home + one context panel + referential feeders (inside Investigate)
 
 ```
-┌─ Case Name ───────── Credibility: N referral-grade · M need work · K agency leads ── [status ▼] ─┐
-├──────────────────────────────────────────────────────────────┬──────────────────────────────────┤
-│                                                                │  CONTEXT PANEL (one panel,        │
-│                    THE WEB  (home — always present)            │  three states)                   │
-│         knots + connections; shared-attribute edges            │                                  │
-│         auto-proposed (see GAP-1)                              │  · idle  → CASE STATE:            │
-│                                                                │           what's missing (2-kind) │
-│   [Research] [Documents] [Financials] [Timeline]               │  · knot/connection selected →     │
-│   referential feeders — accessible, not prominent.             │           profile / detail        │
-│   Every result ends in an action that lands on the web         │  · ANGLE active → the             │
-│   or in an Angle: Add to Case · Cite · Start Angle             │           convergence workspace   │
-│   (no dead-end toasts — see GAP-7)                             │           (origin+provenance,     │
-│                                                                │            cited docs, subgraph,  │
-│                                                                │            evidence weight,       │
-│                                                                │            open threads → Confirm)│
-└────────────────────────────────────────────────────────────────┴──────────────────────────────────┘
+┌─ Case Name ───── Credibility: N referral-grade · M need work · K agency leads ──── [status ▼] ─┐
+│  (Investigate tab)                                                                              │
+├──────────────────────────────────────────────────────────────┬─────────────────────────────────┤
+│                    THE WEB  (home surface of Investigate)      │  CONTEXT PANEL (one panel,       │
+│         knots + connections; confirmable shared-attribute      │  three states)                  │
+│         edges auto-proposed (see WS-GAP-1)                     │  · idle  → CASE STATE /          │
+│                                                                │           what's missing (2-kind)│
+│                                                                │  · knot/connection selected →    │
+│                                                                │           profile / detail       │
+│                                                                │  · ANGLE active → convergence    │
+│                                                                │           workspace → tie-off    │
+└──────────────────────────────────────────────────────────────┴─────────────────────────────────┘
+
+Feeders (own surfaces, full space when open): Research · Documents · Financials · Timeline
+   referential, not prominent. Each result/row carries shared-context actions:
+   Add to Case · Cite · Start Angle.  No dead-end toasts (see WS-GAP-7).
 ```
 
-- **The Web is the persistent home.** The case *is* a web of connected knots.
-- **One context panel, three states** (idle case-state / selected entity-or-connection /
-  active Angle workspace). The Angle workspace is the convergence point where evidence,
-  citations, connected subgraph, evidence weight, and open threads come together to support
-  **Confirm**.
-- **Feeders are referential, not prominent.** Investigators hold the financial/temporal
-  picture in their heads and *check* it; they do not live in it. Financials and Timeline
-  remain openable reference surfaces. They are kept (not dissolved into the web) for now;
-  dissolving them into entity panels / a temporal web filter is a deferred option, not a
-  current goal (avoid over-engineering — first 70% is 100%).
-- **Shared selection context is what makes tools work "in unison":** selecting an entity
-  anywhere (web, research result, financial row) sets the active entity and the panel reacts;
-  opening an Angle sets the active Angle so "Cite" actions from Documents/Timeline target it.
+- **Web-home ≠ permanent split-screen.** The Web is the *default home surface of the Investigate
+  tab* and the holder of persistent **shared context/actions** — it is **not** graph pixels
+  overlaid on Financials/Timeline. Feeders keep their full dense-scanning space; what persists
+  across them is the active selection + the action set, not the canvas.
+- **One context panel, three states** (idle case-state / selected entity-or-connection / active
+  Angle workspace). The Angle workspace is the convergence point and hosts the **tie-off** flow.
 
 ---
 
-## 4. Readiness model — counts, not a score
+## 4. Angle lifecycle + the tie-off gate (the keystone)
 
-The header shows **counts, never a number that reads like a percentage.** A score invites
-"get it to 100 and refer"; counts invite "substantiate the next Angle."
+Every header count and "ready" judgment derives from one precise predicate, so it is defined
+first.
 
-> Credibility: **N referral-grade angles · M need work · K open leads for the agency**
+```
+NEW ──► NEEDS_EVIDENCE ──► CONFIRMED        (tie-off gate)
+   └────────────────────► DISMISSED         (rationale required)
+```
 
-### Referral-grade Angle (the bar)
-An Angle is referral-grade when it is:
-- `status = CONFIRMED` (human-confirmed, not just signal-fired), **and**
-- `evidence_weight ≥ DOCUMENTED`, **and**
-- has ≥1 cited document, **and**
-- is embedded in the web (≥1 reviewed connection on its knot), **and**
-- written to the **overreach standard** (stated facts, not inferred conclusions).
+- **NEW** — created from a signal firing, a manual add, an AI lead, or "Start Angle" from a
+  feeder. No requirements.
+- **NEEDS_EVIDENCE** — optional working state ("actively gathering").
+- **CONFIRMED** — only via the **tie-off gate**, enforced in `TieOffModal`:
+  - ≥1 cited document, **and**
+  - `evidence_weight ≥ DOCUMENTED` (i.e. DOCUMENTED or TRACED), **and**
+  - narrative present, **and**
+  - **overreach checklist acknowledged** (see §7).
+  - **Connectedness is a WARNING chip, not a blocker** (see §6).
+- **DISMISSED** — requires a dismissal rationale (already enforced server-side). Dismissal has a
+  **kind**: `ruled_out` (routine) or `correction` (was asserted, now retracted).
+
+**Referral-grade (UI term)** = an Angle that is CONFIRMED with every tie-off condition met.
+This is the only definition of "done."
+
+---
+
+## 5. Readiness — grade + counts in the UI, score kept in the API
+
+The backend `quality.score` (dashboard/readiness) is **kept** and stays available in the API.
+The **workspace** surfaces a **grade label + counts**, never `score/100`, to avoid
+"get-it-to-100-then-refer" psychology.
+
+> Credibility: **N referral-grade · M need work · K agency leads**
+
+### Count formulas (header = Angle-level + leads only)
+```
+referral-grade = Angles where CONFIRMED ∧ ≥1 citation ∧ weight∈{DOCUMENTED,TRACED}
+                                ∧ overreach acknowledged
+need-work      = Angles where status∈{NEW,NEEDS_EVIDENCE}  OR  (CONFIRMED ∧ tie-off unmet)
+                 (excludes DISMISSED)
+agency-leads   = open RecipientGap items (§8)
+```
+Case-level blockers are **not** in the header — they live in the idle "what's missing" panel:
+`pending Intake docs · pending fuzzy matches · confirmed Angles missing a confirmable connection (warn)`.
 
 ### Two kinds of "missing" — only one gates readiness
-| Kind | Examples | Effect on readiness |
-|------|----------|---------------------|
-| **Investigator-closable** | uncited confirmed Angle; unconnected knot; research hit not added; OCR pending | **Lowers readiness** — must be closed |
-| **Recipient gap (subpoena/FOIA)** | bank records, payroll, loan files, agency records | **Does NOT block** — rides in the package as "leads for the agency" |
-
-This split is what lets a case be referable while many questions remain open.
+| Kind | Examples | Effect |
+|------|----------|--------|
+| **Investigator-closable** | uncited confirmed Angle; research hit not added; OCR pending; Angle below DOCUMENTED | **Lowers readiness** |
+| **Recipient gap (subpoena/FOIA)** | bank records, payroll, loan files, agency records | **Does NOT block** — becomes an agency lead (§8) |
 
 ---
 
-## 5. Hard requirements (non-negotiable)
+## 6. "Web-embedded" — confirmable edges only (warning, not gate)
 
-1. **Dismissed stays visible.** Dismissed findings are kept with their documented reason —
-   they demonstrate rigor (what was checked and ruled out). Never hide them; the referral
-   package includes a correction/dismissed section.
-2. **Overreach standard, enforced in the UI.** An Angle cannot reach referral-grade on an
-   inferred conclusion. Shared names/addresses/timing render as **stated facts with a
-   "not established by these documents" caveat**, never as a conclusion. (The AI eval harness
-   already polices this on the model side; the UI must police it on the human side.)
-3. **Provenance is preserved.** Every Angle/thread records who originated it — investigator,
-   AI lead, or external tip — and this provenance appears in the replay/timeline view and the
-   package.
+Connectedness uses **confirmable edges only**:
+- a manual **Relationship**, an **accepted FuzzyMatchCandidate**, a **PersonOrganization** role,
+  or a **PropertyTransaction** edge.
+- **Excludes `CO_APPEARS_IN`** (synthetic; cannot be confirmed/dismissed).
 
----
-
-## 6. Three design decisions (deliberate cuts)
-
-1. **Replay is auto-derived, not hand-typed.** The retrospective replay's value (provenance,
-   the question→finding→next-question chain, dead-ends-kept-visible) must be **generated from
-   the actions already taken** (add-to-case, cite, confirm, dismiss all write AuditLog rows).
-   A manually authored step log is documentation debt that won't survive real workload.
-   Replay = a generated timeline view + a package export, not a data-entry screen.
-2. **One context panel, not a second permanent rail.** "What's missing" lives in the context
-   panel's idle state plus the header credibility chip — it does not get its own always-on
-   rail competing with the web's profile/connection panels.
-3. **Counts, not a score.** No 0–100 number anywhere in the readiness surface.
+For now connectedness is a **warning** on an otherwise referral-grade Angle, not a hard gate. A
+missing/synthetic-only connection becomes one of the **open questions delivered to the agency**,
+consistent with "ready ≠ complete." It can graduate to a gate later if a precise stored meaning
+of "reviewed connection" is added.
 
 ---
 
-## 7. Platform gap backlog (tool-level, from the real investigation)
+## 7. Hard requirements
 
-These are capabilities the real investigation needed that the tool could not do
-automatically. They are platform requirements, not case data.
-
-| Gap | Capability needed | Design role |
-|-----|-------------------|-------------|
-| **GAP-1** | Auto-propose a relationship edge when two entities share a statutory agent / organizer / address | **Connectedness** — "the backend builds the web." Surface the edge; never assert the conclusion. |
-| **GAP-7** | "Add to Case" on every Research result, pre-populating the entity and dropping it on the web | **Top friction fix** — kills the connector→case dead-end (matches the toast dead-ends in `CaseDetailView`). |
-| **GAP-4** | Saved searches on case names; alert when a new external entity matching the case appears | **Accretion over time** — new pieces arrive after "active" work pauses. |
-| **GAP-2** | Year-over-year governance/disclosure comparison table; auto-flag a changed answer (e.g. Yes→No) | Financial intelligence (feeds disclosure-flip signals). |
-| **GAP-3** | OCR fallback auto-triggered when text extraction yields < ~100 chars; visible OCR status; manual re-trigger | Document intake reliability. |
-| **GAP-5** | When a person has a date-of-death, flag any later filing naming them as signatory — as a *fact to check*, not a conclusion | Cross-document date check (must respect the overreach standard — name match ≠ identity). |
-| **GAP-6** | Signal when material grant/distribution program revenue exists but the required schedule is not filed | New signal rule. |
-
----
-
-## 8. What this changes vs. the current app
-
-- **Keep:** all current tab *bodies* (web/graph, Research, Financials, Timeline, Referrals),
-  the deterministic PDF export, the readiness backend, `Case.status`.
-- **Reframe:** the case-detail shell from "6 co-equal tabs" to "web-home + one context panel +
-  referential feeders," with the Angle workspace as the convergence point.
-- **Wire the seams:** replace every "go do X elsewhere" toast with a real action
-  (Add to Case / Cite / Start Angle) targeting shared selection context (GAP-7).
-- **Auto-derive** the replay/timeline from AuditLog instead of manual step entry.
-- **Header:** credibility counts (not a score); "what's missing" in the context panel idle
-  state with the two-kind split.
+1. **Dismissed stays visible — but quiet.**
+   - **Workspace:** visible **behind a filter** (default hidden; "show dismissed" toggle).
+   - **Package:** **opt-in appendix** — the investigator selects which dismissed items appear,
+     shown as either "checked and ruled out" or "correction." Not automatic (avoids noise the
+     badge-holder customer does not want). Current export remains confirmed
+     DOCUMENTED/TRACED-only by default.
+2. **Overreach standard = tie-off checklist (not auto-enforced yet).** At tie-off the investigator
+   acknowledges:
+   - narrative states only what the cited documents establish;
+   - inferences are labeled as questions/leads, not conclusions;
+   - name/address/timing matches are caveated when identity is not proven.
+   This is a **visible checklist / narrative-lint affordance**, not automatic gating, until a
+   stored `overreach_reviewed` signal exists on Finding. (The AI eval harness already polices
+   overreach on the model side.)
+3. **Provenance preserved.** Every Angle/thread records who originated it — investigator, AI
+   lead, or external tip — surfaced in the replay/timeline and the package.
 
 ---
 
-## 9. Deferred / open
+## 8. Recipient gaps / agency leads (new lightweight model)
 
-- Whether Financials and Timeline eventually **dissolve** into the web (financials as a panel
-  on an org knot; timeline as a temporal filter) — deferred; kept as referential feeders for
-  now.
-- Exact connectedness rule for "web-embedded" (any reviewed connection on the knot vs.
-  connection to another Angle's entities) — to settle during build.
+The subpoena/FOIA "missing" needs a home. Add a small model:
+
+```
+RecipientGap {
+  case:           FK
+  gap_type:       e.g. bank_records | payroll | loan_file | agency_record | other
+  rationale:      why this matters (free text)
+  cited_document: FK → Document  (optional — the doc that implies the gap)
+  target_agency:  which referral target it serves
+  status:         OPEN | PROVIDED
+  created_by:     provenance
+}
+```
+- Surfaces in the workspace "what's missing" as **non-blocking**.
+- Becomes the **"Leads for the agency"** section of the referral package.
+- (YELLOW: new data model — confirmed for build.)
+
+---
+
+## 9. Shared action/state model (the "in unison" mechanism)
+
+Case-detail context holds **`activeEntityId`** and **`activeAngleId`** (partially exists today
+as `activeAngleId`/`requestedAngle`).
+
+- Selecting a row/knot anywhere (web, research result, financials row) **sets `activeEntity`**;
+  the context panel reacts.
+- Opening an Angle **sets `activeAngle`** so feeder "Cite" actions target it.
+
+### Feeder action behavior (exact)
+- **Cite** with an active Angle → links the item; **with no active Angle → opens an Angle
+  picker** whose top option is **"+ New Angle from this."**
+- **Start Angle from this** → creates an Angle pre-filled (trigger entity + first citation) and
+  sets it active.
+- **Duplicate cite** → idempotent no-op (`FindingDocument.get_or_create`) + "already cited" toast.
+- **After any feeder action → stay in place** (do not yank to the Web); show inline confirmation
+  and set the Angle active for follow-on cites.
+
+### Add to Case (WS-GAP-7, detailed)
+- **Provenance:** record the source connector + raw result snapshot + who/when.
+- **Dedupe:** fuzzy-match the result against existing case knots; on a likely match offer
+  **"enrich existing knot"** vs **"create new"** (reuse FuzzyMatchCandidate machinery) — never
+  silently duplicate.
+- **Explicit outcome label:** the action states which happened — *created knot / enriched knot /
+  saved note / fetched documents.*
+
+---
+
+## 10. Replay — hybrid (auto spine + optional structured annotation)
+
+- **Auto spine:** generate the event timeline from AuditLog (add-to-case, cite, confirm, dismiss
+  already write rows) — no mandatory data entry.
+- **Optional enrichment:** keep structured fields (question → source → result → next question,
+  status) as *optional* annotation the investigator can add where a step needs a "why." Not
+  required; the timeline exists for free without it.
+- Replay = a generated view + a package export, not a mandatory data-entry screen.
+
+---
+
+## 11. Workspace gap backlog (`WS-GAP-*`)
+
+Renamed from `GAP-*` to avoid collision with `api-contract.md`'s resolved GAP-1 (finding_links).
+Capabilities the real investigation needed that the tool could not do automatically:
+
+| Gap | Capability | Design role |
+|-----|------------|-------------|
+| **WS-GAP-1** | Auto-propose a relationship edge when entities share a statutory agent / organizer / address | **Connectedness** — surface the edge; never assert the conclusion. Confirmable edge only. |
+| **WS-GAP-7** | "Add to Case" on every Research result (provenance + dedupe + explicit outcome) | **Top friction fix** — kills the connector→case dead-end. See §9. |
+| **WS-GAP-4** | Saved searches on case names; alert when a new external entity matching the case appears | **Accretion over time.** |
+| **WS-GAP-2** | Year-over-year governance/disclosure comparison; auto-flag a changed answer | Financial intelligence. |
+| **WS-GAP-3** | OCR fallback when extraction < ~100 chars; visible status; manual re-trigger | Intake reliability. |
+| **WS-GAP-5** | When a person has a date-of-death, flag a later filing naming them as signatory — as a *fact to check*, not a conclusion | Cross-document date check (respect overreach). |
+| **WS-GAP-6** | Signal when material grant/distribution revenue exists but the required schedule is not filed | New signal rule. |
+
+---
+
+## 12. Suggested build sequence
+
+1. **WS-GAP-7 + shared state (§9)** — `activeEntity`/`activeAngle` context + feeder Cite/Add/Start
+   actions. Highest friction relief, smallest change, all inside Investigate.
+2. **Angle lifecycle + tie-off gate (§4) + credibility counts (§5).** The keystone predicate and
+   the header that depends on it.
+3. **Context panel three-state (§3) + idle "what's missing" (§5).**
+4. **RecipientGap (§8)** + package "Leads for the agency" + dismissed opt-in appendix (§7).
+5. **Replay hybrid (§10)** and **WS-GAP-1 connectedness proposals (§6).**
+
+---
+
+## 13. Deferred / open
+
+- Whether Financials/Timeline eventually dissolve into the web — deferred; kept as referential
+  feeders.
+- Whether connectedness graduates from warning to gate once "reviewed connection" has a precise
+  stored meaning.
+- Whether `overreach_reviewed` becomes a stored field enabling real gating.
