@@ -2605,3 +2605,28 @@ body {
   transition: background 0.1s, color 0.1s;
 }
 .doc-ctx-item:hover { background: var(--bg-3); color: var(--text-1); }
+
+.active-angle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--bg-1);
+  white-space: nowrap;
+}
+.active-angle-chip__clear {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+.active-angle-chip__clear:hover {
+  color: var(--text-1);
+}
