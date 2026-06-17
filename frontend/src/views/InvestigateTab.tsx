@@ -13,6 +13,7 @@ import type {
   PersonDetailResponse,
 } from "../types";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
+import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
@@ -238,72 +239,41 @@ function Breadcrumb({ stack, onNavigateTo }: { stack: NavEntry[]; onNavigateTo: 
 interface WebPanelProps {
   graph: GraphResponse | null;
   dashboard: DashboardResponse | null;
+  documents: DocumentItem[];
   selectedEdge: GraphEdge | null;
   onOpenAngle: (angleId: string, angleTitle: string) => void;
+  onOpenDocument: (docId: string, docName: string) => void;
   onClearEdge: () => void;
   leadStatus: "idle" | "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
   leadResult: { findings_created: number; patterns_dropped: number } | null;
 }
 
-function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdge, leadStatus, leadResult }: WebPanelProps) {
+function WebRightPanel({
+  graph,
+  dashboard,
+  documents,
+  selectedEdge,
+  onOpenAngle,
+  onOpenDocument,
+  onClearEdge,
+  leadStatus,
+  leadResult,
+}: WebPanelProps) {
   const knotCount = graph
     ? (graph.stats.node_types.person ?? 0) + (graph.stats.node_types.organization ?? 0)
     : 0;
   const edgeCount = graph?.stats.total_edges ?? 0;
 
   if (selectedEdge) {
-    const nodeIndex = new Map(graph?.nodes.map((n) => [n.id, n.label]) ?? []);
-    const fromLabel = nodeIndex.get(selectedEdge.source) ?? selectedEdge.source.slice(0, 8) + "…";
-    const toLabel = nodeIndex.get(selectedEdge.target) ?? selectedEdge.target.slice(0, 8) + "…";
-    const meta = selectedEdge.metadata as Record<string, unknown>;
-    const isProposed = selectedEdge.relationship === "CO_APPEARS_IN";
-    const isManual = ["FAMILY", "BUSINESS", "SOCIAL"].includes(selectedEdge.relationship) && meta.source_type === "MANUAL";
-    const stateLabel = isProposed ? "Proposed" : isManual ? "Manual" : "Confirmed";
-
     return (
-      <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
-        <button type="button" className="back-btn" onClick={onClearEdge} style={{ marginBottom: 8 }}>
-          ← Clear
-        </button>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
-          Connection
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
-          {fromLabel}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 2 }}>↔ {toLabel}</div>
-        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>{selectedEdge.label}</div>
-        <span className={`conn-state-badge conn-state-badge--${stateLabel.toLowerCase()}`} style={{ marginBottom: 10, display: "inline-block" }}>
-          {stateLabel}
-        </span>
-
-        {selectedEdge.finding_links?.length > 0 && (
-          <>
-            <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 6 }}>
-              Angles on this connection
-            </div>
-            {selectedEdge.finding_links.map((fl) => (
-              <button
-                key={fl.finding_id}
-                type="button"
-                className="panel-list-item"
-                style={{ background: "none", border: "none", width: "100%", cursor: "pointer", textAlign: "left", marginBottom: 4 }}
-                onClick={() => onOpenAngle(fl.finding_id, fl.title)}
-              >
-                <span className={`severity-badge severity-badge--${fl.severity}`}>{fl.severity}</span>
-                <span style={{ fontSize: 11, marginLeft: 6, flex: 1 }}>{fl.title}</span>
-              </button>
-            ))}
-          </>
-        )}
-
-        {isProposed && (
-          <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-            Proposed by Intake — review in the connections panel.
-          </p>
-        )}
-      </div>
+      <ConnectionDetailPanel
+        edge={selectedEdge}
+        graph={graph}
+        documents={documents}
+        onOpenAngle={onOpenAngle}
+        onOpenDocument={onOpenDocument}
+        onClear={onClearEdge}
+      />
     );
   }
 
@@ -718,8 +688,10 @@ export default function InvestigateTab({
             <WebRightPanel
               graph={graph}
               dashboard={dashboard}
+              documents={documents}
               selectedEdge={webSelectedEdge}
               onOpenAngle={(angleId, angleTitle) => navigate({ kind: "angle", angleId, angleTitle })}
+              onOpenDocument={(documentId, docName) => navigate({ kind: "document", documentId, docName })}
               onClearEdge={() => setWebSelectedEdge(null)}
               leadStatus={leadJob.status}
               leadResult={leadJob.result}

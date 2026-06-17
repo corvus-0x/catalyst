@@ -337,6 +337,159 @@ body {
 .conn-state-badge--proposed  { background: var(--high-bg); color: var(--color-high); }
 .conn-state-badge--manual    { background: rgba(167,139,250,0.15); color: #a78bfa; }
 
+.connection-detail {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-1);
+}
+
+.connection-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.connection-detail__eyebrow {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.connection-detail__title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--text-1);
+}
+
+.connection-detail__nodes {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.connection-detail__node {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.3;
+}
+
+.connection-detail__connector {
+  margin: 3px 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.connection-detail__meta-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-1);
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.connection-detail__section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.connection-detail__facts {
+  margin: 0;
+}
+
+.connection-detail__fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 11px;
+}
+
+.connection-detail__fact dt {
+  color: var(--text-3);
+}
+
+.connection-detail__fact dd {
+  margin: 0;
+  color: var(--text-1);
+  text-align: right;
+  word-break: break-word;
+}
+
+.connection-detail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connection-detail__doc,
+.connection-detail__angle {
+  width: 100%;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.connection-detail__doc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  font-size: 11px;
+}
+
+.connection-detail__angle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px 8px;
+}
+
+.connection-detail__doc:hover,
+.connection-detail__angle:hover {
+  border-color: var(--border-2);
+  color: var(--text-1);
+}
+
+.connection-detail__angle-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-1);
+}
+
+.connection-detail__angle .angle-badge {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.connection-detail__empty,
+.connection-detail__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.connection-detail__note {
+  margin-top: 7px;
+  color: var(--color-high);
+}
+
 /* ─── Panel list items ───────────────────────────────────────────────────────── */
 
 .panel-list-item {

@@ -397,6 +397,19 @@ export interface GraphNodeMetadata {
   amount?: DecimalString | null;
 }
 
+export interface GraphEdgeMetadata {
+  document_ids?: UUID[];
+  start_date?: string | null;
+  end_date?: string | null;
+  transaction_date?: string | null;
+  price?: DecimalString | number | null;
+  instrument_number?: string | null;
+  source_type?: string;
+  confidence?: number;
+  notes?: string;
+  [key: string]: unknown;
+}
+
 /**
  * An edge in the entity-relationship graph.
  * metadata shape varies by relationship type — see inline comments.
@@ -417,7 +430,7 @@ export interface GraphEdge {
   /** Number of documents supporting this connection */
   weight: number;
   /** Shape varies by relationship type — see JSDoc above */
-  metadata: Record<string, unknown>;
+  metadata: GraphEdgeMetadata;
   /**
    * Findings that touch both endpoints of this edge.
    * Empty array means no findings involve both entities.
