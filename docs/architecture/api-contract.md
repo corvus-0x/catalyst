@@ -648,6 +648,20 @@ Query params:
 
 **⚠️ Source filter note:** The `source` query param maps to `FindingSource` choices. Verify in models.py that `"AI"` is a valid value (it was added as `FindingSource.AI` in Session 36 migration `0023_ai_source_and_jobtype.py`).
 
+### AI Chain-of-Custody Fields
+
+Lead-generated findings (`source: "AI"`) must preserve:
+
+- `ai_run_id` — the `SearchJob` UUID that produced the Lead, when available.
+- `evidence_snapshot.ai_model` — model identifier used for generation.
+- `evidence_snapshot.job_id` — string copy of the job id.
+- `evidence_snapshot.doc_refs` — model-facing `Doc-N` references.
+- `evidence_snapshot.doc_ref_resolution` — map from each `Doc-N` reference to a stable document UUID.
+- `document_links` — persisted citation rows created from resolved `doc_refs`.
+
+The frontend should display these as Lead provenance only when needed for debugging or audit review.
+User-facing investigation copy must use "Lead", not model/vendor names.
+
 ### POST /api/cases/:id/findings/
 
 Creates a manual finding. **Body:**

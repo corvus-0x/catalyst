@@ -34,6 +34,8 @@ from typing import Any
 import anthropic
 from django.core.cache import cache
 
+from investigations import ai_gateway
+
 logger = logging.getLogger("catalyst.ai_proxy")
 
 # ---------------------------------------------------------------------------
@@ -321,50 +323,10 @@ def _build_finding_context(finding) -> str:
 
 
 def _tool_search_case_documents(case, query: str, limit: int = 10) -> dict:
-    """Search OCR'd document text within a single case.
+    """Search OCR'd document text within a single case."""
+    from .retrieval import search_case_documents
 
-    Case-insensitive substring match against Document.extracted_text. Returns
-    up to `limit` matching documents, each with a ~200-char snippet around
-    the first occurrence. Documents with empty or missing extracted_text are
-    excluded.
-
-    Called by Claude via the agentic tool-use loop in ai_ask(). Real
-    exceptions bubble up to the loop, which converts them to is_error
-    tool_result blocks.
-    """
-    from .models import Document
-
-    if not query or not query.strip():
-        return {"query": query, "match_count": 0, "results": []}
-
-    qs = (
-        Document.objects.filter(case=case, extracted_text__icontains=query)
-        .exclude(extracted_text__isnull=True)
-        .exclude(extracted_text__exact="")[:limit]
-    )
-
-    results = []
-    q_lower = query.lower()
-    for doc in qs:
-        text = doc.extracted_text or ""
-        idx = text.lower().find(q_lower)
-        if idx < 0:
-            continue
-        start = max(0, idx - 200)
-        end = min(len(text), idx + len(query) + 200)
-        snippet = text[start:end]
-        results.append(
-            {
-                "document_id": str(doc.pk),
-                "display_name": doc.display_name or doc.filename,
-                "doc_type": doc.doc_type,
-                "sha256": doc.sha256_hash,
-                "snippet": snippet,
-                "match_position": idx,
-            }
-        )
-
-    return {"query": query, "match_count": len(results), "results": results}
+    return search_case_documents(case, query=query, limit=limit)
 
 
 SEARCH_DOCS_TOOL = {
@@ -408,77 +370,23 @@ def _call_ai(
     temperature: float = 0.2,
     max_tokens: int = MAX_TOKENS,
 ) -> dict:
-    """Make a Claude API call and return parsed JSON response.
-
-    Retries up to PROXY_MAX_ATTEMPTS on transient errors (rate-limit, network
-    blip, server overload). Permanent errors (auth, bad request, JSON decode)
-    return {"error": ...} immediately without retrying.
-    """
-    client = _get_client()
-    last_exc: Exception | None = None
-
-    for attempt in range(1, PROXY_MAX_ATTEMPTS + 1):
-        raw = ""
-        try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-            )
-            raw = response.content[0].text or ""
-
-            # Strip markdown fences if the model wrapped the JSON
-            cleaned = raw.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                lines = [line for line in lines if not line.strip().startswith("```")]
-                cleaned = "\n".join(lines).strip()
-
-            result = json.loads(cleaned)
-            result["_model"] = model
-            result["_usage"] = {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            }
-            return result
-
-        except json.JSONDecodeError:
-            # Permanent — malformed JSON won't improve on retry.
-            # Don't surface raw text: may contain PII or refusal language.
-            logger.warning("AI returned non-JSON response: %s", raw[:200])
-            return {"error": "AI returned non-JSON response"}
-
-        except (
-            anthropic.RateLimitError,
-            anthropic.APIConnectionError,
-            anthropic.APITimeoutError,
-            anthropic.InternalServerError,
-        ) as exc:
-            # Transient — retry with exponential backoff.
-            last_exc = exc
-            if attempt < PROXY_MAX_ATTEMPTS:
-                sleep_for = PROXY_BACKOFF_BASE ** attempt
-                logger.warning(
-                    "Transient Claude error on attempt %d/%d: %s; retrying in %.1fs",
-                    attempt,
-                    PROXY_MAX_ATTEMPTS,
-                    exc,
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-                continue
-
-        except Exception as exc:
-            # Permanent (auth failure, bad request, content policy, etc.)
-            logger.exception("AI call failed: %s", exc)
-            return {"error": str(exc)}
-
-    logger.error(
-        "AI call failed after %d attempts: %s", PROXY_MAX_ATTEMPTS, last_exc
+    """Make an AI call and return the parsed JSON response."""
+    result = ai_gateway.call_json(
+        system=system_prompt,
+        user_message=user_message,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
-    return {"error": f"Claude API unavailable after {PROXY_MAX_ATTEMPTS} attempts"}
+    if result.error or result.payload is None:
+        return {"error": result.error or "AI call failed"}
+    payload = dict(result.payload)
+    payload["_model"] = result.model
+    payload["_usage"] = {
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+    }
+    return payload
 
 
 # ---------------------------------------------------------------------------

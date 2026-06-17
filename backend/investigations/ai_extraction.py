@@ -30,47 +30,16 @@ Usage:
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any
+
+from investigations import ai_gateway
 
 logger = logging.getLogger("catalyst.ai_extraction")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-# Load API key from environment (set in .env, loaded by Django settings via
-# python-dotenv). We import lazily so this module can be tested without Django.
-_API_KEY: str | None = None
-
-
-def _get_api_key() -> str:
-    """Resolve the Anthropic API key, caching after first lookup."""
-    global _API_KEY
-    if _API_KEY is None:
-        _API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not _API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY not set. Add it to your .env file.")
-    return _API_KEY
-
-
-def _get_client():
-    """
-    Create and return an Anthropic client.
-
-    Lazy import so the module can be imported even if the anthropic
-    package isn't installed — it only fails when you actually call AI.
-    """
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        raise ImportError(
-            "The 'anthropic' package is required for AI extraction. "
-            "Install it with: pip install anthropic"
-        )
-    return Anthropic(api_key=_get_api_key())
-
 
 # Model to use for structured extraction tasks.
 AI_MODEL = "claude-sonnet-4-6"
@@ -696,26 +665,21 @@ def _call_claude(
     the regex extractor output remains as the fallback.
     """
     try:
-        client = _get_client()
-        response = client.messages.create(
+        gateway_result = ai_gateway.call_json(
+            system=system_prompt,
+            user_message=user_prompt,
             model=AI_MODEL,
             max_tokens=MAX_TOKENS,
             temperature=TEMPERATURE,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
         )
-
-        # Extract the text content from the response
-        raw_text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                raw_text += block.text
+        if gateway_result.error or gateway_result.payload is None:
+            return AIExtractionResult(error=gateway_result.error or "AI extraction failed")
 
         # Parse the JSON response into AIProposal objects
-        result = parse_fn(raw_text)
-        result.model_used = AI_MODEL
-        result.input_tokens = response.usage.input_tokens
-        result.output_tokens = response.usage.output_tokens
+        result = parse_fn(json.dumps(gateway_result.payload))
+        result.model_used = gateway_result.model
+        result.input_tokens = gateway_result.input_tokens
+        result.output_tokens = gateway_result.output_tokens
 
         logger.info(
             "ai_extraction_complete",

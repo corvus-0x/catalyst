@@ -105,4 +105,70 @@ GOLDEN_CASES = [
         "expect_clean": True,
         "thresholds": {"faithfulness": 1.0, "overreach": 0.0},
     },
+    {
+        "id": "same_name_no_relationship",
+        "case_name": "Eval — Same Name Negative Control",
+        "persons": [
+            {"key": "sarah", "full_name": "Sarah Mitchell", "role_tags": []},
+        ],
+        "organizations": [],
+        "documents": [
+            {
+                "key": "deed",
+                "doc_type": "DEED",
+                "filename": "deed_a.pdf",
+                "extracted_text": "Sarah Mitchell signs as grantor for Parcel A.",
+            },
+            {
+                "key": "minutes",
+                "doc_type": "OTHER",
+                "filename": "minutes.pdf",
+                "extracted_text": (
+                    "Sarah Mitchell is listed as a guest at a public meeting."
+                ),
+            },
+        ],
+        "financial_snapshots": [],
+        "expect_supported": [],
+        "expect_clean": True,
+        "thresholds": {"faithfulness": 1.0, "overreach": 0.0},
+    },
+    {
+        "id": "high_revenue_with_documented_pay",
+        "case_name": "Eval — Officer Pay Negative Control",
+        "persons": [
+            {"key": "jordan", "full_name": "Jordan Example", "role_tags": ["OFFICER"]},
+        ],
+        "organizations": [
+            {
+                "key": "clean",
+                "name": "Clean Foundation",
+                "ein": "12-3456789",
+                "org_type": "CHARITY",
+            },
+        ],
+        "documents": [
+            {
+                "key": "doc990",
+                "doc_type": "IRS_990",
+                "filename": "2022_990.xml",
+                "extracted_text": (
+                    "Form 990 shows total revenue 900000 and officer compensation 95000."
+                ),
+            },
+        ],
+        "financial_snapshots": [
+            {
+                "org": "clean",
+                "doc": "doc990",
+                "tax_year": 2022,
+                "total_revenue": 900_000,
+                "total_expenses": 700_000,
+                "officer_compensation_total": 95_000,
+            },
+        ],
+        "expect_supported": [],
+        "expect_clean": True,
+        "thresholds": {"faithfulness": 1.0, "overreach": 0.0},
+    },
 ]

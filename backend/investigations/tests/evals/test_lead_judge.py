@@ -1,6 +1,5 @@
 """CI unit test for the judge's parsing/flag mapping (Claude client mocked)."""
 
-import json
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -17,11 +16,8 @@ def _lead(doc_refs=("Doc-1",), description="desc", narrative="why"):
     )
 
 
-def _mock_client_returning(payload: dict):
-    client = MagicMock()
-    message = SimpleNamespace(content=[SimpleNamespace(text=json.dumps(payload))])
-    client.messages.create.return_value = message
-    return client
+def _mock_gateway_result(payload: dict | None, error: str | None = None):
+    return MagicMock(payload=payload, error=error)
 
 
 _CONTEXT = {
@@ -34,10 +30,15 @@ _CONTEXT = {
 
 
 class JudgeSupportTests(TestCase):
-    @patch("investigations.tests.evals.lead_judge.ai_proxy._get_client")
-    def test_maps_results_to_per_lead_flags(self, mock_get_client):
-        mock_get_client.return_value = _mock_client_returning(
-            {"results": [{"index": 0, "supported": True}, {"index": 1, "supported": False}]}
+    @patch("investigations.tests.evals.lead_judge.ai_gateway.call_json")
+    def test_maps_results_to_per_lead_flags(self, mock_call_json):
+        mock_call_json.return_value = _mock_gateway_result(
+            {
+                "results": [
+                    {"index": 0, "supported": True},
+                    {"index": 1, "supported": False},
+                ]
+            }
         )
         flags = lead_judge.judge_support([_lead(), _lead()], _CONTEXT)
         self.assertEqual(flags, [True, False])
@@ -46,10 +47,10 @@ class JudgeSupportTests(TestCase):
         # No patch needed: must short-circuit before any client call.
         self.assertEqual(lead_judge.judge_support([], _CONTEXT), [])
 
-    @patch("investigations.tests.evals.lead_judge.ai_proxy._get_client")
-    def test_incomplete_results_coverage_raises(self, mock_get_client):
+    @patch("investigations.tests.evals.lead_judge.ai_gateway.call_json")
+    def test_incomplete_results_coverage_raises(self, mock_call_json):
         # Two leads but the judge only returns a verdict for index 0 -> must raise.
-        mock_get_client.return_value = _mock_client_returning(
+        mock_call_json.return_value = _mock_gateway_result(
             {"results": [{"index": 0, "supported": True}]}
         )
         with self.assertRaises(lead_judge.JudgeError):
@@ -57,32 +58,23 @@ class JudgeSupportTests(TestCase):
 
 
 class JudgeOverreachTests(TestCase):
-    @patch("investigations.tests.evals.lead_judge.ai_proxy._get_client")
-    def test_maps_results_to_per_lead_flags(self, mock_get_client):
-        mock_get_client.return_value = _mock_client_returning(
+    @patch("investigations.tests.evals.lead_judge.ai_gateway.call_json")
+    def test_maps_results_to_per_lead_flags(self, mock_call_json):
+        mock_call_json.return_value = _mock_gateway_result(
             {"results": [{"index": 0, "overreaches": False}]}
         )
         flags = lead_judge.judge_overreach([_lead()], _CONTEXT)
         self.assertEqual(flags, [False])
 
-    @patch("investigations.tests.evals.lead_judge.ai_proxy._get_client")
-    def test_unparseable_response_raises(self, mock_get_client):
-        client = MagicMock()
-        client.messages.create.return_value = SimpleNamespace(
-            content=[SimpleNamespace(text="not json")]
-        )
-        mock_get_client.return_value = client
+    @patch("investigations.tests.evals.lead_judge.ai_gateway.call_json")
+    def test_gateway_error_raises(self, mock_call_json):
+        mock_call_json.return_value = _mock_gateway_result(None, error="AI returned non-JSON")
         with self.assertRaises(lead_judge.JudgeError):
             lead_judge.judge_overreach([_lead()], _CONTEXT)
 
-    @patch("investigations.tests.evals.lead_judge.ai_proxy._get_client")
-    def test_strips_code_fences_before_parsing(self, mock_get_client):
-        client = MagicMock()
-        fenced = (
-            "```json\n" + json.dumps({"results": [{"index": 0, "overreaches": True}]}) + "\n```"
+    @patch("investigations.tests.evals.lead_judge.ai_gateway.call_json")
+    def test_uses_gateway_parsed_payload(self, mock_call_json):
+        mock_call_json.return_value = _mock_gateway_result(
+            {"results": [{"index": 0, "overreaches": True}]}
         )
-        client.messages.create.return_value = SimpleNamespace(
-            content=[SimpleNamespace(text=fenced)]
-        )
-        mock_get_client.return_value = client
         self.assertEqual(lead_judge.judge_overreach([_lead()], _CONTEXT), [True])

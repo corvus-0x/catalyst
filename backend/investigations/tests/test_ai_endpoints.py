@@ -75,6 +75,22 @@ class AiAskEndpointTests(TestCase):
         cached = cache.get(f"ai_ask_history:{history_ref}")
         self.assertEqual(cached, history)
 
+    def test_query_params_do_not_store_full_conversation_history(self):
+        history = [
+            {"role": "user", "content": "sensitive prior note"},
+            {"role": "assistant", "content": "sensitive prior answer"},
+        ]
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"question": "follow-up", "conversation_history": history}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        job = SearchJob.objects.get(pk=response.json()["job_id"])
+        self.assertEqual(sorted(job.query_params.keys()), ["case_id", "history_ref", "question"])
+        self.assertNotIn("sensitive prior note", json.dumps(job.query_params))
+
     def test_view_always_returns_202_not_500(self):
         # Error handling for the ai_ask helper moved to the async job runner.
         # The view itself no longer calls ai_ask() synchronously, so it can

@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from investigations import ai_proxy
+from investigations import ai_gateway
 
-MODEL = ai_proxy.MODEL_SONNET
+MODEL = ai_gateway.MODEL_SONNET
 
 
 class JudgeError(RuntimeError):
@@ -57,25 +57,16 @@ def _lead_payload(leads) -> list[dict[str, Any]]:
 
 def _judge_call(system: str, payload: dict[str, Any]) -> dict[str, Any]:
     """One temperature-0 structured call. Raises JudgeError on unparseable JSON."""
-    client = ai_proxy._get_client()
-    response = client.messages.create(
+    result = ai_gateway.call_json(
+        system=system,
+        user_message=json.dumps(payload),
         model=MODEL,
         max_tokens=1024,
         temperature=0,
-        system=system,
-        messages=[{"role": "user", "content": json.dumps(payload)}],
     )
-    if not response.content:
-        raise JudgeError("Claude API returned an unexpected empty response (no content blocks).")
-    raw = (response.content[0].text or "").strip()
-    if raw.startswith("```"):
-        raw = "\n".join(
-            line for line in raw.split("\n") if not line.strip().startswith("```")
-        ).strip()
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError) as exc:
-        raise JudgeError(f"Judge returned unparseable JSON: {exc}") from exc
+    if result.error or result.payload is None:
+        raise JudgeError(result.error or "Judge returned unparseable JSON")
+    return result.payload
 
 
 def _flags_from(results: dict[str, Any], key: str, n: int) -> list[bool]:
