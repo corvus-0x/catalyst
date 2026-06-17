@@ -1,5 +1,6 @@
 import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
+import { toast } from "sonner";
 import { fetchGraph, fetchFuzzyMatches, fetchEntityDetail, fetchDashboard, runAiPatternAnalysis, reevaluateSignals } from "../api";
 import type {
   CaseQuality,
@@ -558,6 +559,7 @@ export default function InvestigateTab({
       setDashboard(dash);
     } catch (err) {
       console.error("Re-run rules failed:", err);
+      toast.error("Signal re-run failed — try again.");
     } finally {
       setRerunPending(false);
     }
@@ -571,7 +573,10 @@ export default function InvestigateTab({
         setGraph(g);
         setDashboard(dash);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error(err);
+        toast.error("Couldn't refresh the dashboard — reload if counts look stale.");
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadJob.status]);
 
@@ -650,7 +655,10 @@ export default function InvestigateTab({
     if (node.type === "person" || node.type === "organization") {
       fetchEntityDetail(node.type, node.id)
         .then((d) => setEntityData(d as PersonDetailResponse | OrgDetailResponse))
-        .catch(console.error);
+        .catch((err) => {
+          console.error(err);
+          toast.error("Couldn't load knot details.");
+        });
     }
   }
 
@@ -846,7 +854,14 @@ export default function InvestigateTab({
                 documents={documents}
                 onDocumentClick={(docId, docName) => navigate({ kind: "document", documentId: docId, docName })}
                 onBack={navigateBack}
-                onAngleTiedOff={() => fetchGraph(caseId).then(setGraph).catch(console.error)}
+                onAngleTiedOff={() =>
+                  fetchGraph(caseId)
+                    .then(setGraph)
+                    .catch((err) => {
+                      console.error(err);
+                      toast.error("The Web didn't refresh — reload if the graph looks stale.");
+                    })
+                }
               />
             </Suspense>
           </div>
@@ -876,7 +891,12 @@ export default function InvestigateTab({
             onCreated={(newAngle) => {
               setShowConnectModal(false);
               navigate({ kind: "angle", angleId: newAngle.id, angleTitle: newAngle.title });
-              fetchGraph(caseId).then(setGraph).catch(console.error);
+              fetchGraph(caseId)
+                .then(setGraph)
+                .catch((err) => {
+                  console.error(err);
+                  toast.error("The Web didn't refresh — reload if the graph looks stale.");
+                });
             }}
           />
         </Suspense>
