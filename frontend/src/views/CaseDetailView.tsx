@@ -6,6 +6,7 @@ import { fetchCase, fetchAngle, updateAngle, updateCase } from "../api";
 import type { CaseDetailResponse, TimelineEvent } from "../types";
 import InvestigateTab from "./InvestigateTab";
 import DocumentDrawer from "../components/DocumentDrawer";
+import { CaseWorkspaceProvider, useCaseWorkspace } from "../context/CaseWorkspaceContext";
 
 /* ─── Lazy-load heavy tabs ────────────────────────────────────────────────── */
 const ResearchTab      = lazy(() => import("./ResearchTab"));
@@ -62,13 +63,13 @@ const TAB_FALLBACK = (
   <div style={{ padding: 24, color: "#9ca3af", fontSize: 14 }}>Loading…</div>
 );
 
-export default function CaseDetailView() {
+function CaseDetailViewInner() {
   const { id } = useParams<{ id: string }>();
   const [caseData, setCaseData] = useState<CaseDetailResponse | null>(null);
   const [loadingCase, setLoadingCase] = useState(true);
   const [activeTab, setActiveTab] = useState("investigate");
-  const [activeAngleId, setActiveAngleId] = useState<string | undefined>();
   const [requestedAngle, setRequestedAngle] = useState<{ id: string; title: string } | null>(null);
+  const { activeAngleId, setActiveAngle } = useCaseWorkspace();
 
   useEffect(() => {
     if (!id) return;
@@ -163,7 +164,7 @@ export default function CaseDetailView() {
           <InvestigateTab
             caseId={id}
             documents={caseData?.documents ?? []}
-            onAngleActive={setActiveAngleId}
+            onAngleActive={(angle) => setActiveAngle(angle)}
             requestedAngle={requestedAngle}
             onAngleConsumed={() => setRequestedAngle(null)}
           />
@@ -236,5 +237,13 @@ export default function CaseDetailView() {
         </Tabs.Content>
       </Tabs.Root>
     </div>
+  );
+}
+
+export default function CaseDetailView() {
+  return (
+    <CaseWorkspaceProvider>
+      <CaseDetailViewInner />
+    </CaseWorkspaceProvider>
   );
 }
