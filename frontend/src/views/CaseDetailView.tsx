@@ -88,7 +88,10 @@ function CaseDetailViewInner() {
     if (!id) return;
     fetchCase(id)
       .then(setCaseData)
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        toast.error("Failed to load case data.");
+      })
       .finally(() => setLoadingCase(false));
   }, [id]);
 
