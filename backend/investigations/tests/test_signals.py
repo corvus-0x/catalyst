@@ -1749,6 +1749,16 @@ class FindingUpdateSerializerTests(TestCase):
         self.assertFalse(s.is_valid())
         self.assertIn("investigator_note", s.errors)
 
+    def test_dismissed_finding_cannot_clear_rationale(self):
+        self.finding.status = FindingStatus.DISMISSED
+        self.finding.investigator_note = "Not relevant to this case."
+        self.finding.save(update_fields=["status", "investigator_note"])
+
+        s = FindingUpdateSerializer(data={"investigator_note": ""}, instance=self.finding)
+
+        self.assertFalse(s.is_valid())
+        self.assertIn("investigator_note", s.errors)
+
     def test_empty_payload_is_invalid(self):
         s = FindingUpdateSerializer(data={}, instance=self.finding)
         self.assertFalse(s.is_valid())
@@ -1798,6 +1808,25 @@ class FindingUpdateSerializerTests(TestCase):
         self.assertTrue(s.is_valid(), s.errors)
         self.assertEqual(s.validated_data["status"], "DRAFT")
 
+    def test_add_document_ids_accepts_uppercase_uuid(self):
+        # An uppercase UUID is an equivalent spelling of the same id and must
+        # resolve to the document rather than being rejected as "missing".
+        document = _make_document(self.case, filename="upper.pdf")
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(document.id).upper()]},
+            instance=self.finding,
+        )
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["add_document_ids"], [str(document.id)])
+
+    def test_add_document_ids_rejects_non_uuid_string(self):
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": ["not-a-uuid"]},
+            instance=self.finding,
+        )
+        self.assertFalse(s.is_valid())
+        self.assertIn("add_document_ids", s.errors)
+
 
 class FindingCitationPatchApiTests(TestCase):
     def setUp(self):
@@ -1824,6 +1853,7 @@ class FindingCitationPatchApiTests(TestCase):
         self.assertTrue(
             FindingDocument.objects.filter(finding=self.finding, document=document).exists()
         )
+        self.assertEqual(response.json()["document_links"][0]["document_id"], str(document.id))
         audit = AuditLog.objects.get(action=AuditAction.FINDING_UPDATED)
         self.assertEqual(audit.after_state["add_document_ids"], [str(document.id)])
 
@@ -1837,6 +1867,7 @@ class FindingCitationPatchApiTests(TestCase):
         self.assertFalse(
             FindingDocument.objects.filter(finding=self.finding, document=document).exists()
         )
+        self.assertEqual(response.json()["document_links"], [])
         audit = AuditLog.objects.get(action=AuditAction.FINDING_UPDATED)
         self.assertEqual(audit.after_state["remove_document_ids"], [str(document.id)])
 

@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -583,7 +584,6 @@ class NoteIntakeSerializer:
             self._errors = {"target_id": ["target_id is required."]}
             return False
 
-        import uuid
 
         try:
             target_id = str(uuid.UUID(target_id))
@@ -921,12 +921,8 @@ class FindingUpdateSerializer:
         new_note = self.initial_data.get(
             "investigator_note", self.instance.investigator_note)
 
-        # Only require a dismissal rationale when the caller is actively
-        # setting status to DISMISSED — not when editing an already-dismissed
-        # finding's citations.
         if (
-            "status" in self.initial_data
-            and new_status == FindingStatus.DISMISSED
+            new_status == FindingStatus.DISMISSED
             and not (new_note or "").strip()
         ):
             self._errors = {
@@ -981,9 +977,18 @@ class FindingUpdateSerializer:
             if not isinstance(doc_ids, list) or not all(isinstance(v, str) for v in doc_ids):
                 self._errors = {field: [f"{field} must be a list of document UUID strings."]}
                 return False
-            documents = list(Document.objects.filter(case=self.instance.case, id__in=doc_ids))
+            # Canonicalize so equivalent UUID spellings (case/hyphenation) match
+            # the canonical str(doc.id) values and are not falsely "missing".
+            try:
+                normalized_ids = [str(uuid.UUID(v)) for v in doc_ids]
+            except (ValueError, TypeError, AttributeError):
+                self._errors = {field: [f"{field} must contain valid document UUID strings."]}
+                return False
+            documents = list(
+                Document.objects.filter(case=self.instance.case, id__in=normalized_ids)
+            )
             found_ids = {str(doc.id) for doc in documents}
-            missing_ids = sorted(set(doc_ids) - found_ids)
+            missing_ids = sorted(set(normalized_ids) - found_ids)
             if missing_ids:
                 self._errors = {
                     field: [
