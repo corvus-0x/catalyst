@@ -868,6 +868,8 @@ class FindingUpdateSerializer:
         self.instance = instance
         self.validated_data = {}
         self._errors = {}
+        self._documents_to_add = []
+        self._documents_to_remove = []
 
     @property
     def errors(self) -> dict:
@@ -906,17 +908,27 @@ class FindingUpdateSerializer:
             }
             return False
 
-        new_status = self.initial_data.get("status", self.instance.status)
-        if new_status not in _VALID_FINDING_STATUSES:
-            valid_list = ", ".join(sorted(_VALID_FINDING_STATUSES))
-            self._errors = {"status": [
-                f"Invalid status. Expected one of: {valid_list}."]}
-            return False
+        if "status" in self.initial_data:
+            new_status = self.initial_data["status"]
+            if new_status not in _VALID_FINDING_STATUSES:
+                valid_list = ", ".join(sorted(_VALID_FINDING_STATUSES))
+                self._errors = {"status": [
+                    f"Invalid status. Expected one of: {valid_list}."]}
+                return False
+        else:
+            new_status = self.instance.status
 
         new_note = self.initial_data.get(
             "investigator_note", self.instance.investigator_note)
 
-        if new_status == FindingStatus.DISMISSED and not (new_note or "").strip():
+        # Only require a dismissal rationale when the caller is actively
+        # setting status to DISMISSED — not when editing an already-dismissed
+        # finding's citations.
+        if (
+            "status" in self.initial_data
+            and new_status == FindingStatus.DISMISSED
+            and not (new_note or "").strip()
+        ):
             self._errors = {
                 "investigator_note": [
                     "A dismissal rationale is required when setting status to DISMISSED."
@@ -980,7 +992,11 @@ class FindingUpdateSerializer:
                     ]
                 }
                 return False
-            self.validated_data[field] = documents
+            self.validated_data[field] = [str(document.id) for document in documents]
+            if field == "add_document_ids":
+                self._documents_to_add = documents
+            else:
+                self._documents_to_remove = documents
 
         if "narrative_source" in self.initial_data:
             ns = self.initial_data["narrative_source"]
@@ -1053,14 +1069,13 @@ class FindingUpdateSerializer:
         self.instance.updated_at = timezone.now()
         self.instance.save(update_fields=update_fields)
 
-        for document in self.validated_data.get("add_document_ids", []):
+        for document in self._documents_to_add:
             FindingDocument.objects.get_or_create(finding=self.instance, document=document)
 
-        remove_documents = self.validated_data.get("remove_document_ids", [])
-        if remove_documents:
+        if self._documents_to_remove:
             FindingDocument.objects.filter(
                 finding=self.instance,
-                document__in=remove_documents,
+                document__in=self._documents_to_remove,
             ).delete()
 
         return self.instance

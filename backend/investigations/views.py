@@ -2483,26 +2483,27 @@ def api_case_signal_detail(request, pk, signal_id):
         if not serializer.is_valid():
             return JsonResponse({"errors": serializer.errors}, status=400)
 
-        serializer.save()
+        with transaction.atomic():
+            serializer.save()
 
-        # Determine the right audit action based on the new status
-        new_status = serializer.validated_data.get("status", finding.status)
-        if new_status == "CONFIRMED":
-            audit_action = AuditAction.SIGNAL_CONFIRMED
-        elif new_status == "DISMISSED":
-            audit_action = AuditAction.SIGNAL_DISMISSED
-        else:
-            audit_action = AuditAction.RECORD_UPDATED
+            # Determine the right audit action based on the new status
+            new_status = serializer.validated_data.get("status", finding.status)
+            if new_status == "CONFIRMED":
+                audit_action = AuditAction.SIGNAL_CONFIRMED
+            elif new_status == "DISMISSED":
+                audit_action = AuditAction.SIGNAL_DISMISSED
+            else:
+                audit_action = AuditAction.RECORD_UPDATED
 
-        AuditLog.log(
-            action=audit_action,
-            table_name="findings",
-            record_id=finding.pk,
-            case_id=case.pk,
-            before_state=before,
-            after_state=serializer.validated_data,
-            performed_by=getattr(request, "api_token", None),
-        )
+            AuditLog.log(
+                action=audit_action,
+                table_name="findings",
+                record_id=finding.pk,
+                case_id=case.pk,
+                before_state=before,
+                after_state=serializer.validated_data,
+                performed_by=getattr(request, "api_token", None),
+            )
 
         return JsonResponse(serializer.data)
 
@@ -3326,16 +3327,17 @@ def api_case_finding_detail(request, pk, finding_id):
     if not serializer.is_valid():
         return JsonResponse({"errors": serializer.errors}, status=400)
 
-    updated = serializer.save()
-    AuditLog.log(
-        action=AuditAction.FINDING_UPDATED,
-        table_name="findings",
-        record_id=updated.pk,
-        case_id=case.pk,
-        before_state=before,
-        after_state=serializer.validated_data,
-        performed_by=getattr(request, "api_token", None),
-    )
+    with transaction.atomic():
+        updated = serializer.save()
+        AuditLog.log(
+            action=AuditAction.FINDING_UPDATED,
+            table_name="findings",
+            record_id=updated.pk,
+            case_id=case.pk,
+            before_state=before,
+            after_state=serializer.validated_data,
+            performed_by=getattr(request, "api_token", None),
+        )
     return JsonResponse(serialize_finding(updated))
 
 
