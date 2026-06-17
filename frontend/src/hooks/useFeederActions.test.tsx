@@ -84,7 +84,7 @@ describe("useFeederActions", () => {
     updateAngleMock.mockClear();
     // Now the active angle is ang-1; cite a document into it.
     await act(async () => { await api.citeToAngle({ label: "Deed 2019", documentId: "doc-7" }); });
-    // Document cite sends ONLY add_document_ids (atomic, no narrative clobber — review #3).
+    // Document cite sends ONLY add_document_ids (atomic, no narrative clobber).
     expect(updateAngleMock).toHaveBeenCalledWith("c1", "ang-1", { add_document_ids: ["doc-7"] });
   });
 
@@ -99,7 +99,7 @@ describe("useFeederActions", () => {
     expect(screen.getByTestId("picker")).toHaveTextContent("open");
   });
 
-  it("creates only ONE angle when the follow-on citation fails (review round 3 #2)", async () => {
+  it("creates only ONE angle when the follow-on citation fails", async () => {
     updateAngleMock.mockRejectedValueOnce(new Error("cite boom"));
     let api: FeederActions = null as never;
     renderHarness((f) => (api = f));
@@ -110,5 +110,39 @@ describe("useFeederActions", () => {
     // cite into the now-active angle, never creating a second one.
     expect(createAngleMock).toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
+  });
+
+  it("a retry after a partial-failure cite reuses the active angle (no second create)", async () => {
+    updateAngleMock.mockRejectedValueOnce(new Error("cite boom")); // first cite fails
+    let api: FeederActions = null as never;
+    renderHarness((f) => (api = f));
+    await act(async () => { await api.citeToAngle({ label: "a fact" }); }); // picker opens
+    await act(async () => { await api.onPickerPick(null); }); // create ok, cite fails → new-1 active
+    // Retry: the angle is already active, so this goes straight to applyCite —
+    // it must NOT create a second angle, and must cite into the existing one.
+    await act(async () => { await api.citeToAngle({ label: "a fact" }); });
+    expect(createAngleMock).toHaveBeenCalledTimes(1);
+    expect(updateAngleMock).toHaveBeenLastCalledWith("c1", "new-1", { narrative: "old\n\n[Cited: a fact]" });
+  });
+
+  it("toasts 'Already cited' when the document is already linked, else 'Cited document into'", async () => {
+    let api: FeederActions = null as never;
+    renderHarness((f) => (api = f));
+    await act(async () => { await api.citeToAngle({ label: "seed" }); });
+    await act(async () => { await api.onPickerPick("ang-1"); }); // activate ang-1
+    toastMock.mockClear();
+    // Document not yet linked → "Cited document into".
+    fetchAngleMock.mockResolvedValueOnce({ id: "ang-1", title: "Existing", narrative: "old", document_links: [] });
+    await act(async () => { await api.citeToAngle({ label: "Deed", documentId: "doc-7" }); });
+    expect(toastMock).toHaveBeenLastCalledWith('Cited document into "Existing".');
+    // Same document already linked → "Already cited".
+    fetchAngleMock.mockResolvedValueOnce({
+      id: "ang-1",
+      title: "Existing",
+      narrative: "old",
+      document_links: [{ document_id: "doc-7" }],
+    });
+    await act(async () => { await api.citeToAngle({ label: "Deed", documentId: "doc-7" }); });
+    expect(toastMock).toHaveBeenLastCalledWith('Already cited in "Existing".');
   });
 });

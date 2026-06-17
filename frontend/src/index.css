@@ -2630,3 +2630,19 @@ body {
 .active-angle-chip__clear:hover {
   color: var(--text-1);
 }
+
+.angle-picker-error {
+  color: var(--text-2);
+}
+.angle-picker-retry {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent, var(--text-1));
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.angle-picker-retry:hover {
+  color: var(--text-1);
+}

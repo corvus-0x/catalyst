@@ -115,6 +115,10 @@ function TriageOption({ label, detail, done, outcome, disabled = false, onSelect
     setWorking(true);
     try {
       await onSelect();
+    } catch {
+      // Surface failures: without this, a rejected write clears the spinner with
+      // no feedback and the row stays un-ticked, looking like nothing happened.
+      toast.error("Action failed — try again.");
     } finally {
       setWorking(false);
     }

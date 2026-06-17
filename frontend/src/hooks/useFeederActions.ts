@@ -32,10 +32,11 @@ export function useFeederActions(caseId: string): FeederActions {
     async (angleId: string, item: CiteItem) => {
       const angle = await fetchAngle(caseId, angleId);
       if (item.documentId) {
-        // Atomic server-side link only — do NOT rewrite the narrative (review
-        // #3: avoids clobbering a concurrent narrative edit). The FindingDocument
-        // row is the chain-of-custody record; the [Doc-N] text is cosmetic.
-        // Backend get_or_create is idempotent; tell the user which actually happened.
+        // Atomic server-side link only — do NOT rewrite the narrative, so a
+        // concurrent narrative edit can't be clobbered. The FindingDocument row
+        // is the chain-of-custody record. Backend add_document_ids is idempotent
+        // (get_or_create), so check existing links to tell the user whether this
+        // added a new citation or the document was already cited.
         const already = (angle.document_links ?? []).some(
           (l) => l.document_id === item.documentId
         );
@@ -43,7 +44,8 @@ export function useFeederActions(caseId: string): FeederActions {
         toast(already ? `Already cited in "${angle.title}".` : `Cited document into "${angle.title}".`);
       } else {
         // Narrative-only annotation (event with no document id). Client
-        // read-modify-write: known last-write-wins race (see limitations).
+        // read-modify-write: a concurrent narrative edit can be lost (last write
+        // wins). An atomic server-side cite endpoint would remove this race.
         const narrative = `${angle.narrative ?? ""}\n\n[Cited: ${item.label}]`.trim();
         await updateAngle(caseId, angleId, { narrative });
         toast(`Cited into "${angle.title}".`);
@@ -66,8 +68,8 @@ export function useFeederActions(caseId: string): FeederActions {
         return null;
       }
       // The Angle now exists. Make it the active target IMMEDIATELY so a failed
-      // follow-on citation can never lead to a duplicate Angle on retry (review
-      // round 3, #2) — the retry cites into this active Angle, not a new one.
+      // follow-on citation can never lead to a duplicate Angle on retry — the
+      // retry cites into this active Angle rather than creating a new one.
       setActiveAngle({ id: angle.id, title: angle.title });
       if (seed.item) {
         try {
@@ -109,8 +111,8 @@ export function useFeederActions(caseId: string): FeederActions {
       const item = pendingItem.current;
       if (!item) return true;
       // Do NOT close the picker or clear pendingItem here. The modal closes via
-      // onClose (= closePicker) only on a non-false result, so a failure leaves
-      // the picker open with the pending item intact for retry (review #4).
+      // onClose (= closePicker) only on a truthy result, so a failure leaves the
+      // picker open with the pending item intact for retry.
       try {
         if (angleId === null) {
           const created = await startAngleFrom({ title: item.label, item });

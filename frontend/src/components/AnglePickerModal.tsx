@@ -8,28 +8,41 @@ interface AnglePickerModalProps {
   caseId: string;
   open: boolean;
   onClose: () => void;
-  /** angleId === null means "create a new Angle from this". May be async. */
-  onPick: (angleId: string | null) => boolean | void | Promise<boolean | void>;
+  /**
+   * angleId === null means "create a new Angle from this".
+   * Resolves true when the cite/create succeeded (picker closes), false when it
+   * failed (picker stays open so the user can retry the same pending item).
+   */
+  onPick: (angleId: string | null) => Promise<boolean>;
 }
 
 export default function AnglePickerModal({ caseId, open, onClose, onPick }: AnglePickerModalProps) {
   const [angles, setAngles] = useState<FindingItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  // Bump to re-run the load effect on demand (Retry).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
+    setLoadError(false);
     fetchAngles(caseId, { limit: 100 })
       .then((res) => setAngles(res.results))
-      .catch(() => setAngles([]))
+      // A failed load must NOT look like an empty case — surface it as an error
+      // with a retry, or the user may create a duplicate Angle thinking none exist.
+      .catch(() => {
+        setAngles([]);
+        setLoadError(true);
+      })
       .finally(() => setLoading(false));
-  }, [open, caseId]);
+  }, [open, caseId, reloadNonce]);
 
   async function handlePick(id: string | null) {
-    // Close only when the pick succeeded. A false result means the cite/create
-    // failed (review #4) — keep the picker open so the user can retry.
+    // Close only when the pick succeeded; a false result (failed cite/create)
+    // keeps the picker open so the user can retry the pending item.
     const ok = await onPick(id);
-    if (ok !== false) onClose();
+    if (ok) onClose();
   }
 
   return (
@@ -50,19 +63,32 @@ export default function AnglePickerModal({ caseId, open, onClose, onPick }: Angl
               <Plus size={13} /> + New Angle from this
             </button>
             {loading && <div className="angle-picker-empty">Loading angles…</div>}
-            {!loading && angles.length === 0 && (
+            {!loading && loadError && (
+              <div className="angle-picker-empty angle-picker-error" role="alert">
+                Couldn’t load angles.{" "}
+                <button
+                  type="button"
+                  className="angle-picker-retry"
+                  onClick={() => setReloadNonce((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {!loading && !loadError && angles.length === 0 && (
               <div className="angle-picker-empty">No angles yet.</div>
             )}
-            {angles.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                className="angle-picker-item"
-                onClick={() => void handlePick(a.id)}
-              >
-                {a.title}
-              </button>
-            ))}
+            {!loadError &&
+              angles.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className="angle-picker-item"
+                  onClick={() => void handlePick(a.id)}
+                >
+                  {a.title}
+                </button>
+              ))}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
