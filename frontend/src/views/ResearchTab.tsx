@@ -15,6 +15,7 @@
  */
 
 import { Fragment, useEffect, useState } from "react";
+import { toast } from "sonner";
 import * as Popover from "@radix-ui/react-popover";
 import {
   Search,
@@ -44,6 +45,7 @@ import type {
   IrsFilingResult,
   SyncResearchResponse,
   DeceasedPerson,
+  AddToCaseResult,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,12 @@ import type {
 
 interface ResearchTabProps {
   caseId: string;
+  /** Triage state is owned by CaseDetailViewInner so it survives tab switches.
+      (Durable, backend-derived "already in case" state is a follow-up.) */
+  triagedKeys: Set<string>;
+  onTriaged: (key: string) => void;
+  triageOutcomes: Map<string, string>;
+  onTriageOutcome: (key: string, label: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,15 +91,23 @@ function resultLabel(row: Record<string, unknown>, fallback: string): string {
   );
 }
 
+export function outcomeLabel(result: AddToCaseResult): string {
+  if (result.duplicate) return "Already in case";
+  if (result.created === "note") return "Saved as note";
+  if (result.created === "property") return "Created property record";
+  return `Created ${result.created} knot`;
+}
+
 interface TriageOptionProps {
   label: string;
   detail: string;
   done: boolean;
+  outcome?: string;
   disabled?: boolean;
   onSelect: () => Promise<void>;
 }
 
-function TriageOption({ label, detail, done, disabled = false, onSelect }: TriageOptionProps) {
+function TriageOption({ label, detail, done, outcome, disabled = false, onSelect }: TriageOptionProps) {
   const [working, setWorking] = useState(false);
 
   async function handleClick() {
@@ -99,6 +115,10 @@ function TriageOption({ label, detail, done, disabled = false, onSelect }: Triag
     setWorking(true);
     try {
       await onSelect();
+    } catch {
+      // Surface failures: without this, a rejected write clears the spinner with
+      // no feedback and the row stays un-ticked, looking like nothing happened.
+      toast.error("Action failed — try again.");
     } finally {
       setWorking(false);
     }
@@ -116,7 +136,7 @@ function TriageOption({ label, detail, done, disabled = false, onSelect }: Triag
         {done && <Check size={12} />}
         {label}
       </span>
-      <span className="add-option__sub">{done ? "Done" : detail}</span>
+      <span className="add-option__sub">{done ? (outcome ?? "Done") : detail}</span>
     </button>
   );
 }
@@ -167,16 +187,21 @@ interface IrsResultsTableProps {
   caseId: string;
   triagedKeys: Set<string>;
   onTriaged: (key: string) => void;
+  triageOutcomes: Map<string, string>;
+  onOutcome: (key: string, label: string) => void;
 }
 
-function IrsResultsTable({ results, caseId, triagedKeys, onTriaged }: IrsResultsTableProps) {
+function IrsResultsTable({ results, caseId, triagedKeys, onTriaged, triageOutcomes, onOutcome }: IrsResultsTableProps) {
   function rowKey(r: IrsFilingResult) {
     return `${r.ein}_${r.tax_year}`;
   }
 
   async function handleFetch990s(r: IrsFilingResult) {
     await fetch990s(caseId, { ein: r.ein });
-    onTriaged(triageKey("irs", rowKey(r), "fetch-990s"));
+    const k = triageKey("irs", rowKey(r), "fetch-990s");
+    onOutcome(k, "Fetched documents");
+    toast("Fetched documents");
+    onTriaged(k);
   }
 
   async function handleSaveNote(r: IrsFilingResult) {
@@ -185,15 +210,22 @@ function IrsResultsTable({ results, caseId, triagedKeys, onTriaged }: IrsResults
       target_id: caseId,
       content: `IRS: ${r.taxpayer_name} EIN:${r.ein} ${r.tax_year}`,
     });
-    onTriaged(triageKey("irs", rowKey(r), "save-note"));
+    const k = triageKey("irs", rowKey(r), "save-note");
+    onOutcome(k, "Saved as note");
+    toast("Saved as note");
+    onTriaged(k);
   }
 
   async function handleCreateOrg(r: IrsFilingResult) {
-    await addResearchToCase(caseId, {
+    const result = await addResearchToCase(caseId, {
       source: "irs",
       data: r as unknown as Record<string, unknown>,
     });
-    onTriaged(triageKey("irs", rowKey(r), "create-org"));
+    const k = triageKey("irs", rowKey(r), "create-org");
+    const label = outcomeLabel(result);
+    onOutcome(k, label);
+    toast(label);
+    onTriaged(k);
   }
 
   if (results.length === 0) {
@@ -244,18 +276,21 @@ function IrsResultsTable({ results, caseId, triagedKeys, onTriaged }: IrsResults
                           label="Fetch 990s"
                           detail="Store IRS XML and update Financials"
                           done={triagedKeys.has(fetchKey)}
+                          outcome={triageOutcomes.get(fetchKey)}
                           onSelect={() => handleFetch990s(r)}
                         />
                         <TriageOption
                           label="Create Organization knot"
                           detail="Add as a knot in the Web"
                           done={triagedKeys.has(orgKey)}
+                          outcome={triageOutcomes.get(orgKey)}
                           onSelect={() => handleCreateOrg(r)}
                         />
                         <TriageOption
                           label="Save as note"
                           detail="Attach a quick capture to this case"
                           done={triagedKeys.has(noteKey)}
+                          outcome={triageOutcomes.get(noteKey)}
                           onSelect={() => handleSaveNote(r)}
                         />
                       </Popover.Content>
@@ -282,6 +317,8 @@ interface SyncResultsTableProps {
   source: ResearchAddSource;
   triagedKeys: Set<string>;
   onTriaged: (key: string) => void;
+  triageOutcomes: Map<string, string>;
+  onOutcome: (key: string, label: string) => void;
   /** Set of lowercased deceased person names — checked for SOS results only */
   deceasedNames?: Set<string>;
 }
@@ -293,14 +330,17 @@ function SyncResultsTable({
   source,
   triagedKeys,
   onTriaged,
+  triageOutcomes,
+  onOutcome,
   deceasedNames,
 }: SyncResultsTableProps) {
   async function handleCreateOrg(r: Record<string, unknown>, idx: number) {
-    await addResearchToCase(caseId, {
-      source,
-      data: r,
-    });
-    onTriaged(triageKey(source, idx, source === "ohio-aos" ? "save-note" : "create-org"));
+    const result = await addResearchToCase(caseId, { source, data: r });
+    const k = triageKey(source, idx, source === "ohio-aos" ? "save-note" : "create-org");
+    const label = outcomeLabel(result);
+    onOutcome(k, label);
+    toast(label);
+    onTriaged(k);
   }
 
   async function handleSaveNote(r: Record<string, unknown>, idx: number) {
@@ -310,7 +350,10 @@ function SyncResultsTable({
       target_id: caseId,
       content: `Research result: ${label} — ${JSON.stringify(r).slice(0, 200)}`,
     });
-    onTriaged(triageKey(source, idx, "save-note"));
+    const k = triageKey(source, idx, "save-note");
+    onOutcome(k, "Saved as note");
+    toast("Saved as note");
+    onTriaged(k);
   }
 
   function hasDeceasedSignatory(row: Record<string, unknown>): boolean {
@@ -393,6 +436,7 @@ function SyncResultsTable({
                               label="Create Organization knot"
                               detail="Add as a knot in the Web"
                               done={triagedKeys.has(createKey)}
+                              outcome={triageOutcomes.get(createKey)}
                               onSelect={() => handleCreateOrg(r, idx)}
                             />
                           )}
@@ -401,6 +445,7 @@ function SyncResultsTable({
                               label="Save audit note"
                               detail="Use the AOS note format"
                               done={triagedKeys.has(noteKey)}
+                              outcome={triageOutcomes.get(noteKey)}
                               onSelect={() => handleCreateOrg(r, idx)}
                             />
                           ) : (
@@ -408,6 +453,7 @@ function SyncResultsTable({
                               label="Save as note"
                               detail="Attach a quick capture to this case"
                               done={triagedKeys.has(noteKey)}
+                              outcome={triageOutcomes.get(noteKey)}
                               onSelect={() => handleSaveNote(r, idx)}
                             />
                           )}
@@ -515,6 +561,8 @@ interface ParcelResultsProps {
   caseId: string;
   triagedKeys: Set<string>;
   onTriaged: (key: string) => void;
+  triageOutcomes: Map<string, string>;
+  onOutcome: (key: string, label: string) => void;
 }
 
 function ParcelResults({
@@ -525,13 +573,16 @@ function ParcelResults({
   caseId,
   triagedKeys,
   onTriaged,
+  triageOutcomes,
+  onOutcome,
 }: ParcelResultsProps) {
   async function handleCreateProperty(row: ParcelResult, idx: number) {
-    await addResearchToCase(caseId, {
-      source: "parcels",
-      data: { ...row },
-    });
-    onTriaged(triageKey("parcels", row.pin ?? idx, "create-property"));
+    const result = await addResearchToCase(caseId, { source: "parcels", data: { ...row } });
+    const k = triageKey("parcels", row.pin ?? idx, "create-property");
+    const label = outcomeLabel(result);
+    onOutcome(k, label);
+    toast(label);
+    onTriaged(k);
   }
 
   async function handleSaveNote(row: ParcelResult, idx: number) {
@@ -541,7 +592,10 @@ function ParcelResults({
       target_id: caseId,
       content: `${label}: ${row.owner1 ?? "Unknown owner"} — ${JSON.stringify(row).slice(0, 220)}`,
     });
-    onTriaged(triageKey("parcels", row.pin ?? idx, "save-note"));
+    const k = triageKey("parcels", row.pin ?? idx, "save-note");
+    onOutcome(k, "Saved as note");
+    toast("Saved as note");
+    onTriaged(k);
   }
 
   return (
@@ -589,12 +643,14 @@ function ParcelResults({
                     label="Create Property record"
                     detail="Add parcel and owner to the case"
                     done={triagedKeys.has(propertyKey)}
+                    outcome={triageOutcomes.get(propertyKey)}
                     onSelect={() => handleCreateProperty(row, idx)}
                   />
                   <TriageOption
                     label="Save as note"
                     detail="Attach a quick capture to this case"
                     done={triagedKeys.has(noteKey)}
+                    outcome={triageOutcomes.get(noteKey)}
                     onSelect={() => handleSaveNote(row, idx)}
                   />
                 </Popover.Content>
@@ -616,16 +672,15 @@ function ParcelResults({
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function ResearchTab({ caseId }: ResearchTabProps) {
+export default function ResearchTab({
+  caseId,
+  triagedKeys,
+  onTriaged,
+  triageOutcomes,
+  onTriageOutcome,
+}: ResearchTabProps) {
   // Source selection
   const [source, setSource] = useState<ResearchSource>("irs");
-
-  // Persistence of result triage state across tab switches.
-  const [triagedKeys, setTriagedKeys] = useState<Set<string>>(new Set());
-
-  function markTriaged(key: string) {
-    setTriagedKeys((prev) => new Set(prev).add(key));
-  }
 
   // Deceased persons cache for SOS signatory flag (Feature C)
   const [deceasedNames, setDeceasedNames] = useState<Set<string>>(new Set());
@@ -913,7 +968,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
             results={irsJob.result.results}
             caseId={caseId}
             triagedKeys={triagedKeys}
-            onTriaged={markTriaged}
+            onTriaged={onTriaged}
+            triageOutcomes={triageOutcomes}
+            onOutcome={onTriageOutcome}
           />
         );
       }
@@ -966,7 +1023,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
               columns={cols}
               source="ohio-sos"
               triagedKeys={triagedKeys}
-              onTriaged={markTriaged}
+              onTriaged={onTriaged}
+              triageOutcomes={triageOutcomes}
+              onOutcome={onTriageOutcome}
               deceasedNames={deceasedNames}
             />
           </>
@@ -1032,7 +1091,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
             columns={cols}
             source="ohio-aos"
             triagedKeys={triagedKeys}
-            onTriaged={markTriaged}
+            onTriaged={onTriaged}
+            triageOutcomes={triageOutcomes}
+            onOutcome={onTriageOutcome}
           />
         );
       }
@@ -1093,7 +1154,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
             query={parcelQuery}
             caseId={caseId}
             triagedKeys={triagedKeys}
-            onTriaged={markTriaged}
+            onTriaged={onTriaged}
+            triageOutcomes={triageOutcomes}
+            onOutcome={onTriageOutcome}
           />
         );
       }

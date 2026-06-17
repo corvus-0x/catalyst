@@ -16,6 +16,7 @@ import type {
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
 import { useAsyncJob } from "../hooks/useAsyncJob";
+import { useCaseWorkspace, type ActiveAngle } from "../context/CaseWorkspaceContext";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
 const ProfilePanel = lazy(() => import("./ProfilePanel"));
@@ -471,7 +472,7 @@ function EmptyWeb({ onAddAngle }: { onAddAngle: () => void }) {
 interface InvestigateTabProps {
   caseId: string;
   documents: DocumentItem[];
-  onAngleActive?: (angleId: string | undefined) => void;
+  onAngleActive?: (angle: ActiveAngle | undefined) => void;
   /** Set by parent to request navigating to a specific angle from outside */
   requestedAngle?: { id: string; title: string } | null;
   /** Called after this component pushes the requested angle onto the nav stack */
@@ -514,6 +515,7 @@ export default function InvestigateTab({
   const [rerunPending, setRerunPending] = useState(false);
 
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const { setActiveEntity } = useCaseWorkspace();
 
   /* ── Load graph + dashboard + fuzzy counts ── */
   useEffect(() => {
@@ -590,7 +592,7 @@ export default function InvestigateTab({
     setNavStack((s) => (sameEntry(s[s.length - 1], entry) ? s : [...s, entry]));
     setWebSelectedEdge(null);
     if (entry.kind === "angle") {
-      onAngleActive?.(entry.angleId);
+      onAngleActive?.({ id: entry.angleId, title: entry.angleTitle });
     } else {
       onAngleActive?.(undefined);
     }
@@ -605,7 +607,7 @@ export default function InvestigateTab({
       setWebSelectedEdge(null);
     }
     if (top.kind === "angle") {
-      onAngleActive?.(top.angleId);
+      onAngleActive?.({ id: top.angleId, title: top.angleTitle });
     } else {
       onAngleActive?.(undefined);
     }
@@ -642,6 +644,7 @@ export default function InvestigateTab({
 
   /* ── Navigate to Level 2: Profile ── */
   function handleOpenKnotView(node: GraphNode) {
+    setActiveEntity(node.id);
     navigate({ kind: "profile", entityId: node.id, entityType: node.type, entityName: node.label });
     setEntityData(null);
     if (node.type === "person" || node.type === "organization") {

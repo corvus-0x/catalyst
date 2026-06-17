@@ -1,11 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as Tabs from "@radix-ui/react-tabs";
 import { toast } from "sonner";
-import { fetchCase, fetchAngle, updateAngle, updateCase } from "../api";
+import { fetchCase, updateCase } from "../api";
+import { useFeederActions } from "../hooks/useFeederActions";
+import AnglePickerModal from "../components/AnglePickerModal";
 import type { CaseDetailResponse, TimelineEvent } from "../types";
 import InvestigateTab from "./InvestigateTab";
 import DocumentDrawer from "../components/DocumentDrawer";
+import { CaseWorkspaceProvider, useCaseWorkspace } from "../context/CaseWorkspaceContext";
 
 /* ─── Lazy-load heavy tabs ────────────────────────────────────────────────── */
 const ResearchTab      = lazy(() => import("./ResearchTab"));
@@ -62,13 +65,24 @@ const TAB_FALLBACK = (
   <div style={{ padding: 24, color: "#9ca3af", fontSize: 14 }}>Loading…</div>
 );
 
-export default function CaseDetailView() {
+function CaseDetailViewInner() {
   const { id } = useParams<{ id: string }>();
   const [caseData, setCaseData] = useState<CaseDetailResponse | null>(null);
   const [loadingCase, setLoadingCase] = useState(true);
   const [activeTab, setActiveTab] = useState("investigate");
-  const [activeAngleId, setActiveAngleId] = useState<string | undefined>();
   const [requestedAngle, setRequestedAngle] = useState<{ id: string; title: string } | null>(null);
+  const { activeAngleId, activeAngleTitle, setActiveAngle } = useCaseWorkspace();
+  const feeder = useFeederActions(id ?? "");
+  const [triagedKeys, setTriagedKeys] = useState<Set<string>>(new Set());
+  const [triageOutcomes, setTriageOutcomes] = useState<Map<string, string>>(new Map());
+  const markTriaged = useCallback(
+    (key: string) => setTriagedKeys((p) => new Set(p).add(key)),
+    []
+  );
+  const recordTriageOutcome = useCallback(
+    (key: string, label: string) => setTriageOutcomes((p) => new Map(p).set(key, label)),
+    []
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -120,6 +134,19 @@ export default function CaseDetailView() {
               {caseData?.name ?? "Unknown case"}
             </h1>
             <div className="case-shell-header__right">
+              {activeAngleId && (
+                <span className="active-angle-chip" title="Citations target this angle">
+                  Active angle: {activeAngleTitle || "Untitled"}
+                  <button
+                    type="button"
+                    className="active-angle-chip__clear"
+                    aria-label="Clear active angle"
+                    onClick={() => setActiveAngle(undefined)}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
               {caseData && id && (
               <StatusSelector
                 caseId={id}
@@ -163,7 +190,7 @@ export default function CaseDetailView() {
           <InvestigateTab
             caseId={id}
             documents={caseData?.documents ?? []}
-            onAngleActive={setActiveAngleId}
+            onAngleActive={(angle) => setActiveAngle(angle)}
             requestedAngle={requestedAngle}
             onAngleConsumed={() => setRequestedAngle(null)}
           />
@@ -172,7 +199,13 @@ export default function CaseDetailView() {
         {/* ── Research (external data sources, async job polling) ── */}
         <Tabs.Content value="research" className="tab-panel">
           <Suspense fallback={TAB_FALLBACK}>
-            <ResearchTab caseId={id} />
+            <ResearchTab
+              caseId={id}
+              triagedKeys={triagedKeys}
+              onTriaged={markTriaged}
+              triageOutcomes={triageOutcomes}
+              onTriageOutcome={recordTriageOutcome}
+            />
           </Suspense>
         </Tabs.Content>
 
@@ -182,8 +215,7 @@ export default function CaseDetailView() {
             <FinancialsTab
               caseId={id}
               onStartAngle={(prefilledName) => {
-                setActiveTab("investigate");
-                toast(`Switch to "+ Angle" in the toolbar to create: ${prefilledName}`);
+                void feeder.startAngleFrom({ title: prefilledName });
               }}
               onOpenAngle={handleOpenAngle}
             />
@@ -197,20 +229,10 @@ export default function CaseDetailView() {
               caseId={id}
               activeAngleId={activeAngleId}
               onCiteInAngle={async (event: TimelineEvent) => {
-                if (!activeAngleId) {
-                  toast("Open an angle first — navigate to one in the Investigate tab.");
-                  return;
-                }
-                try {
-                  const angle = await fetchAngle(id, activeAngleId);
-                  const citation = `\n\n[Cited from timeline: ${event.label} — ${event.date}]`;
-                  await updateAngle(id, activeAngleId, {
-                    narrative: (angle.narrative ?? "") + citation,
-                  });
-                  toast("Cited in angle.");
-                } catch {
-                  toast("Failed to cite event in angle.");
-                }
+                await feeder.citeToAngle({
+                  label: `${event.label} — ${event.date}`,
+                  documentId: event.layer === "document" ? event.id : undefined,
+                });
               }}
             />
           </Suspense>
@@ -235,6 +257,22 @@ export default function CaseDetailView() {
           </Suspense>
         </Tabs.Content>
       </Tabs.Root>
+      {id && (
+        <AnglePickerModal
+          caseId={id}
+          open={feeder.pickerOpen}
+          onClose={feeder.closePicker}
+          onPick={feeder.onPickerPick}
+        />
+      )}
     </div>
+  );
+}
+
+export default function CaseDetailView() {
+  return (
+    <CaseWorkspaceProvider>
+      <CaseDetailViewInner />
+    </CaseWorkspaceProvider>
   );
 }

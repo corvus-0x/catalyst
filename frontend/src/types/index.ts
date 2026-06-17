@@ -1304,6 +1304,17 @@ export interface AddToCaseBody {
   data: Record<string, unknown>;
 }
 
+/**
+ * Response from POST /api/cases/:id/research/add-to-case/.
+ * created tells the caller what kind of record was made (or "note" if no entity was created).
+ * duplicate is true when the entity already existed in the case.
+ */
+export interface AddToCaseResult {
+  created: "organization" | "property" | "person" | "note";
+  entity: Record<string, unknown>;
+  duplicate: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Section 7 — Referrals Tab
 // POST /api/cases/:id/referral-pdf/    → binary PDF stream

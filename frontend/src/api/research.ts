@@ -18,6 +18,7 @@ import type {
   SearchJob,
   CaseJobsResponse,
   SyncResearchResponse,
+  AddToCaseResult,
 } from "../types";
 
 /** Re-export the envelope type so callers can use the same name used in JSDoc. */
@@ -118,8 +119,8 @@ export async function addResearchToCase(
     source: "irs" | "ohio-sos" | "ohio-aos" | "parcels";
     data: Record<string, unknown>;
   }
-): Promise<Record<string, unknown>> {
-  return fetchApi<Record<string, unknown>>(`/api/cases/${caseId}/research/add-to-case/`, {
+): Promise<AddToCaseResult> {
+  return fetchApi<AddToCaseResult>(`/api/cases/${caseId}/research/add-to-case/`, {
     method: "POST",
     body: data,
   });
