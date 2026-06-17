@@ -766,7 +766,10 @@ export default function ResearchTab({
           }
         });
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error(err);
+        toast.error("Couldn't restore in-progress searches — re-run if a search is missing.");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
