@@ -1273,7 +1273,7 @@ export interface SyncResearchResponse {
  * Imports a research result (from any connector) as an entity or note on the case.
  */
 export interface AddToCaseBody {
-  result_type: "person" | "organization";
+  source: "irs" | "ohio-sos" | "ohio-aos" | "parcels";
   data: Record<string, unknown>;
 }
 

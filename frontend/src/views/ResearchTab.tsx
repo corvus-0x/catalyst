@@ -59,6 +59,84 @@ interface ResearchTabProps {
 // ---------------------------------------------------------------------------
 
 type ResearchSource = "irs" | "sos" | "aos" | "recorder" | "parcel";
+type ResearchAddSource = "irs" | "ohio-sos" | "ohio-aos" | "parcels";
+type TriageAction = "fetch-990s" | "create-org" | "create-property" | "save-note";
+
+function triageKey(source: string, rowId: string | number, action: TriageAction): string {
+  return `${source}:${rowId}:${action}`;
+}
+
+function hasAnyTriageAction(keys: Set<string>, source: string, rowId: string | number): boolean {
+  return [...keys].some((key) => key.startsWith(`${source}:${rowId}:`));
+}
+
+function resultLabel(row: Record<string, unknown>, fallback: string): string {
+  return String(
+    row.taxpayer_name ??
+      row.business_name ??
+      row.entity_name ??
+      row.organization_name ??
+      row.name ??
+      row.owner1 ??
+      row.pin ??
+      fallback
+  );
+}
+
+interface TriageOptionProps {
+  label: string;
+  detail: string;
+  done: boolean;
+  disabled?: boolean;
+  onSelect: () => Promise<void>;
+}
+
+function TriageOption({ label, detail, done, disabled = false, onSelect }: TriageOptionProps) {
+  const [working, setWorking] = useState(false);
+
+  async function handleClick() {
+    if (done || disabled || working) return;
+    setWorking(true);
+    try {
+      await onSelect();
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="add-option"
+      onClick={() => void handleClick()}
+      disabled={done || disabled || working}
+    >
+      <span className="add-option__title">
+        {working && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
+        {done && <Check size={12} />}
+        {label}
+      </span>
+      <span className="add-option__sub">{done ? "Done" : detail}</span>
+    </button>
+  );
+}
+
+interface TriageTriggerProps {
+  completed: boolean;
+}
+
+function TriageTrigger({ completed }: TriageTriggerProps) {
+  return (
+    <button
+      type="button"
+      className={`add-trigger${completed ? " add-trigger--done" : ""}`}
+      aria-label="Add to investigation"
+      title="Add to investigation"
+    >
+      {completed ? <Check size={13} /> : <Plus size={13} />}
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Job status icon helper
@@ -87,18 +165,18 @@ function JobStatusIcon({ status }: { status: string }) {
 interface IrsResultsTableProps {
   results: IrsFilingResult[];
   caseId: string;
-  addedKeys: Set<string>;
-  onAdded: (key: string) => void;
+  triagedKeys: Set<string>;
+  onTriaged: (key: string) => void;
 }
 
-function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTableProps) {
+function IrsResultsTable({ results, caseId, triagedKeys, onTriaged }: IrsResultsTableProps) {
   function rowKey(r: IrsFilingResult) {
     return `${r.ein}_${r.tax_year}`;
   }
 
   async function handleFetch990s(r: IrsFilingResult) {
     await fetch990s(caseId, { ein: r.ein });
-    onAdded(rowKey(r));
+    onTriaged(triageKey("irs", rowKey(r), "fetch-990s"));
   }
 
   async function handleSaveNote(r: IrsFilingResult) {
@@ -107,7 +185,15 @@ function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTabl
       target_id: caseId,
       content: `IRS: ${r.taxpayer_name} EIN:${r.ein} ${r.tax_year}`,
     });
-    onAdded(rowKey(r));
+    onTriaged(triageKey("irs", rowKey(r), "save-note"));
+  }
+
+  async function handleCreateOrg(r: IrsFilingResult) {
+    await addResearchToCase(caseId, {
+      source: "irs",
+      data: r as unknown as Record<string, unknown>,
+    });
+    onTriaged(triageKey("irs", rowKey(r), "create-org"));
   }
 
   if (results.length === 0) {
@@ -133,7 +219,10 @@ function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTabl
         <tbody>
           {results.map((r) => {
             const key = rowKey(r);
-            const isDone = addedKeys.has(key);
+            const fetchKey = triageKey("irs", key, "fetch-990s");
+            const orgKey = triageKey("irs", key, "create-org");
+            const noteKey = triageKey("irs", key, "save-note");
+            const isDone = hasAnyTriageAction(triagedKeys, "irs", key);
             return (
               <tr key={key}>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>{r.ein}</td>
@@ -145,59 +234,33 @@ function IrsResultsTable({ results, caseId, addedKeys, onAdded }: IrsResultsTabl
                   </span>
                 </td>
                 <td style={{ width: 40, textAlign: "center" }}>
-                  {isDone ? (
-                    <span className="add-trigger add-trigger--done">
-                      <Check size={13} />
-                    </span>
-                  ) : (
-                    <Popover.Root>
-                      <Popover.Trigger asChild>
-                        <button type="button" className="add-trigger" aria-label="Add to case">
-                          <Plus size={13} />
-                        </button>
-                      </Popover.Trigger>
-                      <Popover.Portal>
-                        <Popover.Content className="add-popover" sideOffset={4}>
-                          <button
-                            type="button"
-                            className="add-option"
-                            onClick={() => handleFetch990s(r)}
-                          >
-                            Fetch 990s → Financials
-                            <span className="add-option__sub">
-                              Pull XML from IRS TEOS, populate the Financials tab
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="add-option"
-                            onClick={async () => {
-                              await addResearchToCase(caseId, {
-                                result_type: "organization",
-                                data: r as unknown as Record<string, unknown>,
-                              });
-                              onAdded(rowKey(r));
-                            }}
-                          >
-                            Create Organization knot
-                            <span className="add-option__sub">
-                              Add as a knot in the Web
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="add-option"
-                            onClick={() => handleSaveNote(r)}
-                          >
-                            Save as note
-                            <span className="add-option__sub">
-                              Attach a quick capture to this case
-                            </span>
-                          </button>
-                        </Popover.Content>
-                      </Popover.Portal>
-                    </Popover.Root>
-                  )}
+                  <Popover.Root>
+                    <Popover.Trigger asChild>
+                      <TriageTrigger completed={isDone} />
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                      <Popover.Content className="add-popover" sideOffset={4}>
+                        <TriageOption
+                          label="Fetch 990s"
+                          detail="Store IRS XML and update Financials"
+                          done={triagedKeys.has(fetchKey)}
+                          onSelect={() => handleFetch990s(r)}
+                        />
+                        <TriageOption
+                          label="Create Organization knot"
+                          detail="Add as a knot in the Web"
+                          done={triagedKeys.has(orgKey)}
+                          onSelect={() => handleCreateOrg(r)}
+                        />
+                        <TriageOption
+                          label="Save as note"
+                          detail="Attach a quick capture to this case"
+                          done={triagedKeys.has(noteKey)}
+                          onSelect={() => handleSaveNote(r)}
+                        />
+                      </Popover.Content>
+                    </Popover.Portal>
+                  </Popover.Root>
                 </td>
               </tr>
             );
@@ -216,30 +279,38 @@ interface SyncResultsTableProps {
   results: Record<string, unknown>[];
   caseId: string;
   columns: string[];
-  source: string;           // used to namespace keys
-  addedKeys: Set<string>;
-  onAdded: (key: string) => void;
+  source: ResearchAddSource;
+  triagedKeys: Set<string>;
+  onTriaged: (key: string) => void;
   /** Set of lowercased deceased person names — checked for SOS results only */
   deceasedNames?: Set<string>;
 }
 
-function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded, deceasedNames }: SyncResultsTableProps) {
+function SyncResultsTable({
+  results,
+  caseId,
+  columns,
+  source,
+  triagedKeys,
+  onTriaged,
+  deceasedNames,
+}: SyncResultsTableProps) {
   async function handleCreateOrg(r: Record<string, unknown>, idx: number) {
     await addResearchToCase(caseId, {
-      result_type: "organization",
+      source,
       data: r,
     });
-    onAdded(`${source}_${idx}`);
+    onTriaged(triageKey(source, idx, source === "ohio-aos" ? "save-note" : "create-org"));
   }
 
   async function handleSaveNote(r: Record<string, unknown>, idx: number) {
-    const label = String(r.name ?? r.entity_name ?? r.organization_name ?? `Result ${idx + 1}`);
+    const label = resultLabel(r, `Result ${idx + 1}`);
     await createNote(caseId, {
       target_type: "case",
       target_id: caseId,
       content: `Research result: ${label} — ${JSON.stringify(r).slice(0, 200)}`,
     });
-    onAdded(`${source}_${idx}`);
+    onTriaged(triageKey(source, idx, "save-note"));
   }
 
   function hasDeceasedSignatory(row: Record<string, unknown>): boolean {
@@ -283,8 +354,11 @@ function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded
         </thead>
         <tbody>
           {results.map((r, idx) => {
-            const isDone = addedKeys.has(`${source}_${idx}`);
+            const createKey = triageKey(source, idx, "create-org");
+            const noteKey = triageKey(source, idx, "save-note");
+            const isDone = hasAnyTriageAction(triagedKeys, source, idx);
             const isDeceased = hasDeceasedSignatory(r);
+            const canCreateOrg = source === "ohio-sos";
             return (
               <Fragment key={idx}>
                 {isDeceased && (
@@ -308,43 +382,38 @@ function SyncResultsTable({ results, caseId, columns, source, addedKeys, onAdded
                     <td key={col}>{String(r[col] ?? "—")}</td>
                   ))}
                   <td style={{ width: 40, textAlign: "center" }}>
-                    {isDone ? (
-                      <span className="add-trigger add-trigger--done">
-                        <Check size={13} />
-                      </span>
-                    ) : (
-                      <Popover.Root>
-                        <Popover.Trigger asChild>
-                          <button type="button" className="add-trigger" aria-label="Add to case">
-                            <Plus size={13} />
-                          </button>
-                        </Popover.Trigger>
-                        <Popover.Portal>
-                          <Popover.Content className="add-popover" sideOffset={4}>
-                            <button
-                              type="button"
-                              className="add-option"
-                              onClick={() => handleCreateOrg(r, idx)}
-                            >
-                              Create Organization knot
-                              <span className="add-option__sub">
-                                Add as a knot in the Web
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="add-option"
-                              onClick={() => handleSaveNote(r, idx)}
-                            >
-                              Save as note
-                              <span className="add-option__sub">
-                                Attach a quick capture to this case
-                              </span>
-                            </button>
-                          </Popover.Content>
-                        </Popover.Portal>
-                      </Popover.Root>
-                    )}
+                    <Popover.Root>
+                      <Popover.Trigger asChild>
+                        <TriageTrigger completed={isDone} />
+                      </Popover.Trigger>
+                      <Popover.Portal>
+                        <Popover.Content className="add-popover" sideOffset={4}>
+                          {canCreateOrg && (
+                            <TriageOption
+                              label="Create Organization knot"
+                              detail="Add as a knot in the Web"
+                              done={triagedKeys.has(createKey)}
+                              onSelect={() => handleCreateOrg(r, idx)}
+                            />
+                          )}
+                          {source === "ohio-aos" ? (
+                            <TriageOption
+                              label="Save audit note"
+                              detail="Use the AOS note format"
+                              done={triagedKeys.has(noteKey)}
+                              onSelect={() => handleCreateOrg(r, idx)}
+                            />
+                          ) : (
+                            <TriageOption
+                              label="Save as note"
+                              detail="Attach a quick capture to this case"
+                              done={triagedKeys.has(noteKey)}
+                              onSelect={() => handleSaveNote(r, idx)}
+                            />
+                          )}
+                        </Popover.Content>
+                      </Popover.Portal>
+                    </Popover.Root>
                   </td>
                 </tr>
               </Fragment>
@@ -426,6 +495,124 @@ function RecorderResults({ results }: RecorderResultsProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Parcel results
+// ---------------------------------------------------------------------------
+
+interface ParcelResult {
+  pin: string | null;
+  owner1: string | null;
+  owner2: string | null;
+  county: string | null;
+  acres_calc: number | null;
+  aud_link: string | null;
+}
+
+interface ParcelResultsProps {
+  results: ParcelResult[];
+  count: number;
+  notes: string[];
+  query: string;
+  caseId: string;
+  triagedKeys: Set<string>;
+  onTriaged: (key: string) => void;
+}
+
+function ParcelResults({
+  results,
+  count,
+  notes,
+  query,
+  caseId,
+  triagedKeys,
+  onTriaged,
+}: ParcelResultsProps) {
+  async function handleCreateProperty(row: ParcelResult, idx: number) {
+    await addResearchToCase(caseId, {
+      source: "parcels",
+      data: { ...row },
+    });
+    onTriaged(triageKey("parcels", row.pin ?? idx, "create-property"));
+  }
+
+  async function handleSaveNote(row: ParcelResult, idx: number) {
+    const label = row.pin ? `Parcel ${row.pin}` : `Parcel result ${idx + 1}`;
+    await createNote(caseId, {
+      target_type: "case",
+      target_id: caseId,
+      content: `${label}: ${row.owner1 ?? "Unknown owner"} — ${JSON.stringify(row).slice(0, 220)}`,
+    });
+    onTriaged(triageKey("parcels", row.pin ?? idx, "save-note"));
+  }
+
+  return (
+    <div className="research-panel">
+      <div className="research-results-summary">
+        {count} parcel{count !== 1 ? "s" : ""} found
+        {notes[0] && <span> · {notes[0].split(".")[0]}.</span>}
+      </div>
+      {results.map((row, idx) => {
+        const rowId = row.pin ?? idx;
+        const propertyKey = triageKey("parcels", rowId, "create-property");
+        const noteKey = triageKey("parcels", rowId, "save-note");
+        const isDone = hasAnyTriageAction(triagedKeys, "parcels", rowId);
+
+        return (
+          <div key={rowId} className="parcel-result-row">
+            <div className="parcel-result-row__body">
+              <div className="parcel-result-row__title">
+                {row.owner1 ?? "Unknown owner"}
+                {row.owner2 && <span> / {row.owner2}</span>}
+              </div>
+              <div className="parcel-result-row__meta">
+                {row.county && <span>{row.county} County</span>}
+                {row.pin && <span>PIN: {row.pin}</span>}
+                {row.acres_calc != null && <span>{row.acres_calc.toFixed(2)} ac</span>}
+              </div>
+              {row.aud_link && (
+                <a
+                  href={row.aud_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="research-link"
+                >
+                  <ExternalLink size={11} /> County Auditor
+                </a>
+              )}
+            </div>
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <TriageTrigger completed={isDone} />
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content className="add-popover" sideOffset={4}>
+                  <TriageOption
+                    label="Create Property record"
+                    detail="Add parcel and owner to the case"
+                    done={triagedKeys.has(propertyKey)}
+                    onSelect={() => handleCreateProperty(row, idx)}
+                  />
+                  <TriageOption
+                    label="Save as note"
+                    detail="Attach a quick capture to this case"
+                    done={triagedKeys.has(noteKey)}
+                    onSelect={() => handleSaveNote(row, idx)}
+                  />
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+          </div>
+        );
+      })}
+      {count === 0 && (
+        <div className="research-panel__empty">
+          No parcels found for "{query}".
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -433,11 +620,11 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
   // Source selection
   const [source, setSource] = useState<ResearchSource>("irs");
 
-  // Persistence of ✓ Added state across tab switches (Feature E)
-  const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+  // Persistence of result triage state across tab switches.
+  const [triagedKeys, setTriagedKeys] = useState<Set<string>>(new Set());
 
-  function markAdded(key: string) {
-    setAddedKeys((prev) => new Set(prev).add(key));
+  function markTriaged(key: string) {
+    setTriagedKeys((prev) => new Set(prev).add(key));
   }
 
   // Deceased persons cache for SOS signatory flag (Feature C)
@@ -725,8 +912,8 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
           <IrsResultsTable
             results={irsJob.result.results}
             caseId={caseId}
-            addedKeys={addedKeys}
-            onAdded={markAdded}
+            triagedKeys={triagedKeys}
+            onTriaged={markTriaged}
           />
         );
       }
@@ -777,9 +964,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
               results={sosResults.results}
               caseId={caseId}
               columns={cols}
-              source="sos"
-              addedKeys={addedKeys}
-              onAdded={markAdded}
+              source="ohio-sos"
+              triagedKeys={triagedKeys}
+              onTriaged={markTriaged}
               deceasedNames={deceasedNames}
             />
           </>
@@ -843,9 +1030,9 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
             results={rows}
             caseId={caseId}
             columns={cols}
-            source="aos"
-            addedKeys={addedKeys}
-            onAdded={markAdded}
+            source="ohio-aos"
+            triagedKeys={triagedKeys}
+            onTriaged={markTriaged}
           />
         );
       }
@@ -899,40 +1086,15 @@ export default function ResearchTab({ caseId }: ResearchTabProps) {
       if (parcelJob.status === "SUCCESS" && parcelJob.result) {
         const { results, count, notes } = parcelJob.result;
         return (
-          <div className="research-panel">
-            <div style={{ fontSize: 11, color: "var(--text-3)", padding: "8px 12px", borderBottom: "1px solid var(--border-1)" }}>
-              {count} parcel{count !== 1 ? "s" : ""} found
-              {notes[0] && <span> · {notes[0].split(".")[0]}.</span>}
-            </div>
-            {results.map((r, i) => (
-              <div key={i} style={{ borderBottom: "1px solid var(--border-1)", padding: "10px 12px", fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
-                  {r.owner1 ?? "Unknown owner"}
-                  {r.owner2 && <span style={{ color: "var(--text-3)", fontWeight: 400 }}> / {r.owner2}</span>}
-                </div>
-                <div style={{ color: "var(--text-3)", marginBottom: 2 }}>
-                  {r.county && <span>{r.county} County</span>}
-                  {r.pin && <span> · PIN: {r.pin}</span>}
-                  {r.acres_calc != null && <span> · {r.acres_calc.toFixed(2)} ac</span>}
-                </div>
-                {r.aud_link && (
-                  <a
-                    href={r.aud_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: 11, color: "var(--color-info, #58a6ff)", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    <ExternalLink size={11} /> County Auditor
-                  </a>
-                )}
-              </div>
-            ))}
-            {count === 0 && (
-              <div style={{ padding: "32px 24px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
-                No parcels found for "{parcelQuery}".
-              </div>
-            )}
-          </div>
+          <ParcelResults
+            results={results}
+            count={count}
+            notes={notes}
+            query={parcelQuery}
+            caseId={caseId}
+            triagedKeys={triagedKeys}
+            onTriaged={markTriaged}
+          />
         );
       }
       return null;
