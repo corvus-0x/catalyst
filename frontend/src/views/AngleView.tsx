@@ -23,7 +23,9 @@ const TieOffModal = lazy(() => import("../components/TieOffModal"));
 const AngleSplitModal = lazy(() => import("../components/AngleSplitModal"));
 import {
   ArrowLeft,
+  AlertCircle,
   ChevronDown,
+  CheckCircle2,
   FileText,
   Loader2,
   Plus,
@@ -81,6 +83,16 @@ const WEIGHT_LABEL: Record<string, string> = {
   DOCUMENTED: "Documented",
   TRACED: "Traced",
 };
+
+const REFERRAL_READY_WEIGHTS = new Set(["DOCUMENTED", "TRACED"]);
+
+function citationRefs(narrative: string): string[] {
+  return Array.from(new Set(narrative.match(/\[Doc-\d+\]/g) ?? []));
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 // ---------------------------------------------------------------------------
 // DocBadge — coloured pill for document type
@@ -182,6 +194,100 @@ function CitedDocCard({
           <span className="fact-tag fact-tag--entity">Intake</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EvidencePanel — compact health check for this Angle's evidence
+// ---------------------------------------------------------------------------
+
+interface EvidencePanelProps {
+  finding: FindingItem;
+  narrative: string;
+}
+
+function EvidencePanel({ finding, narrative }: EvidencePanelProps) {
+  const docRefs = citationRefs(narrative);
+  const citedCount = finding.document_links.length;
+  const hasNarrative = narrative.trim().length > 0;
+  const hasReferralWeight = REFERRAL_READY_WEIGHTS.has(finding.evidence_weight);
+  const hasKnots = finding.entity_links.some((link) =>
+    link.entity_type === "person" || link.entity_type === "organization"
+  );
+  const isConfirmed = finding.status === "CONFIRMED";
+
+  const gapItems = [
+    citedCount === 0 ? "Cite at least one source document." : null,
+    !hasNarrative ? "Write the angle narrative." : null,
+    docRefs.length === 0 && citedCount > 0
+      ? "Add [Doc-N] references where the narrative makes evidence claims."
+      : null,
+    !hasReferralWeight ? "Raise evidence weight to Documented or Traced before referral." : null,
+    !hasKnots ? "Tie this angle to at least one person or organization knot." : null,
+    !isConfirmed ? "Tie off this angle as confirmed when the narrative is complete." : null,
+  ].filter((item): item is string => item !== null);
+
+  const readyForReferral = gapItems.length === 0;
+
+  return (
+    <div className="angle-evidence-panel">
+      <div className="angle-evidence-panel__header">
+        <div>
+          <p className="panel-section__title">EVIDENCE</p>
+          <p className="angle-evidence-panel__summary">
+            {readyForReferral
+              ? "This angle has referral-ready citation support."
+              : `${pluralize(gapItems.length, "gap")} before referral-ready.`}
+          </p>
+        </div>
+        <span
+          className={
+            readyForReferral
+              ? "angle-evidence-status angle-evidence-status--ready"
+              : "angle-evidence-status angle-evidence-status--needs-work"
+          }
+        >
+          {readyForReferral ? (
+            <CheckCircle2 size={13} aria-hidden="true" />
+          ) : (
+            <AlertCircle size={13} aria-hidden="true" />
+          )}
+          {readyForReferral ? "Ready" : "Needs evidence"}
+        </span>
+      </div>
+
+      <div className="angle-evidence-metrics">
+        <div className="angle-evidence-metric">
+          <span className="angle-evidence-metric__value">{citedCount}</span>
+          <span className="angle-evidence-metric__label">cited docs</span>
+        </div>
+        <div className="angle-evidence-metric">
+          <span className="angle-evidence-metric__value">{docRefs.length}</span>
+          <span className="angle-evidence-metric__label">narrative refs</span>
+        </div>
+        <div className="angle-evidence-metric">
+          <span className="angle-evidence-metric__value">
+            {finding.entity_links.length}
+          </span>
+          <span className="angle-evidence-metric__label">linked records</span>
+        </div>
+      </div>
+
+      {finding.trigger_doc_filename && (
+        <div className="angle-evidence-source">
+          <FileText size={13} aria-hidden="true" />
+          <span>Trigger document: {finding.trigger_doc_filename}</span>
+        </div>
+      )}
+
+      {gapItems.length > 0 && (
+        <ul className="angle-evidence-gaps">
+          {gapItems.map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -441,7 +547,10 @@ export default function AngleView({
     const updatedNarrative = narrative.split(docRef).join("").trim();
 
     try {
-      const updated = await updateAngle(caseId, angleId, { narrative: updatedNarrative });
+      const updated = await updateAngle(caseId, angleId, {
+        narrative: updatedNarrative,
+        remove_document_ids: [link.document_id],
+      });
       setFinding(updated);
       setNarrative(updated.narrative ?? "");
       savedNarrativeRef.current = updated.narrative ?? "";
@@ -709,6 +818,8 @@ export default function AngleView({
 
         {/* Main scrollable column */}
         <div className="angle-view__main">
+
+          <EvidencePanel finding={finding} narrative={narrative} />
 
           {/* Narrative editor */}
           <div className="panel-section">

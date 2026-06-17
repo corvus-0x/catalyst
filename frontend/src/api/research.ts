@@ -115,7 +115,7 @@ export async function searchRecorder(
 export async function addResearchToCase(
   caseId: string,
   data: {
-    result_type: "person" | "organization";
+    source: "irs" | "ohio-sos" | "ohio-aos" | "parcels";
     data: Record<string, unknown>;
   }
 ): Promise<Record<string, unknown>> {

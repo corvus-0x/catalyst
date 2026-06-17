@@ -141,6 +141,11 @@ urlpatterns = [
         name="api_case_referral_target_detail",
     ),
     path(
+        "api/cases/<uuid:pk>/referral-readiness/",
+        views.api_case_referral_readiness,
+        name="api_case_referral_readiness",
+    ),
+    path(
         "api/cases/<uuid:pk>/findings/",
         views.api_case_finding_collection,
         name="api_case_finding_collection",

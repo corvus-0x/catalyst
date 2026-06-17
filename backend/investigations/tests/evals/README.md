@@ -14,12 +14,34 @@ Full eval (live Claude — needs ANTHROPIC_API_KEY, excluded from CI):
 
     python manage.py test investigations.tests.evals.test_lead_quality --tag=eval
 
+## When to run live evals
+
+Run the live eval before changing:
+
+- Lead system prompts
+- context construction
+- doc-ref resolution
+- forbidden-term validation
+- model names
+- retrieval behavior used by Lead generation
+
+The default test suite should continue to run with `--exclude-tag=eval`.
+
 ## What it asserts
 
 - **Hard (deterministic):** every cited `Doc-N` resolves to a case document;
   no accusatory language survives; negative-control fixtures produce zero leads.
 - **Measured (temp-0 LLM judge):** faithfulness ≥ 0.70, overreach ≤ 0.20
   (per-fixture thresholds in `lead_fixtures.py`).
+
+## Fixture philosophy
+
+Each positive fixture should contain a pattern the generator may surface as a Lead.
+Each negative fixture should be tempting but benign: similar names, high revenue with
+documented compensation, ordinary transfers, or missing data that should produce no Lead.
+
+Negative fixtures are as important as positive fixtures because Catalyst must avoid
+creating referral-ready-sounding narratives from weak public-record coincidences.
 
 ## Sample scorecard
 

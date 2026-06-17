@@ -23,11 +23,14 @@ from .models import (
     Document,
     DocumentType,
     EvidenceWeight,
+    ExtractionStatus,
     FinancialInstrument,
     FinancialSnapshot,
     Finding,
     FindingEntity,
     FindingStatus,
+    FuzzyMatchCandidate,
+    FuzzyMatchStatus,
     InvestigationStep,
     InvestigatorNote,
     JobStatus,
@@ -2192,6 +2195,266 @@ def api_case_referral_target_detail(request, pk, target_id):
     return JsonResponse(_serialize_target(target))
 
 
+def _readiness_item(key, label, status, summary, count=None, target_tab=None):
+    """Build one referral-readiness checklist item."""
+    item = {
+        "key": key,
+        "label": label,
+        "status": status,
+        "summary": summary,
+    }
+    if count is not None:
+        item["count"] = count
+    if target_tab:
+        item["target_tab"] = target_tab
+    return item
+
+
+READINESS_QUALITY_WEIGHTS = {
+    "citation_coverage": 25,
+    "evidence_weight": 20,
+    "confirmed_angles": 20,
+    "failed_extraction": 15,
+    "referral_target": 10,
+    "pending_connections": 4,
+    "pending_extraction": 3,
+    "active_jobs": 3,
+}
+
+
+def _build_case_quality(items):
+    """Score case handoff quality from referral-readiness checklist items."""
+    raw_score = 0.0
+    for item in items:
+        weight = READINESS_QUALITY_WEIGHTS[item["key"]]
+        if item["status"] == "PASS":
+            raw_score += weight
+        elif item["status"] == "WARN":
+            raw_score += weight / 2
+
+    fail_count = sum(1 for item in items if item["status"] == "FAIL")
+    warn_count = sum(1 for item in items if item["status"] == "WARN")
+    if fail_count:
+        status = "BLOCKED"
+        grade = "Blocked"
+        max_score = 69
+    elif warn_count:
+        status = "NEEDS_REVIEW"
+        grade = "Review needed"
+        max_score = 89
+    else:
+        status = "READY"
+        grade = "Strong"
+        max_score = 100
+
+    top_issues = [
+        {
+            "key": item["key"],
+            "label": item["label"],
+            "status": item["status"],
+            "summary": item["summary"],
+            **({"target_tab": item["target_tab"]} if "target_tab" in item else {}),
+        }
+        for severity in ["FAIL", "WARN"]
+        for item in items
+        if item["status"] == severity
+    ][:3]
+
+    return {
+        "score": min(round(raw_score), max_score),
+        "status": status,
+        "grade": grade,
+        "top_issues": top_issues,
+    }
+
+
+def build_case_readiness(case):
+    """Build referral readiness and quality details for a case."""
+
+    target_count = ReferralTarget.objects.filter(case=case).count()
+    confirmed_qs = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
+    confirmed_count = confirmed_qs.count()
+    eligible_count = confirmed_qs.filter(
+        evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
+    ).count()
+    uncited_count = (
+        confirmed_qs.annotate(citation_count=Count("document_links"))
+        .filter(citation_count=0)
+        .count()
+    )
+    pending_fuzzy_count = FuzzyMatchCandidate.objects.filter(
+        case=case,
+        status=FuzzyMatchStatus.PENDING,
+    ).count()
+    source_docs = Document.objects.filter(case=case, is_generated=False)
+    pending_doc_count = source_docs.filter(
+        Q(ocr_status=OcrStatus.PENDING)
+        | Q(extraction_status__in=[ExtractionStatus.PENDING, ExtractionStatus.PARTIAL])
+    ).count()
+    failed_doc_count = source_docs.filter(
+        Q(ocr_status=OcrStatus.FAILED) | Q(extraction_status=ExtractionStatus.FAILED)
+    ).count()
+    active_job_count = SearchJob.objects.filter(
+        case=case,
+        status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
+    ).count()
+
+    items = [
+        _readiness_item(
+            "referral_target",
+            "Referral target",
+            "PASS" if target_count else "FAIL",
+            (
+                f"{target_count} referral target"
+                f"{'' if target_count == 1 else 's'} selected."
+                if target_count
+                else "Select at least one agency before exporting a referral package."
+            ),
+            target_count,
+            "referrals",
+        ),
+        _readiness_item(
+            "confirmed_angles",
+            "Confirmed angles",
+            "PASS" if confirmed_count else "FAIL",
+            (
+                f"{confirmed_count} confirmed angle"
+                f"{'' if confirmed_count == 1 else 's'} ready for review."
+                if confirmed_count
+                else "Confirm at least one angle before creating a referral package."
+            ),
+            confirmed_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "citation_coverage",
+            "Citation coverage",
+            "PASS" if confirmed_count and uncited_count == 0 else "FAIL",
+            (
+                "Every confirmed angle has at least one cited document."
+                if confirmed_count and uncited_count == 0
+                else (
+                    f"{uncited_count} confirmed angle"
+                    f"{'' if uncited_count == 1 else 's'} missing cited documents."
+                    if confirmed_count
+                    else "Confirmed angles need cited documents before export."
+                )
+            ),
+            uncited_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "evidence_weight",
+            "Referral evidence weight",
+            (
+                "PASS"
+                if confirmed_count and eligible_count == confirmed_count
+                else "FAIL"
+                if confirmed_count and eligible_count == 0
+                else "WARN"
+            ),
+            (
+                "All confirmed angles are documented or traced."
+                if confirmed_count and eligible_count == confirmed_count
+                else (
+                    "Confirmed angles must be documented or traced to appear in the PDF."
+                    if confirmed_count
+                    else "Confirmed angles need documented or traced evidence weight."
+                )
+            ),
+            confirmed_count - eligible_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "pending_connections",
+            "Pending connections",
+            "WARN" if pending_fuzzy_count else "PASS",
+            (
+                f"{pending_fuzzy_count} pending connection"
+                f"{'' if pending_fuzzy_count == 1 else 's'} need review."
+                if pending_fuzzy_count
+                else "No pending connection reviews."
+            ),
+            pending_fuzzy_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "pending_extraction",
+            "Pending Intake",
+            "WARN" if pending_doc_count else "PASS",
+            (
+                f"{pending_doc_count} source document"
+                f"{'' if pending_doc_count == 1 else 's'} still pending Intake."
+                if pending_doc_count
+                else "No source documents are waiting on Intake."
+            ),
+            pending_doc_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "failed_extraction",
+            "Failed Intake",
+            "FAIL" if failed_doc_count else "PASS",
+            (
+                f"{failed_doc_count} source document"
+                f"{'' if failed_doc_count == 1 else 's'} failed Intake."
+                if failed_doc_count
+                else "No source documents have failed Intake."
+            ),
+            failed_doc_count,
+            "investigate",
+        ),
+        _readiness_item(
+            "active_jobs",
+            "Active research",
+            "WARN" if active_job_count else "PASS",
+            (
+                f"{active_job_count} research job"
+                f"{'' if active_job_count == 1 else 's'} still running."
+                if active_job_count
+                else "No active research jobs."
+            ),
+            active_job_count,
+            "research",
+        ),
+    ]
+
+    fail_count = sum(1 for item in items if item["status"] == "FAIL")
+    warn_count = sum(1 for item in items if item["status"] == "WARN")
+    if fail_count:
+        status = "BLOCKED"
+        summary = f"{fail_count} blocker{'' if fail_count == 1 else 's'} before referral export."
+    elif warn_count:
+        status = "NEEDS_REVIEW"
+        summary = f"{warn_count} item{'' if warn_count == 1 else 's'} should be reviewed."
+    else:
+        status = "READY"
+        summary = "This case is ready for referral export."
+
+    return {
+        "status": status,
+        "summary": summary,
+        "items": items,
+        "quality": _build_case_quality(items),
+    }
+
+
+@require_http_methods(["GET"])
+def api_case_referral_readiness(request, pk):
+    """Return a conservative referral-readiness checklist for a case."""
+    case = get_object_or_404(Case, pk=pk)
+    readiness = build_case_readiness(case)
+
+    return JsonResponse(
+        {
+            "status": readiness["status"],
+            "summary": readiness["summary"],
+            "items": readiness["items"],
+            "quality": readiness["quality"],
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Signal API endpoints
 # ---------------------------------------------------------------------------
@@ -2291,26 +2554,27 @@ def api_case_signal_detail(request, pk, signal_id):
         if not serializer.is_valid():
             return JsonResponse({"errors": serializer.errors}, status=400)
 
-        serializer.save()
+        with transaction.atomic():
+            serializer.save()
 
-        # Determine the right audit action based on the new status
-        new_status = serializer.validated_data.get("status", finding.status)
-        if new_status == "CONFIRMED":
-            audit_action = AuditAction.SIGNAL_CONFIRMED
-        elif new_status == "DISMISSED":
-            audit_action = AuditAction.SIGNAL_DISMISSED
-        else:
-            audit_action = AuditAction.RECORD_UPDATED
+            # Determine the right audit action based on an actual status transition.
+            new_status = serializer.validated_data.get("status", finding.status)
+            if new_status != before["status"] and new_status == "CONFIRMED":
+                audit_action = AuditAction.SIGNAL_CONFIRMED
+            elif new_status != before["status"] and new_status == "DISMISSED":
+                audit_action = AuditAction.SIGNAL_DISMISSED
+            else:
+                audit_action = AuditAction.RECORD_UPDATED
 
-        AuditLog.log(
-            action=audit_action,
-            table_name="findings",
-            record_id=finding.pk,
-            case_id=case.pk,
-            before_state=before,
-            after_state=serializer.validated_data,
-            performed_by=getattr(request, "api_token", None),
-        )
+            AuditLog.log(
+                action=audit_action,
+                table_name="findings",
+                record_id=finding.pk,
+                case_id=case.pk,
+                before_state=before,
+                after_state=serializer.validated_data,
+                performed_by=getattr(request, "api_token", None),
+            )
 
         return JsonResponse(serializer.data)
 
@@ -3134,16 +3398,21 @@ def api_case_finding_detail(request, pk, finding_id):
     if not serializer.is_valid():
         return JsonResponse({"errors": serializer.errors}, status=400)
 
-    updated = serializer.save()
-    AuditLog.log(
-        action=AuditAction.FINDING_UPDATED,
-        table_name="findings",
-        record_id=updated.pk,
-        case_id=case.pk,
-        before_state=before,
-        after_state=serializer.validated_data,
-        performed_by=getattr(request, "api_token", None),
-    )
+    with transaction.atomic():
+        updated = serializer.save()
+        updated.refresh_from_db()
+        updated = Finding.objects.prefetch_related("entity_links", "document_links").get(
+            pk=updated.pk
+        )
+        AuditLog.log(
+            action=AuditAction.FINDING_UPDATED,
+            table_name="findings",
+            record_id=updated.pk,
+            case_id=case.pk,
+            before_state=before,
+            after_state=serializer.validated_data,
+            performed_by=getattr(request, "api_token", None),
+        )
     return JsonResponse(serialize_finding(updated))
 
 
@@ -5088,6 +5357,7 @@ def api_case_dashboard(request, pk):
         }
         for y in yearly
     ]
+    readiness = build_case_readiness(case)
 
     return JsonResponse(
         {
@@ -5128,6 +5398,7 @@ def api_case_dashboard(request, pk):
                 "ai_enhanced_count": ai_enhanced,
                 "total_documents_processed": total_docs,
             },
+            "quality": readiness["quality"],
         }
     )
 
@@ -5773,6 +6044,15 @@ def api_case_referral_pdf(request, pk):
     Returns the PDF as an attachment.  Does not require any request body.
     """
     case = get_object_or_404(Case, pk=pk)
+    readiness = build_case_readiness(case)
+    if readiness["status"] == "BLOCKED":
+        return JsonResponse(
+            {
+                "error": "Referral package is blocked until readiness checks pass.",
+                "readiness": readiness,
+            },
+            status=400,
+        )
 
     findings_qs = (
         Finding.objects.filter(

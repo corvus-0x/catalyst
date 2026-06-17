@@ -283,6 +283,31 @@ export interface TopRuleSummary {
   count: number;
 }
 
+export type CaseQualityStatus = "READY" | "NEEDS_REVIEW" | "BLOCKED";
+export type CaseQualityGrade = "Strong" | "Review needed" | "Blocked";
+export type CaseQualityIssueStatus = "WARN" | "FAIL";
+export type CaseQualityTargetTab =
+  | "investigate"
+  | "research"
+  | "financials"
+  | "timeline"
+  | "referrals";
+
+export interface CaseQualityIssue {
+  key: string;
+  label: string;
+  status: CaseQualityIssueStatus;
+  summary: string;
+  target_tab?: CaseQualityTargetTab;
+}
+
+export interface CaseQuality {
+  score: number;
+  status: CaseQualityStatus;
+  grade: CaseQualityGrade;
+  top_issues: CaseQualityIssue[];
+}
+
 /**
  * Response from GET /api/cases/:id/dashboard/.
  *
@@ -330,6 +355,8 @@ export interface DashboardResponse {
     ai_enhanced_count: number;
     total_documents_processed: number;
   };
+  /** Optional during partial deploys; render nothing if absent. */
+  quality?: CaseQuality;
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +424,19 @@ export interface GraphNodeMetadata {
   amount?: DecimalString | null;
 }
 
+export interface GraphEdgeMetadata {
+  document_ids?: UUID[];
+  start_date?: string | null;
+  end_date?: string | null;
+  transaction_date?: string | null;
+  price?: DecimalString | number | null;
+  instrument_number?: string | null;
+  source_type?: string;
+  confidence?: number;
+  notes?: string;
+  [key: string]: unknown;
+}
+
 /**
  * An edge in the entity-relationship graph.
  * metadata shape varies by relationship type — see inline comments.
@@ -417,7 +457,7 @@ export interface GraphEdge {
   /** Number of documents supporting this connection */
   weight: number;
   /** Shape varies by relationship type — see JSDoc above */
-  metadata: Record<string, unknown>;
+  metadata: GraphEdgeMetadata;
   /**
    * Findings that touch both endpoints of this edge.
    * Empty array means no findings involve both entities.
@@ -779,6 +819,8 @@ export interface UpdateFindingBody {
   status?: FindingStatus;
   investigator_note?: string;
   legal_refs?: string[];
+  add_document_ids?: UUID[];
+  remove_document_ids?: UUID[];
 }
 
 /** Summary counts from GET /api/signal-summary/ */
@@ -1258,7 +1300,7 @@ export interface SyncResearchResponse {
  * Imports a research result (from any connector) as an entity or note on the case.
  */
 export interface AddToCaseBody {
-  result_type: "person" | "organization";
+  source: "irs" | "ohio-sos" | "ohio-aos" | "parcels";
   data: Record<string, unknown>;
 }
 
@@ -1268,6 +1310,31 @@ export interface AddToCaseBody {
 // POST /api/cases/:id/referral-memo/   → { "memo": string }
 // POST /api/cases/:id/export/          → file download
 // ---------------------------------------------------------------------------
+
+export type ReferralReadinessStatus = "READY" | "NEEDS_REVIEW" | "BLOCKED";
+export type ReferralReadinessItemStatus = "PASS" | "WARN" | "FAIL";
+export type ReferralReadinessTargetTab =
+  | "investigate"
+  | "research"
+  | "financials"
+  | "timeline"
+  | "referrals";
+
+export interface ReferralReadinessItem {
+  key: string;
+  label: string;
+  status: ReferralReadinessItemStatus;
+  summary: string;
+  count?: number;
+  target_tab?: ReferralReadinessTargetTab;
+}
+
+export interface ReferralReadinessResponse {
+  status: ReferralReadinessStatus;
+  summary: string;
+  items: ReferralReadinessItem[];
+  quality: CaseQuality;
+}
 
 /**
  * Response from POST /api/cases/:id/referral-memo/ (AI-generated narrative).

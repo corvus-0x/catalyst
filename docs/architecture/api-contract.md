@@ -169,6 +169,20 @@ interface CaseListResponse {
     "extraction_success_rate": 0.86,
     "ai_enhanced_count": 3,
     "total_documents_processed": 7
+  },
+  "quality": {
+    "score": 82,
+    "status": "NEEDS_REVIEW",
+    "grade": "Review needed",
+    "top_issues": [
+      {
+        "key": "pending_connections",
+        "label": "Pending connections",
+        "status": "WARN",
+        "summary": "2 pending connections need review.",
+        "target_tab": "investigate"
+      }
+    ]
   }
 }
 ```
@@ -177,6 +191,7 @@ interface CaseListResponse {
 - All monetary values are **strings** (Decimal), not numbers. Parse with `parseFloat()` or a currency formatter.
 - `timeline` is `Array<{year: number, revenue: string, expenses: string}>`.
 - `top_rules` is `Array<{rule_id: string, summary: string, count: number}>`.
+- `quality` is the same case-quality object returned by `/referral-readiness/`.
 
 ### GET /api/cases/:id/graph/
 
@@ -633,6 +648,20 @@ Query params:
 
 **⚠️ Source filter note:** The `source` query param maps to `FindingSource` choices. Verify in models.py that `"AI"` is a valid value (it was added as `FindingSource.AI` in Session 36 migration `0023_ai_source_and_jobtype.py`).
 
+### AI Chain-of-Custody Fields
+
+Lead-generated findings (`source: "AI"`) must preserve:
+
+- `ai_run_id` — the `SearchJob` UUID that produced the Lead, when available.
+- `evidence_snapshot.ai_model` — model identifier used for generation.
+- `evidence_snapshot.job_id` — string copy of the job id.
+- `evidence_snapshot.doc_refs` — model-facing `Doc-N` references.
+- `evidence_snapshot.doc_ref_resolution` — map from each `Doc-N` reference to a stable document UUID.
+- `document_links` — persisted citation rows created from resolved `doc_refs`.
+
+The frontend should display these as Lead provenance only when needed for debugging or audit review.
+User-facing investigation copy must use "Lead", not model/vendor names.
+
 ### POST /api/cases/:id/findings/
 
 Creates a manual finding. **Body:**
@@ -651,8 +680,21 @@ Creates a manual finding. **Body:**
 
 ### PATCH /api/cases/:id/findings/:finding_id/
 
-Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title, legal_refs.  
+Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title,
+legal_refs, and cited document links.  
 **Body:** any subset of the above fields.
+
+Citation link fields:
+```json
+{
+  "add_document_ids": ["uuid"],
+  "remove_document_ids": ["uuid"]
+}
+```
+
+Both arrays are optional. Every document ID must belong to the same case as the finding.
+`add_document_ids` creates `FindingDocument` citation rows; `remove_document_ids` deletes those
+citation rows but does not delete the underlying documents.
 
 **Narrative source rules:**
 - Include `narrative_source` when saving an AI-drafted narrative from the proxy: `"AI_DRAFT"`.
@@ -719,10 +761,74 @@ Then poll `/api/jobs/:id/`. On SUCCESS, `job.result.findings_created` and `job.r
 **Route:** `/cases/:id` → Referrals tab  
 **Purpose:** Generate the PDF referral package.
 
+### GET /api/cases/:id/referral-readiness/
+
+Returns a conservative checklist showing whether the case is ready for referral export.  
+**Response:** ✅
+
+```json
+{
+  "status": "READY" | "NEEDS_REVIEW" | "BLOCKED",
+  "summary": "This case is ready for referral export.",
+  "items": [
+    {
+      "key": "citation_coverage",
+      "label": "Citation coverage",
+      "status": "PASS" | "WARN" | "FAIL",
+      "summary": "Every confirmed angle has at least one cited document.",
+      "count": 0,
+      "target_tab": "investigate"
+    }
+  ],
+  "quality": {
+    "score": 100,
+    "status": "READY",
+    "grade": "Strong",
+    "top_issues": []
+  }
+}
+```
+
+**Status rules:**
+- `BLOCKED` — at least one checklist item is `FAIL`; do not generate the referral package.
+- `NEEDS_REVIEW` — no blockers, but at least one item is `WARN`.
+- `READY` — every checklist item is `PASS`.
+
+**TypeScript implication:**
+```typescript
+interface ReferralReadinessItem {
+  key: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL";
+  summary: string;
+  count?: number;
+  target_tab?: "investigate" | "research" | "financials" | "timeline" | "referrals";
+}
+interface ReferralReadinessResponse {
+  status: "READY" | "NEEDS_REVIEW" | "BLOCKED";
+  summary: string;
+  items: ReferralReadinessItem[];
+  quality: CaseQuality;
+}
+interface CaseQuality {
+  score: number;
+  status: "READY" | "NEEDS_REVIEW" | "BLOCKED";
+  grade: "Strong" | "Review needed" | "Blocked";
+  top_issues: Array<{
+    key: string;
+    label: string;
+    status: "WARN" | "FAIL";
+    summary: string;
+    target_tab?: "investigate" | "research" | "financials" | "timeline" | "referrals";
+  }>;
+}
+```
+
 ### POST /api/cases/:id/referral-pdf/
 
 Generates a deterministic, citation-bearing PDF using reportlab. No AI.  
 **Response:** ✅ — binary PDF stream with `Content-Type: application/pdf`  
+If referral readiness is `BLOCKED`, returns `400` with `{ "error": string, "readiness": ReferralReadinessResponse }`. `NEEDS_REVIEW` is allowed to export.
 **Frontend note:** Trigger with `window.open` or a fetch → blob → URL.createObjectURL pattern.
 
 ### POST /api/cases/:id/referral-memo/

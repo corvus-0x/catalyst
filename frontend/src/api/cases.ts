@@ -36,8 +36,10 @@ import type {
   DeceasedPersonsResponse,
   ReferralTarget,
   ReferralTargetsResponse,
+  ReferralReadinessResponse,
   CreateReferralTargetParams,
   UpdateReferralTargetParams,
+  UpdateFindingBody,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -255,18 +257,7 @@ export async function createAngle(
 export async function updateAngle(
   caseId: string,
   findingId: string,
-  data: Partial<
-    Pick<
-      FindingItem,
-      | "status"
-      | "narrative"
-      | "evidence_weight"
-      | "severity"
-      | "investigator_note"
-      | "title"
-      | "legal_refs"
-    >
-  >
+  data: UpdateFindingBody
 ): Promise<FindingItem> {
   return fetchApi<FindingItem>(`/api/cases/${caseId}/findings/${findingId}/`, {
     method: "PATCH",
@@ -510,8 +501,7 @@ export async function createReferralTarget(
 ): Promise<ReferralTarget> {
   return fetchApi<ReferralTarget>(`/api/cases/${caseId}/referral-targets/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: params,
   });
 }
 
@@ -524,8 +514,7 @@ export async function updateReferralTarget(
     `/api/cases/${caseId}/referral-targets/${targetId}/`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
+      body: params,
     }
   );
 }
@@ -537,5 +526,13 @@ export async function deleteReferralTarget(
   return fetchApi<void>(
     `/api/cases/${caseId}/referral-targets/${targetId}/`,
     { method: "DELETE" }
+  );
+}
+
+export async function fetchReferralReadiness(
+  caseId: string
+): Promise<ReferralReadinessResponse> {
+  return fetchApi<ReferralReadinessResponse>(
+    `/api/cases/${caseId}/referral-readiness/`
   );
 }

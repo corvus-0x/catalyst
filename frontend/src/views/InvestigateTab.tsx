@@ -2,6 +2,7 @@ import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
 import { fetchGraph, fetchFuzzyMatches, fetchEntityDetail, fetchDashboard, runAiPatternAnalysis, reevaluateSignals } from "../api";
 import type {
+  CaseQuality,
   DashboardResponse,
   DocumentItem,
   EdgeFindingLink,
@@ -13,6 +14,7 @@ import type {
   PersonDetailResponse,
 } from "../types";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
+import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
@@ -233,77 +235,152 @@ function Breadcrumb({ stack, onNavigateTo }: { stack: NavEntry[]; onNavigateTo: 
   );
 }
 
+function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
+  if (!quality) return null;
+
+  const badgeStyle =
+    quality.status === "READY"
+      ? {
+          background: "rgba(16, 185, 129, 0.16)",
+          color: "var(--color-success, #34d399)",
+          borderColor: "rgba(16, 185, 129, 0.32)",
+        }
+      : quality.status === "NEEDS_REVIEW"
+        ? {
+            background: "rgba(245, 158, 11, 0.16)",
+            color: "#fbbf24",
+            borderColor: "rgba(245, 158, 11, 0.32)",
+          }
+        : {
+            background: "rgba(248, 113, 113, 0.14)",
+            color: "var(--color-critical, #f87171)",
+            borderColor: "rgba(248, 113, 113, 0.32)",
+          };
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-1)",
+        borderRadius: 6,
+        padding: 10,
+        margin: "10px 0",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          color: "var(--text-3)",
+          marginBottom: 6,
+        }}
+      >
+        Case quality
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text-1)" }}>
+          {quality.score} / 100
+        </span>
+        <span
+          style={{
+            ...badgeStyle,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "2px 7px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {quality.grade}
+        </span>
+      </div>
+      {quality.top_issues.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "var(--text-3)",
+              marginBottom: 5,
+            }}
+          >
+            Top gaps
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {quality.top_issues.slice(0, 3).map((issue) => (
+              <div
+                key={issue.key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  color: "var(--text-2)",
+                }}
+                title={issue.summary}
+              >
+                <span>{issue.label}</span>
+                <span style={{ color: "var(--text-3)", fontWeight: 600 }}>
+                  {issue.status === "FAIL" ? "Blocker" : "Review"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Web-view right panel (always visible at Level 1) ────────────────────────── */
 
 interface WebPanelProps {
   graph: GraphResponse | null;
   dashboard: DashboardResponse | null;
+  documents: DocumentItem[];
   selectedEdge: GraphEdge | null;
   onOpenAngle: (angleId: string, angleTitle: string) => void;
+  onOpenDocument: (docId: string, docName: string) => void;
   onClearEdge: () => void;
   leadStatus: "idle" | "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
   leadResult: { findings_created: number; patterns_dropped: number } | null;
 }
 
-function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdge, leadStatus, leadResult }: WebPanelProps) {
+function WebRightPanel({
+  graph,
+  dashboard,
+  documents,
+  selectedEdge,
+  onOpenAngle,
+  onOpenDocument,
+  onClearEdge,
+  leadStatus,
+  leadResult,
+}: WebPanelProps) {
   const knotCount = graph
     ? (graph.stats.node_types.person ?? 0) + (graph.stats.node_types.organization ?? 0)
     : 0;
   const edgeCount = graph?.stats.total_edges ?? 0;
 
   if (selectedEdge) {
-    const nodeIndex = new Map(graph?.nodes.map((n) => [n.id, n.label]) ?? []);
-    const fromLabel = nodeIndex.get(selectedEdge.source) ?? selectedEdge.source.slice(0, 8) + "…";
-    const toLabel = nodeIndex.get(selectedEdge.target) ?? selectedEdge.target.slice(0, 8) + "…";
-    const meta = selectedEdge.metadata as Record<string, unknown>;
-    const isProposed = selectedEdge.relationship === "CO_APPEARS_IN";
-    const isManual = ["FAMILY", "BUSINESS", "SOCIAL"].includes(selectedEdge.relationship) && meta.source_type === "MANUAL";
-    const stateLabel = isProposed ? "Proposed" : isManual ? "Manual" : "Confirmed";
-
     return (
-      <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
-        <button type="button" className="back-btn" onClick={onClearEdge} style={{ marginBottom: 8 }}>
-          ← Clear
-        </button>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
-          Connection
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
-          {fromLabel}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 2 }}>↔ {toLabel}</div>
-        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>{selectedEdge.label}</div>
-        <span className={`conn-state-badge conn-state-badge--${stateLabel.toLowerCase()}`} style={{ marginBottom: 10, display: "inline-block" }}>
-          {stateLabel}
-        </span>
-
-        {selectedEdge.finding_links?.length > 0 && (
-          <>
-            <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 6 }}>
-              Angles on this connection
-            </div>
-            {selectedEdge.finding_links.map((fl) => (
-              <button
-                key={fl.finding_id}
-                type="button"
-                className="panel-list-item"
-                style={{ background: "none", border: "none", width: "100%", cursor: "pointer", textAlign: "left", marginBottom: 4 }}
-                onClick={() => onOpenAngle(fl.finding_id, fl.title)}
-              >
-                <span className={`severity-badge severity-badge--${fl.severity}`}>{fl.severity}</span>
-                <span style={{ fontSize: 11, marginLeft: 6, flex: 1 }}>{fl.title}</span>
-              </button>
-            ))}
-          </>
-        )}
-
-        {isProposed && (
-          <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-            Proposed by Intake — review in the connections panel.
-          </p>
-        )}
-      </div>
+      <ConnectionDetailPanel
+        edge={selectedEdge}
+        graph={graph}
+        documents={documents}
+        onOpenAngle={onOpenAngle}
+        onOpenDocument={onOpenDocument}
+        onClear={onClearEdge}
+      />
     );
   }
 
@@ -316,6 +393,8 @@ function WebRightPanel({ graph, dashboard, selectedEdge, onOpenAngle, onClearEdg
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
         {graph?.stats ? `${knotCount} knots · ${edgeCount} connections` : "Loading…"}
       </div>
+
+      <CaseQualityPanel quality={dashboard?.quality} />
 
       {dashboard && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "10px 0" }}>
@@ -718,8 +797,10 @@ export default function InvestigateTab({
             <WebRightPanel
               graph={graph}
               dashboard={dashboard}
+              documents={documents}
               selectedEdge={webSelectedEdge}
               onOpenAngle={(angleId, angleTitle) => navigate({ kind: "angle", angleId, angleTitle })}
+              onOpenDocument={(documentId, docName) => navigate({ kind: "document", documentId, docName })}
               onClearEdge={() => setWebSelectedEdge(null)}
               leadStatus={leadJob.status}
               leadResult={leadJob.result}

@@ -21,11 +21,14 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from ..models import (
+    AuditAction,
+    AuditLog,
     Case,
     Document,
     FinancialInstrument,
     FinancialSnapshot,
     Finding,
+    FindingDocument,
     FindingSource,
     FindingStatus,
     InstrumentType,
@@ -1663,12 +1666,65 @@ class FindingUpdateSerializerTests(TestCase):
         self.case = _make_case()
         self.finding = _make_finding(self.case, rule_id="SR-010")
 
+    def _document(self, suffix="a", case=None):
+        return Document.objects.create(
+            case=case or self.case,
+            filename=f"evidence-{suffix}.pdf",
+            file_path=f"cases/test/evidence-{suffix}.pdf",
+            sha256_hash=suffix * 64,
+            file_size=1024,
+            doc_type="DEED",
+            ocr_status=OcrStatus.COMPLETED,
+        )
+
     def test_confirm_finding(self):
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)
         self.assertTrue(s.is_valid(), s.errors)
         s.save()
         self.finding.refresh_from_db()
         self.assertEqual(self.finding.status, FindingStatus.CONFIRMED)
+
+    def test_add_document_ids_creates_finding_document_links(self):
+        document = self._document()
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["add_document_ids"], [str(document.id)])
+        s.save()
+
+        self.assertTrue(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+
+    def test_remove_document_ids_deletes_finding_document_links(self):
+        document = self._document()
+        FindingDocument.objects.create(finding=self.finding, document=document)
+        s = FindingUpdateSerializer(
+            data={"remove_document_ids": [str(document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["remove_document_ids"], [str(document.id)])
+        s.save()
+
+        self.assertFalse(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+
+    def test_document_ids_must_belong_to_same_case(self):
+        other_case = _make_case("Other Case")
+        other_document = self._document(suffix="b", case=other_case)
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(other_document.id)]},
+            instance=self.finding,
+        )
+
+        self.assertFalse(s.is_valid())
+        self.assertIn("add_document_ids", s.errors)
 
     def test_escalate_finding(self):
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)
@@ -1690,6 +1746,16 @@ class FindingUpdateSerializerTests(TestCase):
 
     def test_dismiss_without_note_is_invalid(self):
         s = FindingUpdateSerializer(data={"status": "DISMISSED"}, instance=self.finding)
+        self.assertFalse(s.is_valid())
+        self.assertIn("investigator_note", s.errors)
+
+    def test_dismissed_finding_cannot_clear_rationale(self):
+        self.finding.status = FindingStatus.DISMISSED
+        self.finding.investigator_note = "Not relevant to this case."
+        self.finding.save(update_fields=["status", "investigator_note"])
+
+        s = FindingUpdateSerializer(data={"investigator_note": ""}, instance=self.finding)
+
         self.assertFalse(s.is_valid())
         self.assertIn("investigator_note", s.errors)
 
@@ -1723,6 +1789,87 @@ class FindingUpdateSerializerTests(TestCase):
         data = s.data
         self.assertIn("rule_id", data)
         self.assertEqual(data["status"], "CONFIRMED")
+
+    def test_documents_only_patch_allowed_on_finding_with_legacy_status(self):
+        # A finding carrying a status value outside the FindingStatus enum
+        # (e.g. legacy "DRAFT") must still accept a documents-only update.
+        finding = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-001",
+            title="Legacy",
+            status="DRAFT",
+            severity=Severity.HIGH,
+            source=FindingSource.AUTO,
+        )
+        document = _make_document(self.case, filename="legacy-evidence.pdf")
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(document.id)]}, instance=finding,
+        )
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["status"], "DRAFT")
+
+    def test_add_document_ids_accepts_uppercase_uuid(self):
+        # An uppercase UUID is an equivalent spelling of the same id and must
+        # resolve to the document rather than being rejected as "missing".
+        document = _make_document(self.case, filename="upper.pdf")
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": [str(document.id).upper()]},
+            instance=self.finding,
+        )
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["add_document_ids"], [str(document.id)])
+
+    def test_add_document_ids_rejects_non_uuid_string(self):
+        s = FindingUpdateSerializer(
+            data={"add_document_ids": ["not-a-uuid"]},
+            instance=self.finding,
+        )
+        self.assertFalse(s.is_valid())
+        self.assertIn("add_document_ids", s.errors)
+
+
+class FindingCitationPatchApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.case = _make_case()
+        self.finding = _make_finding(self.case, rule_id="SR-010")
+
+    def _document(self, filename="evidence.pdf"):
+        return _make_document(self.case, doc_type="DEED", filename=filename)
+
+    def _patch_finding(self, payload):
+        return self.client.patch(
+            reverse("api_case_finding_detail", args=[self.case.pk, self.finding.pk]),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_add_document_ids_returns_200_and_writes_audit_log(self):
+        document = self._document()
+
+        response = self._patch_finding({"add_document_ids": [str(document.id)]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+        self.assertEqual(response.json()["document_links"][0]["document_id"], str(document.id))
+        audit = AuditLog.objects.get(action=AuditAction.FINDING_UPDATED)
+        self.assertEqual(audit.after_state["add_document_ids"], [str(document.id)])
+
+    def test_remove_document_ids_returns_200_and_writes_audit_log(self):
+        document = self._document()
+        FindingDocument.objects.create(finding=self.finding, document=document)
+
+        response = self._patch_finding({"remove_document_ids": [str(document.id)]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            FindingDocument.objects.filter(finding=self.finding, document=document).exists()
+        )
+        self.assertEqual(response.json()["document_links"], [])
+        audit = AuditLog.objects.get(action=AuditAction.FINDING_UPDATED)
+        self.assertEqual(audit.after_state["remove_document_ids"], [str(document.id)])
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ from ..models import (
     OrgDocument,
     Person,
     PersonDocument,
+    ReferralTarget,
     Severity,
 )
 
@@ -43,6 +44,11 @@ class ReferralPdfTests(TestCase):
         )
         self.person = Person.objects.create(case=self.case, full_name="Sarah Example")
         self.org = Organization.objects.create(case=self.case, name="Example Foundation")
+        ReferralTarget.objects.create(
+            case=self.case,
+            agency_name="Ohio AG",
+            complaint_type="Charitable fraud",
+        )
         # Entity↔document links exercise the document_links reverse lookups
         # that the view filters on (the original bug used persondocument__/
         # orgdocument__, which do not exist).
@@ -83,12 +89,12 @@ class ReferralPdfTests(TestCase):
         )
         self.assertIn("attachment", response["Content-Disposition"])
 
-    def test_returns_pdf_for_empty_case(self):
+    def test_blocks_pdf_for_empty_case(self):
         empty_case = Case.objects.create(name="Empty Case")
         url = reverse("api_case_referral_pdf", kwargs={"pk": empty_case.pk})
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.content.startswith(b"%PDF-"))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["readiness"]["status"], "BLOCKED")
 
     def test_404_on_missing_case(self):
         url = reverse(

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 
 from investigations.tests.evals import lead_scorers
+from investigations.tests.evals.lead_fixtures import GOLDEN_CASES
 
 
 def _lead(title="Pattern", description="desc", narrative="why", doc_ids=("d1",)):
@@ -75,3 +76,16 @@ class OverreachTests(TestCase):
         score, flags = lead_scorers.overreach([], [])
         self.assertEqual(score, 0.0)
         self.assertEqual(flags, [])
+
+
+class FixtureShapeTests(TestCase):
+    def test_fixture_ids_are_unique(self):
+        ids = [fixture["id"] for fixture in GOLDEN_CASES]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_each_fixture_declares_thresholds(self):
+        for fixture in GOLDEN_CASES:
+            self.assertIn("expect_clean", fixture)
+            self.assertIn("thresholds", fixture)
+            self.assertIn("faithfulness", fixture["thresholds"])
+            self.assertIn("overreach", fixture["thresholds"])

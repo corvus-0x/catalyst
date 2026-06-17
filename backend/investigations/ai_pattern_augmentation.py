@@ -12,13 +12,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from typing import Any
 
-import anthropic
 from django.db import transaction
 
-from investigations import ai_proxy
+from investigations import ai_gateway, ai_proxy
 from investigations.models import (
     AuditAction,
     AuditLog,
@@ -53,11 +51,6 @@ MAX_DOCUMENTS = 60
 # input window is much larger, but a 100+ doc case at 2000 chars/doc plus
 # entities and findings can blow past it; this also keeps cost predictable.
 MAX_CONTEXT_CHARS = 80_000
-
-# Retry config for transient Anthropic errors (rate-limit / 529 overload /
-# brief network blips). Total wall-time worst case = sum of backoff sleeps.
-CLAUDE_MAX_ATTEMPTS = 3
-CLAUDE_BACKOFF_BASE = 2.0  # seconds; 2, 4, 8 ...
 
 ALLOWED_AI_WEIGHTS = {"SPECULATIVE", "DIRECTIONAL"}
 REQUIRED_PATTERN_FIELDS = (
@@ -397,70 +390,21 @@ def call_claude(context: dict[str, Any]) -> str:
 
     Returns the raw model text (expected JSON matching the SYSTEM_PROMPT
     schema). Thin wrapper so tests can mock this function.
-
-    We do NOT call ai_proxy._call_ai here — that helper json.loads the
-    response and returns a dict. parse_response() below expects a string
-    so it can defensively handle malformed output without raising.
-
-    Retries up to CLAUDE_MAX_ATTEMPTS on transient errors (rate-limit,
-    overloaded, network blips). Permanent errors (auth, bad request,
-    content-policy refusal) are raised immediately as AIPatternError.
     """
     user_message = (
         "Here is the case. Return patterns as strict JSON per the schema in "
         "the system prompt.\n\n<case>\n" + json.dumps(context) + "\n</case>"
     )
-    last_exc: Exception | None = None
-    for attempt in range(1, CLAUDE_MAX_ATTEMPTS + 1):
-        try:
-            client = ai_proxy._get_client()
-            response = client.messages.create(
-                model=ai_proxy.MODEL_SONNET,
-                max_tokens=4096,
-                temperature=0.2,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
-            )
-            raw = response.content[0].text or ""
-            cleaned = raw.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                lines = [line for line in lines if not line.strip().startswith("```")]
-                cleaned = "\n".join(lines).strip()
-            return cleaned
-        except (
-            anthropic.RateLimitError,
-            anthropic.APIConnectionError,
-            anthropic.APITimeoutError,
-            anthropic.InternalServerError,
-        ) as exc:
-            last_exc = exc
-            if attempt < CLAUDE_MAX_ATTEMPTS:
-                sleep_for = CLAUDE_BACKOFF_BASE**attempt
-                logger.warning(
-                    "Transient Claude error on attempt %d/%d: %s; retrying in %.1fs",
-                    attempt,
-                    CLAUDE_MAX_ATTEMPTS,
-                    exc,
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-                continue
-        except Exception as exc:
-            # Permanent error (auth, bad request, content-policy, JSON
-            # decode etc.) — fail fast, no retry.
-            logger.exception("AI pattern Claude call failed: %s", exc)
-            raise AIPatternError(f"Claude API call failed: {exc}") from exc
-
-    # Exhausted retries on a transient error.
-    logger.exception(
-        "AI pattern Claude call failed after %d attempts: %s",
-        CLAUDE_MAX_ATTEMPTS,
-        last_exc,
+    result = ai_gateway.call_json(
+        system=SYSTEM_PROMPT,
+        user_message=user_message,
+        model=ai_proxy.MODEL_SONNET,
+        temperature=0.2,
+        max_tokens=4096,
     )
-    raise AIPatternError(
-        f"Claude API call failed after {CLAUDE_MAX_ATTEMPTS} attempts: {last_exc}"
-    ) from last_exc
+    if result.error or result.payload is None:
+        raise AIPatternError(result.error or "Claude API call failed")
+    return json.dumps(result.payload)
 
 
 def analyze_case(case_id: Any, job: Any = None) -> dict[str, Any]:

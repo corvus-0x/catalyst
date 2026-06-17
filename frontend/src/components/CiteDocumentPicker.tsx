@@ -170,7 +170,10 @@ export default function CiteDocumentPicker({
         selectedDocs,
         finding.document_links,
       );
-      await updateAngle(caseId, finding.id, { narrative: updatedNarrative });
+      await updateAngle(caseId, finding.id, {
+        narrative: updatedNarrative,
+        add_document_ids: Array.from(selectedIds),
+      });
       onCited(Array.from(selectedIds));
       onClose();
     } finally {

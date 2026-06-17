@@ -373,66 +373,36 @@ class AnalyzeCaseTests(TestCase):
     # Regression: a Claude API failure must NOT silently mark the job
     # SUCCESS with 0 findings. It must raise so the job runner can mark
     # FAILED with the real error. (QA audit P0 #2.)
-    @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_call_claude_raises_on_api_error(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError(
-            "Claude API exploded — permanent failure"
+    @patch("investigations.ai_pattern_augmentation.ai_gateway.call_json")
+    def test_call_claude_raises_on_api_error(self, mock_call_json):
+        mock_call_json.return_value = MagicMock(
+            error="Claude API exploded",
+            payload=None,
+            raw_text="",
         )
-        mock_get_client.return_value = mock_client
 
         with self.assertRaises(ai_pattern_augmentation.AIPatternError):
             ai_pattern_augmentation.call_claude(
                 {"case": {"name": "x"}, "documents": [], "entities": {}}
             )
-        # Permanent (non-retryable) error → fail fast, exactly one attempt.
-        self.assertEqual(mock_client.messages.create.call_count, 1)
+        mock_call_json.assert_called_once()
 
-    # Regression: transient Anthropic errors should retry, not fail fast.
-    # (QA audit P1 — no retry meant a single 529 killed the whole job.)
-    @patch("investigations.ai_pattern_augmentation.time.sleep")
-    @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_call_claude_retries_on_transient_error(self, mock_get_client, mock_sleep):
-        import anthropic
-
-        mock_client = MagicMock()
-        success_response = MagicMock()
-        success_response.content = [MagicMock(text='{"patterns": []}')]
-        mock_client.messages.create.side_effect = [
-            anthropic.APIConnectionError(request=MagicMock()),
-            success_response,
-        ]
-        mock_get_client.return_value = mock_client
+    @patch("investigations.ai_pattern_augmentation.ai_gateway.call_json")
+    def test_call_claude_returns_gateway_payload_as_json(self, mock_call_json):
+        mock_call_json.return_value = MagicMock(
+            error=None,
+            payload={"patterns": []},
+            raw_text='{"patterns": []}',
+        )
 
         result = ai_pattern_augmentation.call_claude(
             {"case": {"name": "x"}, "documents": [], "entities": {}}
         )
         self.assertEqual(result, '{"patterns": []}')
-        self.assertEqual(mock_client.messages.create.call_count, 2)
 
-    @patch("investigations.ai_pattern_augmentation.time.sleep")
-    @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_call_claude_gives_up_after_max_attempts(self, mock_get_client, mock_sleep):
-        import anthropic
-
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic.APIConnectionError(request=MagicMock())
-        mock_get_client.return_value = mock_client
-
-        with self.assertRaises(ai_pattern_augmentation.AIPatternError):
-            ai_pattern_augmentation.call_claude(
-                {"case": {"name": "x"}, "documents": [], "entities": {}}
-            )
-        self.assertEqual(
-            mock_client.messages.create.call_count,
-            ai_pattern_augmentation.CLAUDE_MAX_ATTEMPTS,
-        )
-
-    @patch("investigations.ai_pattern_augmentation.ai_proxy._get_client")
-    def test_analyze_case_propagates_api_error(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError("boom")
-        mock_get_client.return_value = mock_client
+    @patch("investigations.ai_pattern_augmentation.ai_gateway.call_json")
+    def test_analyze_case_propagates_api_error(self, mock_call_json):
+        mock_call_json.return_value = MagicMock(error="boom", payload=None, raw_text="")
 
         with self.assertRaises(ai_pattern_augmentation.AIPatternError):
             ai_pattern_augmentation.analyze_case(self.case.id)
