@@ -1,6 +1,6 @@
 # Catalyst — Tech Debt Register
 
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-06-16
 **Purpose:** Track all known technical debt. Prioritize during roadmap updates, not ad-hoc.
 
 ---
@@ -21,20 +21,12 @@ Severity levels:
 
 | ID | Severity | Description | Location | Added |
 |----|----------|-------------|----------|-------|
-| TD-001 | CRITICAL | `types.ts` truncated — ends mid-property definition at "othe" | frontend/src/types.ts:222 | 2026-04-01 |
-| TD-002 | CRITICAL | `CaseDetailView.tsx` truncated — ends at "p.filt" on line 461 | frontend/src/views/CaseDetailView.tsx:461 | 2026-04-01 |
-| TD-003 | CRITICAL | `DocumentsTab.tsx` truncated — missing JSX closing fragment | frontend/src/components/cases/DocumentsTab.tsx:178 | 2026-04-01 |
-| TD-004 | CRITICAL | `PdfViewer.tsx` truncated — missing closing divs + button | frontend/src/components/ui/PdfViewer.tsx:87 | 2026-04-01 |
-| TD-005 | CRITICAL | `fetchDocumentDetail()` imported in PdfViewer but not defined in api.ts | frontend/src/api.ts | 2026-04-01 |
-| TD-006 | HIGH | Missing Django migration for ExtractionStatus fields on Document model | backend/investigations/models.py | 2026-04-01 |
-| TD-007 | HIGH | `TODO(SEC-010)` markers — 6 endpoints need user-scoped filtering when auth is added | backend/investigations/views.py | 2026-04-01 |
-| TD-008 | MEDIUM | views.py is ~2600 lines — should be split into logical modules | backend/investigations/views.py | 2026-04-01 |
-| TD-009 | MEDIUM | No frontend tests exist | frontend/ | 2026-04-01 |
-| TD-010 | MEDIUM | Signal rules not configurable without code changes (FR-605 partial) | backend/investigations/signal_rules.py | 2026-04-01 |
-| TD-011 | MEDIUM | Rate limiting is in-memory only — resets on process restart | backend/investigations/middleware.py | 2026-04-01 |
-| TD-012 | LOW | HTML template views still exist alongside API views (legacy from Phase 1) | backend/investigations/views.py, urls.py | 2026-04-01 |
-| TD-013 | LOW | `admin.py` has some models with basic `admin.site.register()` instead of full ModelAdmin | backend/investigations/admin.py | 2026-04-01 |
-| TD-014 | LOW | Session tracker (docs/ops/session-tracker.md) has stale open tasks | docs/ops/session-tracker.md | 2026-04-01 |
+| TD-007 | HIGH | `TODO(SEC-010)` markers — 4 endpoints need user-scoped filtering when auth is added (was 6; 4 remain as of 2026-06-16) | backend/investigations/views.py | 2026-04-01 |
+| TD-008 | HIGH | views.py is ~5,985 lines — should be split into logical modules. **Grew from ~2,600 (2026-04-01); severity raised MEDIUM→HIGH 2026-06-16** | backend/investigations/views.py | 2026-04-01 |
+| TD-009 | MEDIUM | Frontend test coverage is thin — vitest is configured (`npm run test`) but only one component test exists (`TieOffModal.test.tsx`). Reframed 2026-06-16 from "no frontend tests exist" | frontend/ | 2026-04-01 |
+| TD-010 | MEDIUM | Signal rules not configurable without code changes (FR-605 partial) — confirmed 2026-06-16: `RULE_REGISTRY` is a static dict and evaluators are hardcoded functions with baked-in thresholds | backend/investigations/signal_rules.py | 2026-04-01 |
+| TD-011 | MEDIUM | Rate limiting is in-memory only — resets on process restart (middleware still documents an in-memory sliding window as of 2026-06-16) | backend/investigations/middleware.py | 2026-04-01 |
+| TD-012 | LOW | HTML template views still exist alongside API views (legacy from Phase 1) — confirmed 2026-06-16: 4 `render()` calls to `.html` templates remain (~views.py:3945–3991) | backend/investigations/views.py, urls.py | 2026-04-01 |
 
 ---
 
@@ -42,4 +34,11 @@ Severity levels:
 
 | ID | Description | Resolved | Milestone |
 |----|-------------|----------|-----------|
-| *(none yet)* | | | |
+| TD-001 | `types.ts` truncated mid-property | 2026-06-16 | Frontend rebuilt; types restructured into `frontend/src/types/` directory (no `types.ts`) |
+| TD-002 | `CaseDetailView.tsx` truncated at :461 | 2026-06-16 | Frontend rebuild — file is now 240 lines and closes cleanly |
+| TD-003 | `DocumentsTab.tsx` truncated | 2026-06-16 | Component removed — no Documents tab in the shipped design |
+| TD-004 | `PdfViewer.tsx` truncated | 2026-06-16 | Component removed — `PdfViewer.tsx` no longer exists |
+| TD-005 | `fetchDocumentDetail()` undefined | 2026-06-16 | Removed with PdfViewer; no longer imported anywhere |
+| TD-006 | Missing migration for ExtractionStatus fields | 2026-06-16 | Added by migration `0016_auditlog_file_size_auditlog_sha256_hash_and_more` |
+| TD-013 | `admin.py` models on basic register | 2026-06-16 | All 12 registered models now use `@admin.register` + full `ModelAdmin`; no bare `admin.site.register()` calls remain |
+| TD-014 | Session tracker has stale open tasks | 2026-06-16 | `docs/ops/session-tracker.md` removed (see note: dangling reference still in `docs/README.md`) |
