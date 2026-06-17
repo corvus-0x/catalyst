@@ -39,8 +39,6 @@ def search_case_documents(case, query: str, limit: int = 10) -> dict:
         return {"query": query, "match_count": 0, "results": []}
 
     terms = _terms(query)
-    if not terms:
-        return {"query": query, "match_count": 0, "results": []}
 
     candidates = (
         Document.objects.filter(case=case)

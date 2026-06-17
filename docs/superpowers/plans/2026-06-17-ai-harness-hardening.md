@@ -63,7 +63,7 @@ Modify:
 - `backend/investigations/tests/evals/lead_fixtures.py`  
   Add overreach and negative-control fixtures.
 
-- `backend/investigations/tests/evals/test_lead_quality.py`  
+- `backend/investigations/tests/evals/test_lead_scorers.py`
   Add scorecard fields for deterministic failures by fixture.
 
 - `docs/architecture/api-contract.md`  

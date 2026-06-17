@@ -109,6 +109,23 @@ class ReferralReadinessTests(TestCase):
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["evidence_weight"]["status"], "FAIL")
 
+    def test_readiness_warns_for_mixed_referral_evidence_weight(self):
+        self._target()
+        documented = self._confirmed_finding(evidence_weight=EvidenceWeight.DOCUMENTED)
+        directional = self._confirmed_finding(
+            title="Directional angle",
+            evidence_weight=EvidenceWeight.DIRECTIONAL,
+        )
+        FindingDocument.objects.create(finding=documented, document=self._document("a"))
+        FindingDocument.objects.create(finding=directional, document=self._document("b"))
+
+        payload = self._get_readiness()
+
+        self.assertEqual(payload["status"], "NEEDS_REVIEW")
+        self.assertEqual(payload["quality"]["status"], "NEEDS_REVIEW")
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["evidence_weight"]["status"], "WARN")
+
     def test_readiness_warns_for_pending_review_items(self):
         self._target()
         finding = self._confirmed_finding()

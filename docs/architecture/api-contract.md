@@ -828,6 +828,7 @@ interface CaseQuality {
 
 Generates a deterministic, citation-bearing PDF using reportlab. No AI.  
 **Response:** ✅ — binary PDF stream with `Content-Type: application/pdf`  
+If referral readiness is `BLOCKED`, returns `400` with `{ "error": string, "readiness": ReferralReadinessResponse }`. `NEEDS_REVIEW` is allowed to export.
 **Frontend note:** Trigger with `window.open` or a fetch → blob → URL.createObjectURL pattern.
 
 ### POST /api/cases/:id/referral-memo/

@@ -86,7 +86,13 @@ def call_json(
                 system=system,
                 messages=[{"role": "user", "content": user_message}],
             )
-            raw = response.content[0].text or ""
+            content = response.content or []
+            first_block = content[0] if content else None
+            if first_block is not None and hasattr(first_block, "text"):
+                raw = first_block.text
+            else:
+                raw = ""
+            raw = raw or ""
             try:
                 payload = json.loads(strip_json_fences(raw))
             except (TypeError, ValueError):

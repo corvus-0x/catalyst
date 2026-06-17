@@ -60,8 +60,9 @@ Catalyst/
 │   │   ├── entity_normalization.py ← Name/EIN/address standardization
 │   │   ├── signal_rules.py      ← 15 active fraud detection rules
 │   │   ├── data_quality.py      ← Data validation + audit logging
-│   │   ├── ai_extraction.py     ← Codex AI entity/financial extraction
-│   │   ├── ai_proxy.py          ← Codex API wrapper with caching
+│   │   ├── ai_gateway.py        ← Shared model gateway for JSON calls, retries, usage
+│   │   ├── ai_extraction.py     ← Intake entity/financial extraction via ai_gateway.py
+│   │   ├── ai_proxy.py          ← Case Q&A wrapper with caching; JSON calls use ai_gateway.py
 │   │   ├── ai_pattern_augmentation.py ← AI pattern analysis → Findings
 │   │   ├── form990_parser.py    ← IRS 990 text parser (Part IV/VI/VII)
 │   │   ├── jobs.py              ← Async task functions for Django-Q2 worker

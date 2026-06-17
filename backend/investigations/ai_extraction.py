@@ -676,7 +676,7 @@ def _call_claude(
             return AIExtractionResult(error=gateway_result.error or "AI extraction failed")
 
         # Parse the JSON response into AIProposal objects
-        result = parse_fn(json.dumps(gateway_result.payload))
+        result = parse_fn(gateway_result.payload)
         result.model_used = gateway_result.model
         result.input_tokens = gateway_result.input_tokens
         result.output_tokens = gateway_result.output_tokens
@@ -706,14 +706,17 @@ def _call_claude(
 # ---------------------------------------------------------------------------
 
 
-def _safe_json_parse(raw_text: str) -> dict | None:
+def _safe_json_parse(raw: dict | str) -> dict | None:
     """
     Parse JSON from Claude's response, tolerant of markdown code fences.
 
     Claude sometimes wraps JSON in ```json ... ``` even when told not to.
     We strip that wrapper before parsing.
     """
-    text = raw_text.strip()
+    if isinstance(raw, dict):
+        return raw
+
+    text = raw.strip()
 
     # Strip markdown code fences
     if text.startswith("```"):
@@ -732,9 +735,9 @@ def _safe_json_parse(raw_text: str) -> dict | None:
         return None
 
 
-def _parse_general_response(raw_text: str) -> AIExtractionResult:
+def _parse_general_response(raw: dict | str) -> AIExtractionResult:
     """Parse the general entity extraction JSON into AIProposal objects."""
-    data = _safe_json_parse(raw_text)
+    data = _safe_json_parse(raw)
     if data is None:
         return AIExtractionResult(error="Failed to parse AI response as JSON")
 
@@ -840,9 +843,9 @@ def _parse_general_response(raw_text: str) -> AIExtractionResult:
     return AIExtractionResult(proposals=proposals)
 
 
-def _parse_990_response(raw_text: str) -> AIExtractionResult:
+def _parse_990_response(raw: dict | str) -> AIExtractionResult:
     """Parse the 990-specific JSON into AIProposal objects."""
-    data = _safe_json_parse(raw_text)
+    data = _safe_json_parse(raw)
     if data is None:
         return AIExtractionResult(error="Failed to parse AI 990 response as JSON")
 
@@ -954,9 +957,9 @@ def _parse_990_response(raw_text: str) -> AIExtractionResult:
     return AIExtractionResult(proposals=proposals)
 
 
-def _parse_obituary_response(raw_text: str) -> AIExtractionResult:
+def _parse_obituary_response(raw: dict | str) -> AIExtractionResult:
     """Parse the obituary-specific JSON into AIProposal objects."""
-    data = _safe_json_parse(raw_text)
+    data = _safe_json_parse(raw)
     if data is None:
         return AIExtractionResult(error="Failed to parse AI obituary response as JSON")
 

@@ -44,3 +44,11 @@ class RetrievalTests(TestCase):
 
         self.assertEqual(result["match_count"], 0)
         self.assertEqual(result["results"], [])
+
+    def test_matches_non_tokenized_query_by_substring(self):
+        self._doc(self.case, "punctuation.pdf", "A notation includes section ***.")
+
+        result = search_case_documents(self.case, "***")
+
+        self.assertEqual(result["match_count"], 1)
+        self.assertEqual(result["results"][0]["display_name"], "punctuation.pdf")

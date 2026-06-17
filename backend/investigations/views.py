@@ -2557,11 +2557,11 @@ def api_case_signal_detail(request, pk, signal_id):
         with transaction.atomic():
             serializer.save()
 
-            # Determine the right audit action based on the new status
+            # Determine the right audit action based on an actual status transition.
             new_status = serializer.validated_data.get("status", finding.status)
-            if new_status == "CONFIRMED":
+            if new_status != before["status"] and new_status == "CONFIRMED":
                 audit_action = AuditAction.SIGNAL_CONFIRMED
-            elif new_status == "DISMISSED":
+            elif new_status != before["status"] and new_status == "DISMISSED":
                 audit_action = AuditAction.SIGNAL_DISMISSED
             else:
                 audit_action = AuditAction.RECORD_UPDATED
@@ -3400,6 +3400,10 @@ def api_case_finding_detail(request, pk, finding_id):
 
     with transaction.atomic():
         updated = serializer.save()
+        updated.refresh_from_db()
+        updated = Finding.objects.prefetch_related("entity_links", "document_links").get(
+            pk=updated.pk
+        )
         AuditLog.log(
             action=AuditAction.FINDING_UPDATED,
             table_name="findings",
@@ -6040,6 +6044,15 @@ def api_case_referral_pdf(request, pk):
     Returns the PDF as an attachment.  Does not require any request body.
     """
     case = get_object_or_404(Case, pk=pk)
+    readiness = build_case_readiness(case)
+    if readiness["status"] == "BLOCKED":
+        return JsonResponse(
+            {
+                "error": "Referral package is blocked until readiness checks pass.",
+                "readiness": readiness,
+            },
+            status=400,
+        )
 
     findings_qs = (
         Finding.objects.filter(

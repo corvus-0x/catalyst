@@ -7,7 +7,7 @@ from investigations import ai_gateway
 
 
 class AiGatewayTests(SimpleTestCase):
-    def _response(self, text='{"ok": true}', input_tokens=12, output_tokens=5):
+    def _response(self, text="{\"ok\": true}", input_tokens=12, output_tokens=5):
         response = MagicMock()
         response.content = [MagicMock(text=text)]
         response.usage.input_tokens = input_tokens
@@ -36,7 +36,7 @@ class AiGatewayTests(SimpleTestCase):
     @patch("investigations.ai_gateway._get_client")
     def test_call_json_strips_markdown_fences(self, mock_get_client):
         client = MagicMock()
-        client.messages.create.return_value = self._response('```json\n{"ok": true}\n```')
+        client.messages.create.return_value = self._response("```json\n{\"ok\": true}\n```")
         mock_get_client.return_value = client
 
         result = ai_gateway.call_json(
@@ -83,3 +83,4 @@ class AiGatewayTests(SimpleTestCase):
 
         self.assertEqual(result.payload, {"ok": True})
         self.assertEqual(client.messages.create.call_count, 2)
+        mock_sleep.assert_called_once_with(2.0)

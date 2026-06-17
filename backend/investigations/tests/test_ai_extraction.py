@@ -1,4 +1,3 @@
-import json
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -18,8 +17,7 @@ class AiExtractionGatewayTests(SimpleTestCase):
             output_tokens=7,
         )
 
-        def parse_fn(raw_text):
-            data = json.loads(raw_text)
+        def parse_fn(data):
             return AIExtractionResult(
                 proposals=[
                     AIProposal(

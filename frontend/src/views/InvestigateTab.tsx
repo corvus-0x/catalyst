@@ -314,7 +314,7 @@ function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
               marginBottom: 5,
             }}
           >
-            Top issues
+            Top gaps
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {quality.top_issues.slice(0, 3).map((issue) => (
