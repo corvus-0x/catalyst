@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-06-11 (Session 46 — full product audit; referral PDF + fresh-session CSRF fixes shipped to prod; Replay tab; deterministic health check)
+**Last updated:** 2026-06-18 (Session 47 — case-workspace build item 1 "feeders" + shared active-Angle state shipped (PR #10), M1 real-citation verified live on a Railway PR preview; frontend silent-failure remediation (PR #11); 3 roadmap issues triaged + closed; branch/worktree cleanup)
 
 This project is in active development. This file is updated every time
 the state of a major component changes — and at the end of every working
@@ -29,6 +29,7 @@ running on Railway.
 | County Recorder connector | All 88 Ohio counties mapped to recorder portals; auto-parses uploaded deeds | URL builder + document parser |
 | Ohio Secretary of State connector | Local CSV search (admin uploads CSVs from publicfiles.ohiosos.gov) | Switched from runtime download after SOS started returning 403s |
 | Case detail UI | 6 tabs at `/cases/:id`: Investigate (the graph/"Web"), Research, Financials, Timeline, Referrals, Replay (investigation step-by-step story) | React + Vite, dark/light/auto themes, keyboard shortcuts. Documents open in a drawer; fuzzy "pending connections" review is folded into the Investigate tab (no standalone Documents/Match Review tabs). Replay tab renamed from "Investigation" in Session 46 (sat confusingly next to "Investigate"). |
+| Cross-surface citation ("feeders") | Financials, Timeline, and Research can **start an Angle** or **cite into the active Angle** without leaving the tab. A shared active-Angle indicator (header chip, with clear ×) shows the cite target so one-click cites aren't blind; actions stay-in-place (no jump to the Web). A Timeline **document-layer** cite creates a real `FindingDocument` (chain-of-custody, `add_document_ids`); narrative annotation otherwise. Research add-to-case shows a persistent per-row outcome that survives tab switches. | Case-workspace **build item 1** (PR #10, Session 47). `CaseWorkspaceContext` + `useFeederActions` + `AnglePickerModal`. **M1 verified live** on a Railway PR preview: cite → Angle (severity MEDIUM) with the document in `document_links`. `createAngle` sends `severity:"MEDIUM"` (backend requires it). |
 | Entity relationship graph | Cytoscape.js graph (`react-cytoscapejs` + `cose-bilkent`) — the primary investigation canvas ("Web") | Gotham/Maltego visual style: small markers (22-54px), labels right, node size scales with finding count (hub entity visually dominant), entity-type icons (person silhouette / building), 1px border ring, directed arrowheads on confirmed edges, dot-grid canvas. D3 is used only for the Timeline brush. |
 | Referral package PDF exporter | Deterministic, citation-bearing PDF generation with cover page, findings, financial summary, and document index with SHA-256 chain of custody | The central deliverable — what a professional investigator reads. Was hard-broken (500) by three invalid ORM lookups until Session 46; now fixed, regression-tested (`test_referral_pdf.py`), and verified live on Railway. |
 | Fraud signal detection engine | 15 pattern rules (cut from 29, plus the new SR-028 self-disclosed material diversion) grounded in real investigation patterns — valuation anomalies, insider swaps, false disclosures, revenue spikes | Each rule tied to a real anomaly source. `Finding.evidence_snapshot` captures the exact 990 fields / transaction ids / entity ids that fired each rule for the referral PDF citations. |
@@ -80,6 +81,54 @@ structural rewrites.
 | Component | Status |
 |-----------|--------|
 | Repo presentation | This file, `README.md`, `CLAUDE.md` — now reconciled to the shipped graph-first app. Updated at the end of each session going forward. |
+
+**Recently completed (Session 47, June 18 2026):**
+
+Case-workspace **build item 1** (shared state + feeders) and a frontend
+**silent-failure remediation** shipped to `main` via PR #10 and #11; the
+load-bearing real-citation assumption (M1) was verified live on a Railway PR
+preview. Frontend-only session — no backend/endpoint/model changes (wiring matrix
+unchanged).
+
+- **Feeders (PR #10).** Financials/Timeline/Research were dead-end tabs — data you
+  could see but not act on without leaving for the Web. Added a shared
+  `CaseWorkspaceContext` (active entity + active Angle `{id,title}`), a reusable
+  `AnglePickerModal`, and a `useFeederActions` hook so any surface can start an Angle
+  or cite into the active one. *Why this shape:* a **document** cite sends ONLY
+  `add_document_ids` (atomic, real `FindingDocument` chain-of-custody) and never
+  rewrites the narrative — avoids clobbering a concurrent edit; narrative-only cite is
+  reserved for events with no document (documented last-write-wins limitation, atomic
+  backend endpoint deferred). A header **active-Angle chip** makes one-click cites
+  non-blind; `createAngle` must send `severity:"MEDIUM"` (serializer requires it).
+- **M1 verified live.** A Timeline document-layer event's `id` is the Document PK
+  (`views.py:4015`, `"id": str(doc.pk)`) — confirmed from source AND end-to-end on a
+  Railway PR-preview (Focused PR Envs OFF → isolated cloned DB, zero prod writes):
+  "Cite in angle" → new Angle (severity MEDIUM) whose `document_links` contained the
+  real uploaded document. *Why a PR preview:* local verify was blocked by a WSL2
+  localhost issue and production runs `main` (no branch UI); a PR env was the only way
+  to drive the branch code against a throwaway DB.
+- **Silent-failure remediation (PR #11).** Six swallowed `.catch(console.error)` /
+  `.catch(() => {})` sites (initial case load, 5 InvestigateTab actions, Research
+  reattach) now also `toast.error`. *Why those and not the job handlers:*
+  `useAsyncJob.run` already catches into `status:"FAILED"` — it never silently drops,
+  so it was correctly excluded. Also renamed `handleCreateOrg`→`handleAddToCase` in
+  `SyncResultsTable` for honesty (the AOS "Save audit note" path is a generic
+  add-to-case; backend routes `ohio-aos → InvestigatorNote` — no behavior change).
+- **Backlog triage — 3 roadmap issues scoped (read-only agents) and closed.** #2
+  (990 Schedule L/R/O) was already fully shipped on `main`; #4 (Django-Q worker as own
+  Railway service) already handled (worker backgrounded in-container, ORM broker, health
+  check on `/api/health/`); #1 (cross-case Referrals view) not load-bearing and NOT
+  covered by the case-workspace design (which is per-case).
+- **Repo cleanup.** Removed the abandoned May-7 frontend-rebuild worktrees + branches
+  (orphan history — *no merge base* with `main`, carrying a `clear_all_data` prod-wipe
+  `preDeploy`) and all resolved `[gone]` branches. Local + remote are now `main`-only.
+- Frontend gained a Vitest suite (24 tests: context / hook / picker / `outcomeLabel`).
+  Backend test count unchanged (924 — no backend work this session).
+
+**Follow-ups logged (not started):** case-workspace **build items 2–5**
+(plan-as-you-go); Timeline-seeded Angle title uses the raw ISO `event.date` (format it
+in `onCiteInAngle`); `AngleView.tsx:516` + `ProfilePanel.tsx:221` still have
+`.catch(() => {})`.
 
 **Recently completed (Session 46, June 11 2026):**
 
