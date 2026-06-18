@@ -334,7 +334,7 @@ function SyncResultsTable({
   onOutcome,
   deceasedNames,
 }: SyncResultsTableProps) {
-  async function handleCreateOrg(r: Record<string, unknown>, idx: number) {
+  async function handleAddToCase(r: Record<string, unknown>, idx: number) {
     const result = await addResearchToCase(caseId, { source, data: r });
     const k = triageKey(source, idx, source === "ohio-aos" ? "save-note" : "create-org");
     const label = outcomeLabel(result);
@@ -437,7 +437,7 @@ function SyncResultsTable({
                               detail="Add as a knot in the Web"
                               done={triagedKeys.has(createKey)}
                               outcome={triageOutcomes.get(createKey)}
-                              onSelect={() => handleCreateOrg(r, idx)}
+                              onSelect={() => handleAddToCase(r, idx)}
                             />
                           )}
                           {source === "ohio-aos" ? (
@@ -446,7 +446,7 @@ function SyncResultsTable({
                               detail="Use the AOS note format"
                               done={triagedKeys.has(noteKey)}
                               outcome={triageOutcomes.get(noteKey)}
-                              onSelect={() => handleCreateOrg(r, idx)}
+                              onSelect={() => handleAddToCase(r, idx)}
                             />
                           ) : (
                             <TriageOption
@@ -766,7 +766,10 @@ export default function ResearchTab({
           }
         });
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error(err);
+        toast.error("Couldn't restore in-progress searches — re-run if a search is missing.");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
