@@ -72,3 +72,27 @@ class TieOffGateTests(TestCase):
         FindingDocument.objects.create(finding=f, document=_document(self.case))
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=f)
         self.assertTrue(s.is_valid(), s.errors)
+
+    def test_confirm_emits_signal_confirmed_audit_row(self):
+        from investigations.models import AuditLog, AuditAction
+        f = self._new_finding(status=FindingStatus.NEW)
+        doc = _document(self.case)
+        FindingDocument.objects.create(finding=f, document=doc)
+        resp = self.client.patch(
+            f"/api/cases/{self.case.pk}/findings/{f.pk}/",
+            data={
+                "status": "CONFIRMED",
+                "evidence_weight": "DOCUMENTED",
+                "narrative": "n",
+                "overreach_reviewed": True,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                case_id=self.case.pk,
+                record_id=f.pk,
+                action=AuditAction.SIGNAL_CONFIRMED,
+            ).exists()
+        )

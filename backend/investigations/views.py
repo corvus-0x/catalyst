@@ -3413,6 +3413,21 @@ def api_case_finding_detail(request, pk, finding_id):
             after_state=serializer.validated_data,
             performed_by=getattr(request, "api_token", None),
         )
+        if before["status"] != updated.status:
+            transition_action = {
+                FindingStatus.CONFIRMED: AuditAction.SIGNAL_CONFIRMED,
+                FindingStatus.DISMISSED: AuditAction.SIGNAL_DISMISSED,
+            }.get(updated.status)
+            if transition_action is not None:
+                AuditLog.log(
+                    action=transition_action,
+                    table_name="findings",
+                    record_id=updated.pk,
+                    case_id=case.pk,
+                    before_state={"status": before["status"]},
+                    after_state={"status": updated.status},
+                    performed_by=getattr(request, "api_token", None),
+                )
     return JsonResponse(serialize_finding(updated))
 
 
