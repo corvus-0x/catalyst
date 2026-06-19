@@ -964,6 +964,11 @@ visual work depends on guesswork.
 - **Doc-alignment task** (§2 "Vocabulary source of truth"): update `CLAUDE.md` FRONTEND
   VOCABULARY (+ `AGENTS.md`) to the new terms with backend-mapping column, before 1B.
 
+**1A fast-follow (separate small PR):** the `shared_address` collector (normalized `Address`
+links), the `financial_link` collector (`FinancialInstrument` UCC / debtor / secured-party),
+and the `business_association` split of `Relationship`. The scorer already supports these
+fields; they default to zero until the collectors land, so the contract shape is unaffected.
+
 ### Phase 1B — Case Map visual foundation (consumes 1A)
 
 Frontend, depends on 1A's endpoint.
