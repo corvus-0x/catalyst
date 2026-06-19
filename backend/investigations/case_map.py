@@ -5,7 +5,7 @@ object. Separate from the raw /graph/ endpoint. See
 docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md §4.
 """
 
-from collections import Counter
+import logging
 
 from django.utils import timezone
 
@@ -23,10 +23,24 @@ from .models import (
 )
 from .referral_grade import is_referral_grade
 
+logger = logging.getLogger(__name__)
+
+
+def _snapshot(finding):
+    """`evidence_snapshot` as a dict, guarding null/corrupted non-dict values.
+
+    The field is a JSONField; `None` and `{}` are legitimate empty states, but a
+    corrupted row (e.g. a list or string) would crash the `.get(...)` chains in
+    thread inference. Coerce anything non-dict to an empty dict.
+    """
+    snap = finding.evidence_snapshot
+    return snap if isinstance(snap, dict) else {}
+
+
 # ── Scoring constants (spec §"First Scoring Formula") ──
 CO_MENTION_FIRST = 10
 CO_MENTION_EACH = 5
-CO_MENTION_CAP = 20
+CO_MENTION_CAP = 20  # cap on the *additional*-document points (not the total ceiling of 30)
 ROLE_POINTS = 30
 TRANSACTION_EACH = 25
 TRANSACTION_CAP = 50
@@ -124,6 +138,10 @@ def score_evidence(ev):
         if developing:
             reasons.append(f"Referenced by {developing} developing thread{_plural(developing)}")
 
+    # Material cap (spec §4): raw evidence alone caps at `repeated`; `material`
+    # also needs >=1 substantiated thread. We approximate the spec's "thread
+    # relies on this relationship" by "thread implicates both subjects" — the
+    # thread_ref is only present on this pair because the finding named both.
     if score >= LEVEL_MATERIAL and substantiated >= 1:
         level = "material"
     elif score >= LEVEL_REPEATED:
@@ -213,29 +231,30 @@ def _collect_co_mentions(case, subjects, evidence):
 
     for doc_id, members in doc_subjects.items():
         present = [m for m in members if m in subjects]
+        # Each doc_id is processed once and each unordered (a, b) pair is visited
+        # once, so a given (pair, doc_id) is unique — no dedup guard needed.
         for i, a in enumerate(present):
             for b in present[i + 1 :]:
                 lo, hi, _ = pair_edge_id(a, b)
                 ev = evidence.setdefault((lo, hi), _new_evidence())
-                if doc_id not in ev["doc_ids"]:
-                    ev["doc_ids"].add(doc_id)
-                    ev["relationship_types"].add("CO_APPEARS_IN")
-                    ev["evidence_refs"].append(
-                        {
-                            "kind": "source_document",
-                            "document_id": doc_id,
-                            "label": "Shared source document",
-                            "category": "co_mentioned",
-                        }
-                    )
-                    ev["underlying"].append(
-                        {
-                            "kind": "CO_APPEARS_IN",
-                            "label": "Co-appears in document",
-                            "source": "co_mention",
-                            "source_id": doc_id,
-                        }
-                    )
+                ev["doc_ids"].add(doc_id)
+                ev["relationship_types"].add("CO_APPEARS_IN")
+                ev["evidence_refs"].append(
+                    {
+                        "kind": "source_document",
+                        "document_id": doc_id,
+                        "label": "Shared source document",
+                        "category": "co_mentioned",
+                    }
+                )
+                ev["underlying"].append(
+                    {
+                        "kind": "CO_APPEARS_IN",
+                        "label": "Co-appears in document",
+                        "source": "co_mention",
+                        "source_id": doc_id,
+                    }
+                )
 
 
 def _collect_roles(case, subjects, evidence):
@@ -264,15 +283,22 @@ def _collect_transactions(case, subjects, evidence):
 
     Properties are NOT nodes; the transaction is attributed to the buyer/seller
     subject pair. A transaction with only one side resolving to a case subject
-    contributes no edge (spec §"Property transaction summarization").
+    contributes no edge (spec §"Property transaction summarization"). The spec's
+    one-sided "metadata credit" for the resolved subject is deferred to the 1A
+    fast-follow; the skip is debug-logged so it can be told apart from a data bug.
     """
     qs = PropertyTransaction.objects.filter(property__case=case).select_related("property")
     for tx in qs:
         buyer = str(tx.buyer_id) if tx.buyer_id else None
         seller = str(tx.seller_id) if tx.seller_id else None
-        if not buyer or not seller:
-            continue
-        if buyer not in subjects or seller not in subjects:
+        if not buyer or not seller or buyer not in subjects or seller not in subjects:
+            logger.debug(
+                "case_map: tx %s skipped — a side did not resolve to a case subject "
+                "(buyer=%s seller=%s)",
+                tx.id,
+                buyer,
+                seller,
+            )
             continue
         lo, hi, _ = pair_edge_id(buyer, seller)
         ev = evidence.setdefault((lo, hi), _new_evidence())
@@ -298,7 +324,12 @@ def _collect_transactions(case, subjects, evidence):
 
 
 def _collect_relationships(case, subjects, evidence):
-    """Manual/person Relationship rows → family_or_personal evidence."""
+    """Manual/person Relationship rows → family_or_personal evidence.
+
+    NOTE: every Relationship row currently sets `has_family` regardless of
+    `relationship_type`. Splitting business/personal into a separate
+    `business_association` category is part of the 1A fast-follow.
+    """
     qs = Relationship.objects.filter(case=case).select_related("person_a", "person_b")
     for rel in qs:
         a, b = str(rel.person_a_id), str(rel.person_b_id)
@@ -346,11 +377,16 @@ def _subject_ids_from_finding(finding, subjects, txn_pairs):
     """
     ids = set()
     for el in finding.entity_links.all():
+        # Rules that trigger on a property/financial_instrument link that record
+        # as a FindingEntity — skip non-subject entity types explicitly (their
+        # subjects come from the evidence_snapshot paths below).
+        if el.entity_type not in ("person", "organization"):
+            continue
         sid = str(el.entity_id)
         if sid in subjects:
             ids.add(sid)
 
-    snap = finding.evidence_snapshot or {}
+    snap = _snapshot(finding)
     for key in ("buyer_id", "seller_id", "matched_entity_id"):
         val = snap.get(key)
         if val and str(val) in subjects:
@@ -374,7 +410,12 @@ def _collect_threads(case, subjects, evidence):
 
     Subjects are inferred via _subject_ids_from_finding (FindingEntity +
     evidence_snapshot + underlying transactions), because real rules often
-    trigger on a property/document, not on the subjects themselves.
+    trigger on a property/document, not on the subjects themselves. Also sets the
+    per-node thread flags (`has_active_thread`, `has_substantiated_thread`) and
+    `metadata.thread_count` — this is the only place those are populated.
+
+    `document_links` is prefetched so `is_referral_grade`'s `.exists()` check uses
+    the prefetch cache instead of issuing one query per finding (avoids an N+1).
     """
     from .signal_rules import _RULE_TO_SIGNAL_TYPE
 
@@ -382,10 +423,23 @@ def _collect_threads(case, subjects, evidence):
     findings = (
         Finding.objects.filter(case=case)
         .exclude(status=FindingStatus.DISMISSED)
-        .prefetch_related("entity_links")
+        .prefetch_related("entity_links", "document_links")
     )
     for f in findings:
         subj_ids = sorted(_subject_ids_from_finding(f, subjects, txn_pairs))
+        if not subj_ids:
+            # A rule-generated finding that resolves to no case subject never
+            # reaches the Case Map — surface it so it can be diagnosed (vs. a
+            # silent drop). Manual findings with no subjects are expected/quiet.
+            if f.rule_id:
+                logger.warning(
+                    "case_map: finding %s (rule=%s, status=%s) resolved to zero "
+                    "subject pairs — check entity_links and evidence_snapshot keys",
+                    f.id,
+                    f.rule_id,
+                    f.status,
+                )
+            continue
         handoff = is_referral_grade(f)
         for sid in subj_ids:
             node = subjects[sid]
@@ -393,7 +447,7 @@ def _collect_threads(case, subjects, evidence):
             node["metadata"]["thread_count"] += 1
             if f.status == FindingStatus.CONFIRMED:
                 node["flags"]["has_substantiated_thread"] = True
-        snap = f.evidence_snapshot or {}
+        snap = _snapshot(f)
         ref = {
             "thread_id": str(f.id),
             "title": f.title,
@@ -409,7 +463,7 @@ def _collect_threads(case, subjects, evidence):
                 evidence.setdefault((lo, hi), _new_evidence())["thread_refs"].append(ref)
 
 
-def _build_edges(evidence, subjects):
+def _build_edges(evidence):
     edges = []
     for (lo, hi), ev in evidence.items():
         strength = score_evidence(ev)
@@ -431,13 +485,13 @@ def _build_edges(evidence, subjects):
 
 
 def _build_stats(nodes, edges):
-    by_level = Counter({"observed": 0, "documented": 0, "repeated": 0, "material": 0})
+    by_level = {"observed": 0, "documented": 0, "repeated": 0, "material": 0}
     for e in edges:
         by_level[e["strength"]["level"]] += 1
     return {
         "subject_count": len(nodes),
         "edge_count": len(edges),
-        "by_level": dict(by_level),
+        "by_level": by_level,
         "material_edge_count": by_level["material"],
         "handoff_edge_count": sum(1 for e in edges if e["strength"]["handoff_included"]),
         "generated_at": timezone.now().isoformat(),
@@ -452,7 +506,7 @@ def build_case_map(case):
     _collect_transactions(case, subjects, evidence)
     _collect_relationships(case, subjects, evidence)
     _collect_threads(case, subjects, evidence)
-    edges = _build_edges(evidence, subjects)
+    edges = _build_edges(evidence)
     nodes = list(subjects.values())
     return {
         "case_id": str(case.id),

@@ -1,6 +1,8 @@
+import json
 import uuid
 
 from django.test import TestCase
+from django.urls import reverse
 
 from investigations.case_map import (
     _new_evidence,
@@ -18,6 +20,7 @@ from investigations.models import (
     FindingStatus,
     Organization,
     OrganizationStatus,
+    OrgDocument,
     Person,
     PersonDocument,
     PersonOrganization,
@@ -155,6 +158,21 @@ class CoMentionEdgeTests(TestCase):
         self.assertIn("co_mentioned", edge["strength"]["categories"])
         self.assertEqual(edge["strength"]["source_count"], 1)
         self.assertEqual(result["stats"]["by_level"]["observed"], 1)
+        # reasons is the user-facing truth (spec §4) — assert its content, not just presence
+        self.assertIn("Appears together in 1 source document", edge["strength"]["reasons"])
+        # node document_count metadata reflects the linked document
+        node = {n["id"]: n for n in result["nodes"]}[str(self.a.id)]
+        self.assertEqual(node["metadata"]["document_count"], 1)
+
+    def test_org_org_shared_doc_makes_edge(self):
+        o1 = Organization.objects.create(case=self.case, name="Org One")
+        o2 = Organization.objects.create(case=self.case, name="Org Two")
+        d = _doc(self.case, "b")
+        OrgDocument.objects.create(org=o1, document=d)
+        OrgDocument.objects.create(org=o2, document=d)
+        edges = build_case_map(self.case)["edges"]
+        lo, hi, eid = pair_edge_id(o1.id, o2.id)
+        self.assertIn(eid, {e["id"] for e in edges})
 
 
 class FormalRoleTests(TestCase):
@@ -200,7 +218,10 @@ class PropertyTransactionTests(TestCase):
         lo, hi, eid = pair_edge_id(self.buyer.id, self.seller.id)
         self.assertEqual(edge["id"], eid)
         self.assertEqual(edge["strength"]["transaction_count"], 1)
+        # single direct transaction (25 pts) lands in the documented band (20-49)
+        self.assertEqual(edge["strength"]["level"], "documented")
         self.assertIn("transaction", edge["strength"]["categories"])
+        self.assertEqual(edge["strength"]["relationship_types"], ["PURCHASED"])
         kinds = [u["source"] for u in edge["underlying_relationships"]]
         self.assertIn("property_transaction", kinds)
 
@@ -345,10 +366,14 @@ class ThreadAttachmentTests(TestCase):
         )  # makes is_referral_grade True -> handoff_ready
         self._link(f, self.insider, "person")
         self._link(f, self.org, "organization")
-        edge = build_case_map(self.case)["edges"][0]
+        result = build_case_map(self.case)
+        edge = result["edges"][0]
         self.assertEqual(edge["strength"]["level"], "material")
         self.assertTrue(edge["strength"]["handoff_included"])
         self.assertEqual(edge["strength"]["substantiated_thread_count"], 1)
+        # stats roll-ups reflect the material + handoff edge
+        self.assertEqual(result["stats"]["material_edge_count"], 1)
+        self.assertEqual(result["stats"]["handoff_edge_count"], 1)
 
     def test_dismissed_thread_is_ignored(self):
         f = Finding.objects.create(
@@ -361,3 +386,75 @@ class ThreadAttachmentTests(TestCase):
         self._link(f, self.org, "organization")
         # no other evidence -> no thread ref, and pair has no other evidence -> no edge
         self.assertEqual(build_case_map(self.case)["edges"], [])
+
+    def test_dismissed_thread_excluded_but_independent_edge_survives(self):
+        # An independent role edge exists between the same pair; the dismissed
+        # thread must be excluded from thread_refs WITHOUT removing the edge.
+        PersonOrganization.objects.create(person=self.insider, org=self.org, role="Board")
+        f = Finding.objects.create(
+            case=self.case, rule_id="SR-015", title="x", status=FindingStatus.DISMISSED
+        )
+        self._link(f, self.insider, "person")
+        self._link(f, self.org, "organization")
+        edges = build_case_map(self.case)["edges"]
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0]["thread_refs"], [])
+        self.assertEqual(edges[0]["strength"]["level"], "documented")  # role only
+
+    def test_confirmed_thread_sets_has_substantiated_thread_flag(self):
+        f = Finding.objects.create(
+            case=self.case, rule_id="MANUAL", title="t", status=FindingStatus.CONFIRMED
+        )
+        self._link(f, self.insider, "person")
+        self._link(f, self.org, "organization")
+        node = {n["id"]: n for n in build_case_map(self.case)["nodes"]}[str(self.insider.id)]
+        self.assertTrue(node["flags"]["has_substantiated_thread"])
+
+    def test_two_threads_on_one_pair_accumulate(self):
+        for title in ("t1", "t2"):
+            f = Finding.objects.create(
+                case=self.case,
+                rule_id="MANUAL",
+                title=title,
+                status=FindingStatus.NEEDS_EVIDENCE,
+            )
+            self._link(f, self.insider, "person")
+            self._link(f, self.org, "organization")
+        edge = build_case_map(self.case)["edges"][0]
+        self.assertEqual(len(edge["thread_refs"]), 2)
+        self.assertEqual(edge["strength"]["thread_count"], 2)
+        node = {n["id"]: n for n in build_case_map(self.case)["nodes"]}[str(self.org.id)]
+        self.assertEqual(node["metadata"]["thread_count"], 2)
+
+
+class CaseMapEndpointContractTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.p = Person.objects.create(case=self.case, full_name="A")
+        self.o = Organization.objects.create(case=self.case, name="B")
+        PersonOrganization.objects.create(person=self.p, org=self.o, role="Board")
+
+    def test_endpoint_returns_locked_contract(self):
+        url = reverse("api_case_map", args=[self.case.id])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.content)
+        self.assertEqual(body["case_id"], str(self.case.id))
+        # stats coherence: by_level sums to edge_count
+        self.assertEqual(
+            sum(body["stats"]["by_level"].values()),
+            body["stats"]["edge_count"],
+        )
+        # every edge id is "{min}__{max}" with sorted endpoints
+        for e in body["edges"]:
+            self.assertEqual(e["id"], f"{e['source']}__{e['target']}")
+            self.assertLess(e["source"], e["target"])
+            for key in (
+                "score",
+                "level",
+                "categories",
+                "reasons",
+                "substantiated_thread_count",
+                "handoff_included",
+            ):
+                self.assertIn(key, e["strength"])
