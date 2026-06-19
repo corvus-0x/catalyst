@@ -1035,6 +1035,39 @@ class FindingUpdateSerializer:
                 return False
             self.validated_data["narrative_source"] = ns
 
+        # --- Tie-off gate -----------------------------------------------------
+        # Fire ONLY on a genuine transition into CONFIRMED. Editing an already
+        # confirmed angle never re-gates (condition loss is allowed).
+        if self.instance.status != FindingStatus.CONFIRMED and new_status == FindingStatus.CONFIRMED:
+            existing = set(
+                self.instance.document_links.values_list("document_id", flat=True)
+            )
+            add = {d.id for d in self._documents_to_add}
+            remove = {d.id for d in self._documents_to_remove}
+            post_docs = (existing | add) - remove
+
+            post_weight = self.validated_data.get(
+                "evidence_weight", self.instance.evidence_weight
+            )
+            post_narrative = self.validated_data.get("narrative", self.instance.narrative)
+            post_overreach = self.validated_data.get(
+                "overreach_reviewed", self.instance.overreach_reviewed
+            )
+
+            unmet = []
+            if not post_docs:
+                unmet.append("citation")
+            if post_weight not in (EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED):
+                unmet.append("evidence_weight")
+            if not (post_narrative or "").strip():
+                unmet.append("narrative")
+            if not post_overreach:
+                unmet.append("overreach")
+
+            if unmet:
+                self._errors = {"gate": {"unmet": unmet}}
+                return False
+
         return True
 
     def save(self) -> Finding:
