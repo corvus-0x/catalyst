@@ -1038,7 +1038,11 @@ class FindingUpdateSerializer:
         # --- Tie-off gate -----------------------------------------------------
         # Fire ONLY on a genuine transition into CONFIRMED. Editing an already
         # confirmed angle never re-gates (condition loss is allowed).
-        if self.instance.status != FindingStatus.CONFIRMED and new_status == FindingStatus.CONFIRMED:
+        transitioning_to_confirmed = (
+            self.instance.status != FindingStatus.CONFIRMED
+            and new_status == FindingStatus.CONFIRMED
+        )
+        if transitioning_to_confirmed:
             existing = set(
                 self.instance.document_links.values_list("document_id", flat=True)
             )
