@@ -94,8 +94,11 @@ overreach_reviewed = models.BooleanField(default=False)
   `AuditLog` row. **Important:** the finding PATCH path (`api_case_finding_detail`,
   `views.py:3407`) currently writes only `AuditAction.FINDING_UPDATED`; it does **not** write
   `SIGNAL_CONFIRMED` today. This work adds emission of `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on
-  the status transition (see §6), alongside the existing `FINDING_UPDATED`. The referral PDF then
-  queries the latest `SIGNAL_CONFIRMED` row per confirmed angle at render time.
+  the status transition (see §6), alongside the existing `FINDING_UPDATED`. **This PR emits the
+  audit rows** so the provenance data exists from day one. **Rendering the printed "Tied off by
+  X on Y" line in the PDF is deferred** — `referral_export.py:391` (`_build_findings_section`)
+  takes only `findings` and has no audit data; wiring it to query/receive the `SIGNAL_CONFIRMED`
+  rows is a small follow-up (see §12), not this slice.
 
 ## 6. The gate (backend enforcement)
 
@@ -180,8 +183,12 @@ credibility = {
 - **Harden `TieOffModal`** into the gate's display layer:
   - Add the **overreach checklist** — the three §7.2 statements — as a required acknowledgement
     that sets `overreach_reviewed: true` in the PATCH body.
-  - Send `overreach_reviewed` (and `add_document_ids` when citing inline) in `handleConfirm`
-    (today it sends neither — required for confirms to pass the new gate).
+  - Send `overreach_reviewed` in `handleConfirm` (today it sends none of the gate inputs).
+    **No inline cite picker in this slice.** TieOffModal does not gain a document-selection UI;
+    citations are added via the item-1 feeder flow (Financials/Timeline/Documents → Cite). If an
+    angle has no citation at tie-off, the gate blocks and the modal says so — the investigator
+    cites via a feeder and returns. (Avoids inventing a new UI surface; revisit only if a later
+    slice adds in-modal citation.)
   - **Preview, don't decide:** disable Confirm and list unmet conditions by reading the same
     conditions locally; the server stays authoritative. If the preview is stale/wrong, render the
     400's `gate.unmet` as fallback truth.
@@ -218,7 +225,13 @@ credibility = {
   - credibility triplet math;
   - PDF filter excludes overreach-unreviewed confirmed angles;
   - readiness reads BLOCKED when the only confirmed angles are overreach-unreviewed;
-  - `rule_id` is unchanged by a tie-off PATCH (never in `allowed_fields`).
+  - `rule_id` is unchanged by a tie-off PATCH (never in `allowed_fields`);
+  - a status transition emits a `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` audit row.
+- **Existing tests will break and must be updated (not just added to):** fixtures in
+  `test_referral_pdf.py` and `test_referral_readiness.py` create confirmed findings **without**
+  `overreach_reviewed=True`; under the new predicate those angles are no longer referral-grade, so
+  the PDF/readiness assertions will fail until the fixtures set `overreach_reviewed=True` (and a
+  citation + DOCUMENTED/TRACED weight) where they intend a referable angle.
 - **Tests (frontend — Vitest):** `TieOffModal` behavioral tests replacing the current
   render-only ones — Confirm disabled until all conditions met, overreach acknowledgment toggles
   the gate, dismissal rationale still required, successful confirm sends `overreach_reviewed`,
@@ -247,8 +260,15 @@ Verified file/line anchors so the plan doesn't re-discover them:
 - `views.py:2271` (readiness) + `:6039` (PDF filter) — centralize the **one** referral-grade
   predicate; both call it.
 - `views.py:3407` — emit `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on status transition.
-- dashboard payload + `frontend/src/types/index.ts:318` — add `credibility`.
-- `base.ts:46` — `ApiError.body`; `fetchApi` populates it on non-2xx.
+- dashboard payload + `frontend/src/types/index.ts` — TS type coverage:
+  - `FindingItem.overreach_reviewed: boolean`,
+  - `UpdateFindingBody.overreach_reviewed?: boolean`,
+  - new `CredibilityCounts { referral_grade; need_work; agency_leads }` + `DashboardResponse.credibility` (`:318`),
+  - **fix phantom `AuditAction`** (`:1050`): backend emits only `SIGNAL_CONFIRMED`/`SIGNAL_DISMISSED`
+    (models.py:1413-1414); the TS type currently lists `FINDING_CONFIRMED`/`FINDING_DISMISSED`,
+    which the backend never produces. Add the real codes (and drop/justify the phantom ones) so
+    the activity feed types the rows this PR starts emitting.
+- `base.ts:46` — `ApiError.body: unknown` (parsed JSON); `fetchApi` populates it on non-2xx.
 - `TieOffModal.tsx` — overreach checklist, send `overreach_reviewed`, render gate errors,
   read-only rule label.
 - `InvestigateTab.tsx:240` — `CaseQualityPanel` leads with credibility counts (keep `quality` in API).
@@ -261,8 +281,12 @@ Verified file/line anchors so the plan doesn't re-discover them:
 - `index.css:1762` — `.tieoff-select*` after the select is gone.
 - `TieOffModal.test.tsx:28` — replace render-only tests with behavioral ones.
 
-**Correct stale docs**
+**Correct stale docs / contract**
 - `frontend-design-spec.md:542` still says tie-off sends `rule_id=<selected>` — correct when this lands.
+- `api-contract.md:586` — add/adjust: `FindingItem.overreach_reviewed`,
+  `UpdateFindingBody.overreach_reviewed`, `DashboardResponse.credibility`, readiness semantics
+  now keyed on referral-grade, the `400 {"errors": {"gate": {"unmet": [...]}}}` shape, and that
+  tie-off shows `rule_id` read-only and never PATCHes it.
 
 ## 12. Out of scope (defer)
 
@@ -271,3 +295,6 @@ Verified file/line anchors so the plan doesn't re-discover them:
 - Context-panel three-state + idle "what's missing" → item 3.
 - Connectedness warning (WS-GAP-1) → item 5.
 - Whether `overreach_reviewed` later enables connectedness graduating warning→gate → deferred (§13).
+- **Printed PDF tie-off attribution line** ("Tied off by X on Y" in `_build_findings_section`,
+  `referral_export.py:391`) → small follow-up. The `SIGNAL_CONFIRMED` audit rows it will read are
+  emitted by *this* PR; only the render is deferred.
