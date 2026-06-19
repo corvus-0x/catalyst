@@ -10,6 +10,7 @@ from collections import Counter
 from django.utils import timezone
 
 from .models import (
+    Finding,
     FindingStatus,
     Organization,
     OrganizationStatus,
@@ -20,6 +21,7 @@ from .models import (
     PropertyTransaction,
     Relationship,
 )
+from .referral_grade import is_referral_grade
 
 # ── Scoring constants (spec §"First Scoring Formula") ──
 CO_MENTION_FIRST = 10
@@ -316,6 +318,97 @@ def _collect_relationships(case, subjects, evidence):
         )
 
 
+def _txn_subject_pairs(case):
+    """Map transaction id -> set of its buyer/seller subject ids (as strings).
+
+    Lets thread inference recover a subject pair from a Finding that references a
+    transaction only by id (e.g. SR-025's evidence_snapshot.transaction_examples).
+    """
+    pairs = {}
+    for tx in PropertyTransaction.objects.filter(property__case=case):
+        ids = set()
+        if tx.buyer_id:
+            ids.add(str(tx.buyer_id))
+        if tx.seller_id:
+            ids.add(str(tx.seller_id))
+        pairs[str(tx.id)] = ids
+    return pairs
+
+
+def _subject_ids_from_finding(finding, subjects, txn_pairs):
+    """Infer the case-subject ids a Finding implicates, from three sources.
+
+    1. FindingEntity links (person/organization).
+    2. evidence_snapshot subject-id keys: buyer_id, seller_id, matched_entity_id.
+    3. evidence_snapshot transaction references resolved to buyer/seller subjects.
+
+    Only ids that resolve to an actual case subject are returned.
+    """
+    ids = set()
+    for el in finding.entity_links.all():
+        sid = str(el.entity_id)
+        if sid in subjects:
+            ids.add(sid)
+
+    snap = finding.evidence_snapshot or {}
+    for key in ("buyer_id", "seller_id", "matched_entity_id"):
+        val = snap.get(key)
+        if val and str(val) in subjects:
+            ids.add(str(val))
+
+    txn_ids = []
+    if snap.get("transaction_id"):
+        txn_ids.append(str(snap["transaction_id"]))
+    for ex in snap.get("transaction_examples") or []:
+        if isinstance(ex, dict) and ex.get("transaction_id"):
+            txn_ids.append(str(ex["transaction_id"]))
+    for tid in txn_ids:
+        for sid in txn_pairs.get(tid, ()):
+            if sid in subjects:
+                ids.add(sid)
+    return ids
+
+
+def _collect_threads(case, subjects, evidence):
+    """Attach non-dismissed Findings to every subject pair they implicate.
+
+    Subjects are inferred via _subject_ids_from_finding (FindingEntity +
+    evidence_snapshot + underlying transactions), because real rules often
+    trigger on a property/document, not on the subjects themselves.
+    """
+    from .signal_rules import _RULE_TO_SIGNAL_TYPE
+
+    txn_pairs = _txn_subject_pairs(case)
+    findings = (
+        Finding.objects.filter(case=case)
+        .exclude(status=FindingStatus.DISMISSED)
+        .prefetch_related("entity_links")
+    )
+    for f in findings:
+        subj_ids = sorted(_subject_ids_from_finding(f, subjects, txn_pairs))
+        handoff = is_referral_grade(f)
+        for sid in subj_ids:
+            node = subjects[sid]
+            node["flags"]["has_active_thread"] = True
+            node["metadata"]["thread_count"] += 1
+            if f.status == FindingStatus.CONFIRMED:
+                node["flags"]["has_substantiated_thread"] = True
+        snap = f.evidence_snapshot or {}
+        ref = {
+            "thread_id": str(f.id),
+            "title": f.title,
+            "status": f.status,
+            "severity": f.severity,
+            "rule_id": f.rule_id,
+            "signal_type": snap.get("signal_type") or _RULE_TO_SIGNAL_TYPE.get(f.rule_id, ""),
+            "handoff_ready": handoff,
+        }
+        for i, a in enumerate(subj_ids):
+            for b in subj_ids[i + 1 :]:
+                lo, hi, _ = pair_edge_id(a, b)
+                evidence.setdefault((lo, hi), _new_evidence())["thread_refs"].append(ref)
+
+
 def _build_edges(evidence, subjects):
     edges = []
     for (lo, hi), ev in evidence.items():
@@ -358,6 +451,7 @@ def build_case_map(case):
     _collect_roles(case, subjects, evidence)
     _collect_transactions(case, subjects, evidence)
     _collect_relationships(case, subjects, evidence)
+    _collect_threads(case, subjects, evidence)
     edges = _build_edges(evidence, subjects)
     nodes = list(subjects.values())
     return {

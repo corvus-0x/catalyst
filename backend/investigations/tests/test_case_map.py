@@ -11,6 +11,10 @@ from investigations.case_map import (
 from investigations.models import (
     Case,
     Document,
+    EvidenceWeight,
+    Finding,
+    FindingDocument,
+    FindingEntity,
     FindingStatus,
     Organization,
     OrganizationStatus,
@@ -228,3 +232,132 @@ class ManualRelationshipTests(TestCase):
             result["edges"][0]["underlying_relationships"][0]["source"],
             "manual_relationship",
         )
+
+
+class ThreadAttachmentTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.insider = Person.objects.create(case=self.case, full_name="Insider")
+        self.org = Organization.objects.create(case=self.case, name="Charity")
+
+    def _link(self, finding, subject, etype):
+        FindingEntity.objects.create(finding=finding, entity_id=subject.id, entity_type=etype)
+
+    def test_thread_via_finding_entity_subject_links(self):
+        # Simplest path: a Finding that DOES link both subjects directly.
+        f = Finding.objects.create(
+            case=self.case,
+            rule_id="MANUAL",
+            title="Manual thread",
+            status=FindingStatus.NEEDS_EVIDENCE,
+            severity="MEDIUM",
+        )
+        self._link(f, self.insider, "person")
+        self._link(f, self.org, "organization")
+        edge = build_case_map(self.case)["edges"][0]
+        self.assertEqual(edge["thread_refs"][0]["thread_id"], str(f.id))
+        node = {n["id"]: n for n in build_case_map(self.case)["nodes"]}[str(self.insider.id)]
+        self.assertTrue(node["flags"]["has_active_thread"])
+
+    def test_sr015_pair_inferred_from_evidence_buyer_seller(self):
+        # SR-015's FindingEntity / trigger is the PROPERTY. The subject pair lives
+        # in evidence_snapshot buyer_id/seller_id and must be inferred from there.
+        prop = Property.objects.create(case=self.case, address="1 Main")
+        tx = PropertyTransaction.objects.create(property=prop)
+        f = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-015",
+            title="Insider swap",
+            status=FindingStatus.NEEDS_EVIDENCE,
+            severity="HIGH",
+            trigger_entity_id=tx.property_id,
+            evidence_snapshot={
+                "buyer_id": str(self.org.id),
+                "seller_id": str(self.insider.id),
+            },
+        )
+        self._link(f, prop, "property")  # only the property is a FindingEntity
+        result = build_case_map(self.case)
+        edges = result["edges"]
+        self.assertEqual(len(edges), 1)
+        lo, hi, eid = pair_edge_id(self.org.id, self.insider.id)
+        self.assertEqual(edges[0]["id"], eid)
+        ref = edges[0]["thread_refs"][0]
+        self.assertEqual(ref["rule_id"], "SR-015")
+        # signal_type comes from the rule registry, not from evidence_snapshot
+        self.assertEqual(ref["signal_type"], "INSIDER_SWAP")
+
+    def test_sr025_pair_inferred_from_underlying_transaction(self):
+        # SR-025 (contradiction mode) has NO trigger entity and references the
+        # transaction only by id. The subject pair must be recovered by resolving
+        # transaction_examples -> PropertyTransaction -> buyer/seller subjects.
+        prop = Property.objects.create(case=self.case, address="2 Oak")
+        tx = PropertyTransaction.objects.create(
+            property=prop,
+            buyer_id=self.org.id,
+            buyer_type="ORGANIZATION",
+            seller_id=self.insider.id,
+            seller_type="PERSON",
+        )
+        Finding.objects.create(
+            case=self.case,
+            rule_id="SR-025",
+            title="990 denies related party",
+            status=FindingStatus.NEEDS_EVIDENCE,
+            severity="CRITICAL",
+            evidence_snapshot={
+                "denial_doc_id": "doc-uuid",
+                "transaction_examples": [{"transaction_id": str(tx.id)}],
+            },
+        )
+        # No subject FindingEntity links at all (trigger is the 990 document).
+        result = build_case_map(self.case)
+        lo, hi, eid = pair_edge_id(self.org.id, self.insider.id)
+        edge = {e["id"]: e for e in result["edges"]}[eid]
+        rule_ids = [t["rule_id"] for t in edge["thread_refs"]]
+        self.assertIn("SR-025", rule_ids)
+        self.assertEqual(edge["thread_refs"][0]["signal_type"], "RELATED_PARTY_TX")
+
+    def test_substantiated_thread_plus_evidence_reaches_material(self):
+        # role (30) + 2 tx (50) = 80 raw -> capped repeated; +substantiated thread -> material
+        PersonOrganization.objects.create(person=self.insider, org=self.org, role="Board")
+        prop = Property.objects.create(case=self.case, address="1 Main")
+        for _ in range(2):
+            PropertyTransaction.objects.create(
+                property=prop,
+                buyer_id=self.org.id,
+                buyer_type="ORGANIZATION",
+                seller_id=self.insider.id,
+                seller_type="PERSON",
+            )
+        f = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-015",
+            title="Insider swap",
+            status=FindingStatus.CONFIRMED,
+            severity="HIGH",
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=True,
+        )
+        FindingDocument.objects.create(
+            finding=f,
+            document=_doc(self.case, "q"),
+        )  # makes is_referral_grade True -> handoff_ready
+        self._link(f, self.insider, "person")
+        self._link(f, self.org, "organization")
+        edge = build_case_map(self.case)["edges"][0]
+        self.assertEqual(edge["strength"]["level"], "material")
+        self.assertTrue(edge["strength"]["handoff_included"])
+        self.assertEqual(edge["strength"]["substantiated_thread_count"], 1)
+
+    def test_dismissed_thread_is_ignored(self):
+        f = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-015",
+            title="x",
+            status=FindingStatus.DISMISSED,
+        )
+        self._link(f, self.insider, "person")
+        self._link(f, self.org, "organization")
+        # no other evidence -> no thread ref, and pair has no other evidence -> no edge
+        self.assertEqual(build_case_map(self.case)["edges"], [])
