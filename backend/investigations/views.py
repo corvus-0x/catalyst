@@ -2510,6 +2510,15 @@ def api_case_referral_readiness(request, pk):
     )
 
 
+@require_http_methods(["GET"])
+def api_case_map(request, pk):
+    """Summarized subject-pair Case Map (see case_map.build_case_map)."""
+    from .case_map import build_case_map
+
+    case = get_object_or_404(Case, pk=pk)
+    return JsonResponse(build_case_map(case))
+
+
 # ---------------------------------------------------------------------------
 # Signal API endpoints
 # ---------------------------------------------------------------------------

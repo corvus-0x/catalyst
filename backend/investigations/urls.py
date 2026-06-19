@@ -146,6 +146,11 @@ urlpatterns = [
         name="api_case_referral_readiness",
     ),
     path(
+        "api/cases/<uuid:pk>/case-map/",
+        views.api_case_map,
+        name="api_case_map",
+    ),
+    path(
         "api/cases/<uuid:pk>/findings/",
         views.api_case_finding_collection,
         name="api_case_finding_collection",
