@@ -505,6 +505,10 @@ export default function AngleView({
   const [showCapture, setShowCapture] = useState(false);
   const [savingCapture, setSavingCapture] = useState(false);
 
+  // Narrative save failure state — true when the last blur-save threw an error.
+  // Never allow a silent failure: tie-off reads the SERVER narrative, not local state.
+  const [narrativeSaveFailed, setNarrativeSaveFailed] = useState(false);
+
   // Snapshot of the last saved narrative — used to detect dirty state on blur
   const savedNarrativeRef = useRef("");
 
@@ -546,10 +550,13 @@ export default function AngleView({
       const updated = await updateAngle(caseId, angleId, { narrative });
       setFinding(updated);
       savedNarrativeRef.current = updated.narrative ?? "";
+      setNarrativeSaveFailed(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch {
-      // Leave local text intact — next blur will retry
+      // Never silent — the investigator must know the narrative is unsaved,
+      // because tie-off reads the SERVER narrative, not this local text.
+      setNarrativeSaveFailed(true);
     }
   }
 
@@ -653,6 +660,8 @@ export default function AngleView({
   const isAiFinding = finding?.source === "AI";
   const isTiedOff = finding?.status === "CONFIRMED" || finding?.status === "DISMISSED";
   const citedDocCount = finding?.document_links?.length ?? 0;
+  // Guard tie-off against unsaved narrative: server reads finding.narrative, not local state.
+  const narrativeUnsaved = narrative !== savedNarrativeRef.current || narrativeSaveFailed;
 
   // ---------------------------------------------------------------------------
   // Loading state
@@ -772,13 +781,15 @@ export default function AngleView({
         <button
           type="button"
           className="toolbar-btn"
-          onClick={() => setShowTieOff(true)}
-          disabled={isTiedOff}
+          disabled={isTiedOff || narrativeUnsaved}
           title={
             isTiedOff
               ? "This angle is already tied off."
+              : narrativeUnsaved
+              ? "Save the narrative before tying off."
               : "Tie off this angle with a final status"
           }
+          onClick={() => setShowTieOff(true)}
         >
           <ChevronDown size={12} aria-hidden="true" />
           Tie off
@@ -850,6 +861,12 @@ export default function AngleView({
               placeholder="Build the narrative for this angle. Use [Doc-1], [Doc-2], … to cite documents."
               aria-label="Angle narrative"
             />
+            {narrativeSaveFailed && (
+              <p className="angle-narrative-error" role="alert">
+                Couldn't save the narrative — your changes are unsaved. Fix your connection and
+                click out of the field again before tying off.
+              </p>
+            )}
           </div>
 
           {/* Cited documents */}
