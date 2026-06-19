@@ -183,6 +183,11 @@ interface CaseListResponse {
         "target_tab": "investigate"
       }
     ]
+  },
+  "credibility": {
+    "referral_grade": 2,
+    "need_work": 1,
+    "agency_leads": 0
   }
 }
 ```
@@ -192,6 +197,14 @@ interface CaseListResponse {
 - `timeline` is `Array<{year: number, revenue: string, expenses: string}>`.
 - `top_rules` is `Array<{rule_id: string, summary: string, count: number}>`.
 - `quality` is the same case-quality object returned by `/referral-readiness/`.
+- `credibility` — the triplet summary for the case header badge: `referral_grade` (angles that pass the tie-off gate), `need_work` (all other confirmed + active angles), and `agency_leads` (reserved for future RecipientGap feature; currently 0).
+```typescript
+interface DashboardCredibility {
+  referral_grade: number;  // Confirmed + tied-off angles (overreach_reviewed: true)
+  need_work: number;       // Active (NEW/NEEDS_EVIDENCE) + confirmed but not referral-grade
+  agency_leads: number;    // Reserved; currently always 0
+}
+```
 
 ### GET /api/cases/:id/graph/
 
@@ -590,6 +603,7 @@ Query params:
       "severity": "CRITICAL",
       "status": "CONFIRMED",
       "evidence_weight": "DOCUMENTED",
+      "overreach_reviewed": false,
       "source": "AUTO",
       "investigator_note": "Cross-referenced deed with 990 Part VII officer list.",
       "legal_refs": ["26 USC 4958", "Ohio Rev. Code 1716.15"],
@@ -630,9 +644,10 @@ Query params:
 ```
 
 **Key field notes:**
-- `rule_id` — `"SR-015"` for auto-detected rules; `"MANUAL"` for investigator-created; `"AI"` for AI pattern analysis results
+- `rule_id` — `"SR-015"` for auto-detected rules; `"MANUAL"` for investigator-created; `"AI"` for AI pattern analysis results. Read-only; never PATCHed.
 - `source` — `"AUTO"` | `"MANUAL"` | `"AI"` — this is the filter chip selector on the Pipeline tab
 - `evidence_weight` — `"SPECULATIVE"` | `"DIRECTIONAL"` | `"DOCUMENTED"` | `"TRACED"`
+- `overreach_reviewed` — boolean. Set to `true` when the investigator acknowledges that a confirmed angle's potential overreach is intentional and justified. Required to transition a CONFIRMED angle with `evidence_weight` ≥ `"DOCUMENTED"` into referral-grade. Returned on every Finding and PATCHable.
 - `status` — `"NEW"` | `"NEEDS_EVIDENCE"` | `"DISMISSED"` | `"CONFIRMED"`
 - `severity` — `"CRITICAL"` | `"HIGH"` | `"MEDIUM"` | `"LOW"` | `"INFORMATIONAL"`
 - `narrative` — free text; investigator writes this on the Angle view. May be empty string.
@@ -681,7 +696,7 @@ Creates a manual finding. **Body:**
 ### PATCH /api/cases/:id/findings/:finding_id/
 
 Updates status, narrative, narrative_source, evidence_weight, severity, investigator_note, title,
-legal_refs, and cited document links.  
+legal_refs, overreach_reviewed, and cited document links.  
 **Body:** any subset of the above fields.
 
 Citation link fields:
@@ -701,9 +716,27 @@ citation rows but does not delete the underlying documents.
 - Omit `narrative_source` for human edits — the backend auto-transitions `AI_DRAFT` → `AI_ASSISTED`.
 - Pass `narrative_source: "HUMAN"` to explicitly mark a full human rewrite of an AI draft.
 
-**Validation rule:** setting `status: "DISMISSED"` requires a non-empty `investigator_note`.
+**Validation rules:**
+- Setting `status: "DISMISSED"` requires a non-empty `investigator_note`.
+- Transitioning to `status: "CONFIRMED"` enforces a **referral-grade gate** (Session 47): the finding must satisfy ALL of:
+  1. At least one cited document: `document_links` is non-empty after PATCH
+  2. Evidence weight: `evidence_weight` is `"DOCUMENTED"` or `"TRACED"`
+  3. Non-empty narrative: `narrative` is present and non-empty
+  4. Overreach acknowledgement: `overreach_reviewed` is `true`
 
-**Response:** ✅ — full Finding object.
+**Gate failure response:** `400 Bad Request`
+```json
+{
+  "errors": {
+    "gate": {
+      "unmet": ["citation", "evidence_weight", "narrative", "overreach"]
+    }
+  }
+}
+```
+The `unmet` array lists which constraints failed. Frontend must surface these and block export until all are satisfied.
+
+**Response:** ✅ — full Finding object (on success).
 
 ### DELETE /api/cases/:id/findings/:finding_id/
 
@@ -772,10 +805,74 @@ Returns a conservative checklist showing whether the case is ready for referral 
   "summary": "This case is ready for referral export.",
   "items": [
     {
+      "key": "referral_target",
+      "label": "Referral target",
+      "status": "PASS" | "FAIL",
+      "summary": "1 referral target selected.",
+      "count": 1,
+      "target_tab": "referrals"
+    },
+    {
+      "key": "confirmed_angles",
+      "label": "Confirmed angles",
+      "status": "PASS" | "FAIL",
+      "summary": "2 referral-grade angles ready for referral.",
+      "count": 2,
+      "target_tab": "investigate"
+    },
+    {
       "key": "citation_coverage",
       "label": "Citation coverage",
-      "status": "PASS" | "WARN" | "FAIL",
+      "status": "PASS" | "FAIL",
       "summary": "Every confirmed angle has at least one cited document.",
+      "count": 0,
+      "target_tab": "investigate"
+    },
+    {
+      "key": "evidence_weight",
+      "label": "Referral evidence weight",
+      "status": "PASS" | "WARN" | "FAIL",
+      "summary": "All confirmed angles are documented or traced.",
+      "count": 0,
+      "target_tab": "investigate"
+    },
+    {
+      "key": "pending_connections",
+      "label": "Pending connections",
+      "status": "PASS" | "WARN",
+      "summary": "No pending connection reviews.",
+      "count": 0,
+      "target_tab": "investigate"
+    },
+    {
+      "key": "pending_extraction",
+      "label": "Pending Intake",
+      "status": "PASS" | "WARN",
+      "summary": "No source documents are waiting on Intake.",
+      "count": 0,
+      "target_tab": "investigate"
+    },
+    {
+      "key": "failed_extraction",
+      "label": "Failed Intake",
+      "status": "PASS" | "FAIL",
+      "summary": "No source documents have failed Intake.",
+      "count": 0,
+      "target_tab": "investigate"
+    },
+    {
+      "key": "active_jobs",
+      "label": "Active research",
+      "status": "PASS" | "WARN",
+      "summary": "No active research jobs.",
+      "count": 0,
+      "target_tab": "research"
+    },
+    {
+      "key": "overreach_review",
+      "label": "Overreach review",
+      "status": "PASS" | "WARN",
+      "summary": "All cited, documented angles have passed overreach review.",
       "count": 0,
       "target_tab": "investigate"
     }
@@ -785,6 +882,11 @@ Returns a conservative checklist showing whether the case is ready for referral 
     "status": "READY",
     "grade": "Strong",
     "top_issues": []
+  },
+  "credibility": {
+    "referral_grade": 2,
+    "need_work": 0,
+    "agency_leads": 0
   }
 }
 ```
@@ -793,6 +895,10 @@ Returns a conservative checklist showing whether the case is ready for referral 
 - `BLOCKED` — at least one checklist item is `FAIL`; do not generate the referral package.
 - `NEEDS_REVIEW` — no blockers, but at least one item is `WARN`.
 - `READY` — every checklist item is `PASS`.
+
+**Confirmed angles semantics:**
+- An angle passes `confirmed_angles` only if it is **referral-grade**: `status: "CONFIRMED"` AND `overreach_reviewed: true` AND `evidence_weight` in `["DOCUMENTED", "TRACED"]` AND has at least one cited document.
+- Angles that are CONFIRMED but fail any of these gates appear in `need_work` on the credibility triplet but DO NOT PASS the `confirmed_angles` readiness item (which is a FAIL if count is 0).
 
 **TypeScript implication:**
 ```typescript
