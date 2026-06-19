@@ -62,6 +62,7 @@ class ReferralPdfTests(TestCase):
             severity=Severity.CRITICAL,
             status=FindingStatus.CONFIRMED,
             evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=True,
             narrative="Related party on both sides of the transaction.",
         )
         FindingEntity.objects.create(
@@ -103,3 +104,26 @@ class ReferralPdfTests(TestCase):
         )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 404)
+
+    def test_pdf_excludes_overreach_unreviewed_confirmed(self):
+        # A confirmed, documented, cited angle that is NOT overreach-reviewed
+        # must not appear in the package (and must not satisfy readiness alone).
+        case = Case.objects.create(name="PDF excl")
+        ReferralTarget.objects.create(
+            case=case, agency_name="Ohio AG", complaint_type="Charitable fraud",
+        )
+        f = Finding.objects.create(
+            case=case, rule_id="MANUAL", title="Unreviewed",
+            status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=False, narrative="n",
+        )
+        FindingDocument.objects.create(
+            finding=f,
+            document=Document.objects.create(
+                case=case, filename="d.pdf", file_path="cases/t/d.pdf",
+                sha256_hash="q" * 64, file_size=1024,
+            ),
+        )
+        resp = self.client.post(f"/api/cases/{case.pk}/referral-pdf/")
+        # Zero referral-grade angles => readiness BLOCKED => 400.
+        self.assertEqual(resp.status_code, 400, resp.content)

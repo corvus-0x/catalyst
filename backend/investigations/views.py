@@ -6121,12 +6121,10 @@ def api_case_referral_pdf(request, pk):
             status=400,
         )
 
+    from .referral_grade import referral_grade_qs
+
     findings_qs = (
-        Finding.objects.filter(
-            case=case,
-            status=FindingStatus.CONFIRMED,
-            evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
-        )
+        referral_grade_qs(case)
         .prefetch_related("entity_links", "document_links")
         .order_by("-severity", "created_at")
     )
