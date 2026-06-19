@@ -327,6 +327,40 @@ interface GraphResponse {
 }
 ```
 
+### GET /api/cases/:id/case-map/
+
+**Added Session 49 (PR #13). Backend-ahead — no frontend client yet (Phase 1B).**
+Distinct from `/graph/`: returns **one summarized relationship edge per subject pair**
+(Person/Org only; property + financial-instrument records are *evidence*, never nodes), each
+with an explainable `strength` object. `/graph/` is unchanged and still powers the Timeline.
+
+**Authoritative shape:** the "Locked v1 `/case-map/` contract" in
+`docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md` §4. Key invariants:
+
+- Edge id is `"{minId}__{maxId}"` (subject UUIDs sorted lexicographically) — stable +
+  order-independent, so the frontend can key selection state off it.
+- `strength.level ∈ {observed, documented, repeated, material}`; `material` requires
+  `score ≥ 80` **and** `substantiated_thread_count ≥ 1` (raw evidence alone caps at `repeated`).
+- `thread_refs[].handoff_ready` = the referral-grade tie-off predicate (not bare CONFIRMED).
+- `strength.reasons` is the user-facing truth; `score` is internal (sort + edge thickness).
+- Top-level `stats.by_level` sums to `stats.edge_count`.
+
+```ts
+interface CaseMapResponse {
+  case_id: UUID;
+  nodes: CaseMapNode[];   // {id, type:"person"|"organization", label, subtype,
+                          //  flags:{status_unknown,has_active_thread,has_substantiated_thread},
+                          //  metadata:{thread_count,document_count}}
+  edges: CaseMapEdge[];   // {id, source, target, relationship:"SUMMARY", label, state,
+                          //  strength:{score,level,categories,source_count,transaction_count,
+                          //   role_count,thread_count,substantiated_thread_count,handoff_included,
+                          //   relationship_types,reasons}, evidence_refs, thread_refs,
+                          //   underlying_relationships}
+  stats: { subject_count: number; edge_count: number; by_level: Record<string, number>;
+           material_edge_count: number; handoff_edge_count: number; generated_at: ISO8601 };
+}
+```
+
 ---
 
 ## 3. Case Detail — Documents Tab

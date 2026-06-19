@@ -60,6 +60,7 @@ Catalyst/
 │   │   ├── entity_normalization.py ← Name/EIN/address standardization
 │   │   ├── signal_rules.py      ← 15 active fraud detection rules
 │   │   ├── referral_grade.py    ← Referral-grade predicate (tie-off gate) — one def, 3 call sites
+│   │   ├── case_map.py          ← Case Map builder: summarized subject-pair edges + strength (Phase 1A)
 │   │   ├── data_quality.py      ← Data validation + audit logging
 │   │   ├── ai_extraction.py     ← Claude AI entity/financial extraction
 │   │   ├── ai_proxy.py          ← Claude API wrapper with caching

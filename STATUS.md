@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-06-19 (Session 48 — case-workspace build item 2 "tie-off gate + credibility counts" shipped (PR #12, squash-merged to `main`): a server-enforced referral-grade gate, one shared predicate driving readiness + the credibility triplet header + the PDF export filter, stored `overreach_reviewed` field, SIGNAL_CONFIRMED/DISMISSED audit rows, and frontend silent-failure hardening on the stricter paths)
+**Last updated:** 2026-06-19 (Session 49 — Case Map redesign promoted to the **controlling plan** (supersedes the context-panel item-3 state-swap; keeps its focus reducer + "What's Missing" for Phase 2). **Case Map Phase 1A shipped** (PR #13, squash-merged to `main` `89d38ed`): new `case_map.py` builder + `GET /api/cases/:id/case-map/` returning one summarized relationship edge per subject pair with an explainable `strength` (levels observed/documented/repeated/material + a material cap rule) and 3-source thread inference (SR-015/SR-025). Backend-only — no frontend yet (Phase 1B). Vocabulary moved to Subject/Thread/Case Map/Substantiated/Set-Aside in the source-of-truth docs (code rename deferred to 1B/2, no partial rename).)
 
 This project is in active development. This file is updated every time
 the state of a major component changes — and at the end of every working
@@ -49,7 +49,7 @@ running on Railway.
 | Re-run signal rules | Re-fires all 15 fraud-detection rules against the case (useful after adding new documents). | ↺ button in InvestigateTab toolbar (wired 2026-06-04). Graph + dashboard refresh on completion. |
 | Match Review (fuzzy entity-match queue) | When the resolver finds an incoming name similar but not identical to an existing person/org, it surfaces the pair on a "Match Review" tab on Case Detail with a pending-count badge. Investigators accept (mark MERGED) or dismiss; resolution is persisted on `FuzzyMatchCandidate` rows. | Replaces silent-merge behavior that would have corrupted evidence chain-of-custody on referrals. The data plane is intentionally separate from the actual data merge — investigator decisions are recorded as input for a future merge tool. |
 | Data-quality validators wired into resolution path | `data_quality.validate_ein` / `validate_person` / `validate_property` run inline during entity resolution and property creation. Issues are logged at WARNING (errors) / INFO (warnings) and the EIN normalizer auto-corrects formatting. Property warnings surface on `Document.extraction_notes` for UI visibility. | Catches OCR garbage (state-abbrev "names", form-label false positives), placeholder EINs, negative valuations, and 990 line-item math errors. |
-| Backend test suite | 988 backend tests (CI-equivalent, `--exclude-tag=eval`) across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, extraction routing, the referral PDF endpoint, and (Session 48) the referral-grade predicate, tie-off gate, credibility counts, and overreach field. 0 red. Frontend: 34 Vitest tests (gate modal, ApiError body, credibility header, narrative autosave, readiness-aware export). | CI runs backend test suite (postgres:16-alpine service container) + ruff + tsc + vite on every push. |
+| Backend test suite | ~1013 backend tests (CI-equivalent, `--exclude-tag=eval`) across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, extraction routing, the referral PDF endpoint, the referral-grade predicate / tie-off gate / credibility counts (Session 48), and (Session 49) **25 case-map tests** (scorer + material cap, five evidence collectors, property-transaction summarization, SR-015/SR-025 thread inference, full-contract endpoint test). 0 red. Frontend: 34 Vitest tests. | CI runs backend test suite (`--exclude-tag=eval`) + ruff + tsc + vite on every push. The `@tag("eval")` AI lead-quality suite is non-deterministic and excluded from CI — run the same flag locally to avoid false reds. |
 | Docker dev environment | `docker compose up -d` starts all four services: postgres, Django runserver (hot reload via volume mount), Vite dev server (HMR), Django-Q2 worker. | `docker compose exec backend python manage.py seed_demo` loads the Bright Future Foundation demo. |
 
 ---
@@ -70,6 +70,7 @@ the demo-relevant ones:
 | Cross-case Triage queue, rule-coverage view | `/findings/`, `/coverage/` | ✅ **Deleted (Session 43).** Dropped in the graph-first rebuild — removed. |
 | Case status change, delete angle, note CRUD | various | ✅ **Wired (Session 44).** Status selector in case header; delete button in AngleView; full note edit/delete on knots + create/delete on angles. |
 | Statewide parcel search | `/research/parcels/` | ✅ **Wired + verified (Session 43/44).** ODNR recovered; ResearchTab wired; confirmed live on Railway via smoke test. |
+| **Case Map (summarized subject-pair graph)** | `/case-map/` | ⚠️ **Backend live (Session 49, PR #13), no frontend yet.** Returns nodes + one summarized `strength` edge per subject pair; live-verified on the PR preview (21/21 contract checks). The visual Case Map that consumes it is **Phase 1B** (gated on locking the node-marker system, spec §12 Q1). Distinct from `/graph/`, which stays the raw graph for the Timeline. |
 
 ---
 
@@ -82,6 +83,79 @@ structural rewrites.
 | Component | Status |
 |-----------|--------|
 | Repo presentation | This file, `README.md`, `CLAUDE.md` — now reconciled to the shipped graph-first app. Updated at the end of each session going forward. |
+
+**Recently completed (Session 49, June 19 2026):**
+
+**Case Map relationship-strength backend (Phase 1A)** shipped to `main` via PR #13
+(squash, `89d38ed`). The session started on case-workspace **build item 3**
+(context-panel three-state) but pivoted: Tyler surfaced a larger **Case Map + Thread
+Builder** redesign, and we made *that* the controlling plan.
+
+**Why the pivot.** Item 3's brainstorm had landed on a "state-swap" layout (hide the
+graph when an entity/Angle is selected) — chosen only because `AngleView` is 1,052
+lines and won't fit a side panel. The case-map spec resolves that *better*: keep the
+Case Map persistently visible with a right **inspector**, and defer the heavy Angle
+workspace to a later phase (Phase 4 Thread Builder) so only the small Subject/Relationship
+inspectors live in the side panel. So item 3's state-swap was **superseded**; its genuinely
+useful parts — the focus-reducer (context owns navigation, `navStack` deleted) and the
+"What's Missing" panel — survive into the case-map program's Phase 2. The old context-panel
+spec is stamped "partially superseded."
+
+**Why Phase 1A (backend) first.** The case-map program splits into 1A (backend
+relationship-strength + `/case-map/` contract) and 1B (visual foundation). 1A is
+independently testable and is the real platform upgrade (turns the graph from a clip-art
+network into an evidence-weighted instrument); 1B couldn't be planned to code yet because
+its node-marker system (spec §12 Q1) is still open. So we built 1A and deferred 1B.
+
+**What shipped.** `backend/investigations/case_map.py` + `GET /api/cases/:id/case-map/`:
+one summarized edge per Person/Org **subject pair**, each with an explainable `strength`
+object (deterministic score → level `observed|documented|repeated|material`, categories,
+reasons, counts). Five evidence collectors (co-mention, formal role, property transaction,
+manual relationship, threads). **Material cap rule:** raw evidence caps at `repeated`;
+`material` needs score ≥ 80 *and* a substantiated (CONFIRMED) thread. `/graph/` is untouched
+(stays the Timeline's raw graph). Stable order-independent edge id `{minId}__{maxId}` so the
+1B frontend can key selection state off it.
+
+**The non-obvious core — 3-source thread inference.** Tyler's review caught that the real
+signal rules don't link subject pairs the way the first plan assumed: **SR-015** sets
+`trigger_entity_id` to the *property* and stashes the subjects in
+`evidence_snapshot.buyer_id/seller_id`; **SR-025** (contradiction mode) has *no* trigger
+entity and references subjects only through `transaction_examples[].transaction_id`. A
+builder keyed on `FindingEntity`/`trigger_entity_id` alone would have **orphaned both** — the
+insider-swap and false-disclosure threads the product exists to surface. So
+`_subject_ids_from_finding` unions three sources: FindingEntity links ∪ evidence_snapshot
+subject-id keys ∪ underlying transaction resolution. Verified firing live (SR-015 attached
+on the deployed PR preview).
+
+**Process.** Inline TDD in Docker (the local suite *does* run — corrected a stale CLAUDE.md
+claim that it couldn't), 9 commits. A 6-agent PR review (`/ecc:review-pr`) then drove a
+review-fix commit: an **N+1** (`is_referral_grade`'s `.exists()` per finding → fixed by
+prefetching `document_links`), an **observability log** when a rule-generated finding resolves
+to zero subject pairs (turns silent thread-drop into a diagnosable WARNING — already firing
+for SR-003/SR-005 on demo data whose transactions don't resolve to case subjects), a
+non-dict `evidence_snapshot` guard, dead-code cleanups, and +4 tests. One advisory was
+**declined with rationale** (dataclass for the evidence accumulator — fights the codebase's
+dict-for-JSON convention and would churn the scorer tests). Live-verified on the Railway PR
+preview (21/21 contract checks) before merge.
+
+**Workflow corrections this session (now in CLAUDE.md + memory):** the local Docker test
+loop works (`docker exec catalyst_backend … test investigations --exclude-tag=eval`); the
+`--exclude-tag=eval` flag matches CI and avoids false reds from the non-deterministic AI
+lead-quality eval (which is *not* in CI — Backend Tests there are green); pre-commit hooks are
+dormant in this env so Claude commits directly after manual `ruff`; **always branch for
+features** → local Docker → Railway PR preview → main.
+
+**Merge gotcha (worth remembering):** `gh pr merge` succeeded server-side but its *local*
+post-merge fast-forward failed ("Not possible to fast-forward") because local `main` carried
+an unpushed commit the branch was based on. The PR was already merged on GitHub — the fix was
+to confirm server state (`gh pr view --json state,mergedAt`), verify the squash already
+contained the divergent content, then `git reset --hard origin/main`. Don't react to the
+local error by re-merging or force-pushing.
+
+**No migration this session** (no `models.py` change). **Deferred (1A fast-follow):**
+`shared_address` + `financial_link` collectors, `business_association` split, one-sided-
+transaction metadata credit — all flagged in code comments + spec. **Next:** Phase 1B (visual
+Case Map) once the node-marker system is locked.
 
 **Recently completed (Session 48, June 19 2026):**
 
@@ -694,7 +768,8 @@ In rough priority order. Subject to change as the rebuild progresses.
 - **AI pattern augmentation** is an investigator aid, not the deliverable. Every AI finding lands with `evidence_weight=DIRECTIONAL` or lower and `status=NEW`; the investigator promotes it up the pipeline manually after verification. The referral package exporter will never ship an AI finding unless the investigator has explicitly confirmed it.
 - **Fuzzy match "Accept" is review-only — no automated data merge yet.** When an investigator marks a candidate MERGED, the system records the decision but does not yet reassign FK references or fold aliases. A future merge tool will operate on the queue of MERGED candidates. Documented in the PATCH endpoint.
 - **form990_parser.py may be partially superseded.** It is wired into `_process_uploaded_file` for IRS_990 docs but the IRS TEOS XML pipeline also extracts Parts IV/VI/VII. Both paths are currently active; consolidation is deferred.
-- **Git pre-commit hook points to a Windows Python path** and does not run in sandbox/CI environments. Tyler commits from his local machine where the hook works.
+- **Pre-commit hooks are dormant in the sandbox** (Session 49: `.pre-commit-config.yaml` exists but no hooks are installed in `.git/hooks` and the `pre-commit` tool isn't on PATH). So commits here don't run ruff via hook — run `ruff check`/`ruff format` manually before committing. Always branch for feature work → local Docker → Railway PR preview → main.
+- **The `@tag("eval")` AI lead-quality suite is non-deterministic and is excluded from CI** (`--exclude-tag=eval`, ci.yml). It calls the model, so a negative-control fixture occasionally over-produces leads (`5 != 0`). A local full-suite run *without* the flag will show this 1 failure — it is **not** a regression and has no bearing on merge. Run the same `--exclude-tag=eval` flag locally to match CI.
 - **Vite-in-Docker misses file changes on Windows bind mounts.** After editing frontend source, the dev server can keep serving the stale cached module (inotify events don't cross the bind mount). If a change doesn't show up, `docker restart catalyst_frontend`. Bit the Session 46 verification — the CSRF fix looked unapplied until the container restarted.
 - **Deferred from the Session 46 audit (LOW):** API error copy surfaces raw strings like "403 Forbidden" in the Research/Referrals panels (largely mooted by the CSRF fix, but the copy path remains); the jobs API exposes raw exception strings in `error_message` (useful for a single-user tool, would need sanitizing for multi-user).
 - **Health check leaves one CLOSED case per production run by design** — labeled "Health-check artifact — safe to ignore" (cases are non-deletable to protect the audit trail; finding/note/document artifacts are deleted).
