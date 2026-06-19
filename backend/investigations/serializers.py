@@ -706,6 +706,7 @@ def serialize_finding(finding) -> dict:
         "severity": finding.severity,
         "status": finding.status,
         "evidence_weight": finding.evidence_weight,
+        "overreach_reviewed": finding.overreach_reviewed,
         "source": finding.source,
         "investigator_note": finding.investigator_note,
         "legal_refs": finding.legal_refs,
@@ -861,6 +862,7 @@ class FindingUpdateSerializer:
         "legal_refs",
         "add_document_ids",
         "remove_document_ids",
+        "overreach_reviewed",
     }
 
     def __init__(self, data=None, instance=None):
@@ -1003,6 +1005,13 @@ class FindingUpdateSerializer:
             else:
                 self._documents_to_remove = documents
 
+        if "overreach_reviewed" in self.initial_data:
+            val = self.initial_data["overreach_reviewed"]
+            if not isinstance(val, bool):
+                self._errors = {"overreach_reviewed": ["overreach_reviewed must be a boolean."]}
+                return False
+            self.validated_data["overreach_reviewed"] = val
+
         if "narrative_source" in self.initial_data:
             ns = self.initial_data["narrative_source"]
             if ns not in _VALID_NARRATIVE_SOURCES:
@@ -1050,6 +1059,8 @@ class FindingUpdateSerializer:
             self.instance.severity = self.validated_data["severity"]
         if "evidence_weight" in self.validated_data:
             self.instance.evidence_weight = self.validated_data["evidence_weight"]
+        if "overreach_reviewed" in self.validated_data:
+            self.instance.overreach_reviewed = self.validated_data["overreach_reviewed"]
         if "legal_refs" in self.validated_data:
             self.instance.legal_refs = self.validated_data["legal_refs"]
 
@@ -1068,6 +1079,8 @@ class FindingUpdateSerializer:
             update_fields.append("severity")
         if "evidence_weight" in self.validated_data:
             update_fields.append("evidence_weight")
+        if "overreach_reviewed" in self.validated_data:
+            update_fields.append("overreach_reviewed")
         if "legal_refs" in self.validated_data:
             update_fields.append("legal_refs")
 
