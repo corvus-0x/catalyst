@@ -59,6 +59,7 @@ Catalyst/
 │   │   ├── entity_resolution.py ← Fuzzy matching + dedup entities
 │   │   ├── entity_normalization.py ← Name/EIN/address standardization
 │   │   ├── signal_rules.py      ← 15 active fraud detection rules
+│   │   ├── referral_grade.py    ← Referral-grade predicate (tie-off gate) — one def, 3 call sites
 │   │   ├── data_quality.py      ← Data validation + audit logging
 │   │   ├── ai_extraction.py     ← Claude AI entity/financial extraction
 │   │   ├── ai_proxy.py          ← Claude API wrapper with caching
@@ -124,8 +125,14 @@ Catalyst/
 Key models for quick orientation:
 - **Case** — name, status (ACTIVE/PAUSED/REFERRED/CLOSED)
 - **Finding** — `status` (NEW/NEEDS_EVIDENCE/DISMISSED/CONFIRMED) × `evidence_weight`
-  (SPECULATIVE/DIRECTIONAL/DOCUMENTED/TRACED). Dedup key: `(case, rule_id, trigger_entity_id)`.
+  (SPECULATIVE/DIRECTIONAL/DOCUMENTED/TRACED) × `overreach_reviewed` (bool). Dedup key:
+  `(case, rule_id, trigger_entity_id)` — `rule_id` is identity, **never** patched at tie-off.
   `evidence_snapshot` populated by every CRITICAL rule for referral PDF citations.
+  **Tie-off gate (Session 48):** an Angle is "referral-grade" only when CONFIRMED ∧ ≥1 cited
+  document ∧ weight ∈ {DOCUMENTED, TRACED} ∧ `overreach_reviewed`. The predicate lives once in
+  `referral_grade.py` (`referral_grade_qs` / `is_referral_grade`) and is reused by readiness,
+  the credibility counts, and the referral PDF filter. Enforced server-side in
+  `FindingUpdateSerializer` on the transition into CONFIRMED.
 - **AuditLog** — append-only. **NEVER UPDATE OR DELETE.**
 - **SearchJob** — async job tracker. Fields: `job_type`, `status`, `query_params`, `result`.
   Index on `(case, -created_at)` for reattach-on-mount.

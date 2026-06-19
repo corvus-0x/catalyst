@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-06-18 (Session 47 — case-workspace build item 1 "feeders" + shared active-Angle state shipped (PR #10), M1 real-citation verified live on a Railway PR preview; frontend silent-failure remediation (PR #11); 3 roadmap issues triaged + closed; branch/worktree cleanup)
+**Last updated:** 2026-06-19 (Session 48 — case-workspace build item 2 "tie-off gate + credibility counts" shipped (PR #12, squash-merged to `main`): a server-enforced referral-grade gate, one shared predicate driving readiness + the credibility triplet header + the PDF export filter, stored `overreach_reviewed` field, SIGNAL_CONFIRMED/DISMISSED audit rows, and frontend silent-failure hardening on the stricter paths)
 
 This project is in active development. This file is updated every time
 the state of a major component changes — and at the end of every working
@@ -30,10 +30,11 @@ running on Railway.
 | Ohio Secretary of State connector | Local CSV search (admin uploads CSVs from publicfiles.ohiosos.gov) | Switched from runtime download after SOS started returning 403s |
 | Case detail UI | 6 tabs at `/cases/:id`: Investigate (the graph/"Web"), Research, Financials, Timeline, Referrals, Replay (investigation step-by-step story) | React + Vite, dark/light/auto themes, keyboard shortcuts. Documents open in a drawer; fuzzy "pending connections" review is folded into the Investigate tab (no standalone Documents/Match Review tabs). Replay tab renamed from "Investigation" in Session 46 (sat confusingly next to "Investigate"). |
 | Cross-surface citation ("feeders") | Financials, Timeline, and Research can **start an Angle** or **cite into the active Angle** without leaving the tab. A shared active-Angle indicator (header chip, with clear ×) shows the cite target so one-click cites aren't blind; actions stay-in-place (no jump to the Web). A Timeline **document-layer** cite creates a real `FindingDocument` (chain-of-custody, `add_document_ids`); narrative annotation otherwise. Research add-to-case shows a persistent per-row outcome that survives tab switches. | Case-workspace **build item 1** (PR #10, Session 47). `CaseWorkspaceContext` + `useFeederActions` + `AnglePickerModal`. **M1 verified live** on a Railway PR preview: cite → Angle (severity MEDIUM) with the document in `document_links`. `createAngle` sends `severity:"MEDIUM"` (backend requires it). |
+| Tie-off gate + credibility counts | Confirming an Angle is now a server-enforced gate: an Angle is **referral-grade** only when CONFIRMED ∧ ≥1 cited document ∧ evidence_weight ∈ {DOCUMENTED, TRACED} ∧ `overreach_reviewed` (the investigator ticked the overreach checklist). One predicate (`referral_grade.py`) drives readiness, the **credibility header** (`N referral-grade · M need work · K agency leads`, replacing the old score/100), AND the referral PDF export filter. A status transition writes a `SIGNAL_CONFIRMED`/`SIGNAL_DISMISSED` audit row. | Case-workspace **build item 2** (PR #12, Session 48). Gate enforced in `FindingUpdateSerializer` (server is the sole decision-maker; `TieOffModal` is a non-authoritative preview that surfaces the server's `{"errors":{"gate":{"unmet":[…]}}}`). `K agency leads` = 0 until RecipientGap (item 4). No grandfathering — the flag is only true when set through tie-off (or authored by the seed). |
 | Entity relationship graph | Cytoscape.js graph (`react-cytoscapejs` + `cose-bilkent`) — the primary investigation canvas ("Web") | Gotham/Maltego visual style: small markers (22-54px), labels right, node size scales with finding count (hub entity visually dominant), entity-type icons (person silhouette / building), 1px border ring, directed arrowheads on confirmed edges, dot-grid canvas. D3 is used only for the Timeline brush. |
 | Referral package PDF exporter | Deterministic, citation-bearing PDF generation with cover page, findings, financial summary, and document index with SHA-256 chain of custody | The central deliverable — what a professional investigator reads. Was hard-broken (500) by three invalid ORM lookups until Session 46; now fixed, regression-tested (`test_referral_pdf.py`), and verified live on Railway. |
 | Fraud signal detection engine | 15 pattern rules (cut from 29, plus the new SR-028 self-disclosed material diversion) grounded in real investigation patterns — valuation anomalies, insider swaps, false disclosures, revenue spikes | Each rule tied to a real anomaly source. `Finding.evidence_snapshot` captures the exact 990 fields / transaction ids / entity ids that fired each rule for the referral PDF citations. |
-| Demo case ("Bright Future Foundation") | Pre-loaded investigation with 4 persons, 2 orgs, 2 properties, 6 years of financials (incl. governance answers), 7 documents, 10 findings (8 confirmed — every one citing source documents), and a 7-step investigation replay | `python manage.py seed_demo` — shows the full pipeline working |
+| Demo case ("Bright Future Foundation") | Pre-loaded investigation with 4 persons, 2 orgs, 2 properties, 6 years of financials (incl. governance answers), 7 documents, 10 findings (8 confirmed + cited), and a 7-step investigation replay. Of the 8 confirmed angles, the seed marks ~half `overreach_reviewed=True` → a realistic in-progress mix: **5 referral-grade · 5 need work** in the credibility header. | `python manage.py seed_demo` — shows the full pipeline working. The mix is deliberate (Session 48): the gate is real, so a fresh demo showing some angles still needing tie-off is more honest than all-green. |
 | AI free-text Q&A | Claude-powered ask-about-this-case, wired into ConnectKnotsModal (angle title suggestion) and AngleView Lead panel (`/ai/ask/`) | Async endpoint (202 + job_id); frontend polls transparently. The older summarize/connections/narrative endpoints were deleted in Session 43. |
 | Document workspace | Open any document and see its text, extracted entities, linked findings, and sticky notes in one panel | Entities are clickable — navigate to entity detail |
 | Sticky notes (quick captures) | Attach notes to any document, entity (knot), or angle — full create/edit/delete on knots (ProfilePanel) and create/delete on angles (AngleView) | Backend supports `target_type` = person/organization/finding/document. Temp-id bug fixed Session 44 — notes created in the same session now edit/delete correctly. |
@@ -48,7 +49,7 @@ running on Railway.
 | Re-run signal rules | Re-fires all 15 fraud-detection rules against the case (useful after adding new documents). | ↺ button in InvestigateTab toolbar (wired 2026-06-04). Graph + dashboard refresh on completion. |
 | Match Review (fuzzy entity-match queue) | When the resolver finds an incoming name similar but not identical to an existing person/org, it surfaces the pair on a "Match Review" tab on Case Detail with a pending-count badge. Investigators accept (mark MERGED) or dismiss; resolution is persisted on `FuzzyMatchCandidate` rows. | Replaces silent-merge behavior that would have corrupted evidence chain-of-custody on referrals. The data plane is intentionally separate from the actual data merge — investigator decisions are recorded as input for a future merge tool. |
 | Data-quality validators wired into resolution path | `data_quality.validate_ein` / `validate_person` / `validate_property` run inline during entity resolution and property creation. Issues are logged at WARNING (errors) / INFO (warnings) and the EIN normalizer auto-corrects formatting. Property warnings surface on `Document.extraction_notes` for UI visibility. | Catches OCR garbage (state-abbrev "names", form-label false positives), placeholder EINs, negative valuations, and 990 line-item math errors. |
-| Backend test suite | 924 backend tests across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, extraction routing, and the referral PDF endpoint. 0 red. | CI runs backend test suite (postgres:16-alpine service container) + ruff + tsc + vite on every push. |
+| Backend test suite | 988 backend tests (CI-equivalent, `--exclude-tag=eval`) across connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, fuzzy candidates, entity resolution, classification, normalization, data quality, form 990 parsing, extraction routing, the referral PDF endpoint, and (Session 48) the referral-grade predicate, tie-off gate, credibility counts, and overreach field. 0 red. Frontend: 34 Vitest tests (gate modal, ApiError body, credibility header, narrative autosave, readiness-aware export). | CI runs backend test suite (postgres:16-alpine service container) + ruff + tsc + vite on every push. |
 | Docker dev environment | `docker compose up -d` starts all four services: postgres, Django runserver (hot reload via volume mount), Vite dev server (HMR), Django-Q2 worker. | `docker compose exec backend python manage.py seed_demo` loads the Bright Future Foundation demo. |
 
 ---
@@ -81,6 +82,68 @@ structural rewrites.
 | Component | Status |
 |-----------|--------|
 | Repo presentation | This file, `README.md`, `CLAUDE.md` — now reconciled to the shipped graph-first app. Updated at the end of each session going forward. |
+
+**Recently completed (Session 48, June 19 2026):**
+
+Case-workspace **build item 2** — the tie-off gate + credibility counts (the
+keystone of the case-workspace design) — shipped to `main` via PR #12 (squash).
+Built subagent-driven: 16 TDD tasks, per-task spec+quality reviews, a whole-branch
+review, then a multi-agent + CodeRabbit review pass. 988 backend (CI-equivalent) +
+34 frontend tests green.
+
+- **Why the gate, and why server-enforced.** Before this, "CONFIRMED" was free text —
+  an Angle could be confirmed with no citation, SPECULATIVE weight, and an empty
+  narrative; readiness only flagged it *after the fact*. The design (§4) makes
+  "referral-grade" a single precise predicate and enforces it at the moment of
+  confirmation. *Stored `overreach_reviewed` (full server gate) was chosen over a
+  frontend-only checklist* because the gate must reach the **referral PDF** (the
+  customer-facing package) — a frontend-only gate is theater the moment someone
+  `curl`s the API or opens the PDF. The server is the sole decision-maker and sole
+  audit writer; the `TieOffModal` is a non-authoritative preview (Tyler's
+  audit/info-leak instinct, made an explicit invariant).
+- **One predicate, three call sites.** `referral_grade.py` is the single definition,
+  reused by readiness, `build_credibility`, and the PDF export filter. *Why this
+  mattered:* a found bug — the new exclusion test passed via the readiness 400, not
+  the filter, so a partial-case test (one referral-grade + one excluded confirmed
+  angle, asserting what the view passes to the PDF generator) was added with a
+  revert→FAIL→restore proof that it has teeth.
+- **No grandfathering (Tyler's call).** No migration silently flips the bit;
+  `overreach_reviewed` is only true when set through the tie-off path (or authored by
+  the seed). The seed therefore authors a deliberate **5 referral-grade / 5 need-work**
+  mix — a realistic in-progress demo is more honest than all-green once the gate is real.
+- **Migration hygiene.** `makemigrations` swept a pre-existing `financialsnapshot.source`
+  drift into the field migration; it was split into `0035` (the isolated drift) + `0036`
+  (the `overreach_reviewed` field) so the feature migration stays focused.
+- **Audit emission.** The finding PATCH path wrote only `FINDING_UPDATED`; the PDF wants
+  tie-off provenance, so a status transition now also emits `SIGNAL_CONFIRMED` /
+  `SIGNAL_DISMISSED` (the printed "tied off by X" PDF line is a deferred follow-up —
+  the rows exist from day one).
+- **Atomic PR.** Migration + serializer gate + modal can't be split (`main` → Railway;
+  the modal is the only sender of the new required field), so it shipped as one squash.
+- **Silent-failure sweep on the stricter paths.** A tighter gate multiplies rejection
+  paths, so each adjacent failure was made legible: `TieOffModal` non-gate errors keep
+  the modal open with a generic error; narrative-autosave failure is surfaced and
+  *blocks tie-off while unsaved* (tie-off reads the **server** narrative — unsaved local
+  text would wrongly fail the gate); referral export disables on unknown/errored
+  readiness and consumes the 400 `{readiness}` body. `ApiError.body` was added so the
+  structured gate reason reaches the UI.
+- **Read-only rule selector.** The `TieOffModal` rule dropdown silently discarded its
+  selection (`rule_id` isn't in `allowed_fields` — and *must not be*, it's part of the
+  `(case, rule_id, trigger_entity_id)` dedup identity). Made read-only.
+- **Review caught contract seams, not bugs.** Multi-agent + CodeRabbit review surfaced:
+  the hardcoded `overreach_reviewed: true` (→ now sends the actual `overreachAck`);
+  a missing HTTP-level gate test (serializer + modal both green, nothing pinned the
+  view's error-wrapping between them); a `SIGNAL_DISMISSED` audit gap. CodeRabbit's two
+  "Major" migration-lint findings were **false positives** (migrations are ruff-excluded
+  in `pyproject.toml`) — declined with a reply on each thread.
+
+**Follow-ups logged (not started):** case-workspace **build items 3–5** (context-panel
+three-state, RecipientGap + `agency_leads`, replay hybrid / connectedness); the printed
+PDF "tied off by X on Y" line (audit rows already emitted); export-retry UX after a
+readiness load failure (currently fail-safe but no retry affordance); the broad
+**pre-existing** `AuditAction` TS-union incompleteness (this PR's slice is correct);
+the redundant readiness count query (now threaded, low-priority); minor test gaps
+(NEEDS_REVIEW-enables-export, DISMISSED-excluded-from-need_work).
 
 **Recently completed (Session 47, June 18 2026):**
 
@@ -635,6 +698,8 @@ In rough priority order. Subject to change as the rebuild progresses.
 - **Vite-in-Docker misses file changes on Windows bind mounts.** After editing frontend source, the dev server can keep serving the stale cached module (inotify events don't cross the bind mount). If a change doesn't show up, `docker restart catalyst_frontend`. Bit the Session 46 verification — the CSRF fix looked unapplied until the container restarted.
 - **Deferred from the Session 46 audit (LOW):** API error copy surfaces raw strings like "403 Forbidden" in the Research/Referrals panels (largely mooted by the CSRF fix, but the copy path remains); the jobs API exposes raw exception strings in `error_message` (useful for a single-user tool, would need sanitizing for multi-user).
 - **Health check leaves one CLOSED case per production run by design** — labeled "Health-check artifact — safe to ignore" (cases are non-deletable to protect the audit trail; finding/note/document artifacts are deleted).
+- **Migrations added Session 48 (PR #12):** `0035_alter_financialsnapshot_source` (no-op AlterField — help_text/choices only, isolating a pre-existing model drift) and `0036_finding_overreach_reviewed` (adds `Finding.overreach_reviewed BooleanField(default=False)` — the stored 4th tie-off-gate condition; no backfill by design).
+- **Tie-off gate is enforced server-side only on the *transition into* CONFIRMED.** Editing an already-confirmed Angle is intentionally not re-gated ("condition loss is allowed") — removing the last citation or downgrading weight leaves `status=CONFIRMED` but drops the Angle from referral-grade (it recounts as "need work" and is excluded from the PDF). Working as designed; the readiness `overreach_review` WARN item surfaces the "one acknowledgement away" case.
 
 ---
 
