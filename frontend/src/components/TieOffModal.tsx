@@ -3,10 +3,11 @@
  *
  * Lets an investigator finalize (tie off) an angle by choosing:
  *   - Evidence weight: Speculative / Directional / Documented / Traced
- *   - Signal rule: which fraud signal rule this angle supports
  *   - Outcome: Confirmed (send to referral package) or Exhausted (dead end, dismiss)
+ *   - Overreach acknowledgement (required gate condition for confirmed angles)
  *
  * Calls PATCH /api/cases/:id/findings/:id/ via updateAngle().
+ * Sends overreach_reviewed when confirming; renders server gate errors on 400.
  *
  * Vocabulary:
  *   Angle    = Finding (the narrative unit of investigation)
@@ -20,31 +21,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Check } from "lucide-react";
 import { updateAngle } from "../api";
 import type { FindingItem, EvidenceWeight } from "../types";
-
-// ---------------------------------------------------------------------------
-// Signal rules (hardcoded active rule list — from CLAUDE.md)
-// ---------------------------------------------------------------------------
-
-const SIGNAL_RULES = [
-  { id: "MANUAL", label: "Manual (no rule)" },
-  { id: "SR-003", label: "SR-003 · Valuation anomaly" },
-  { id: "SR-004", label: "SR-004 · UCC burst" },
-  { id: "SR-005", label: "SR-005 · Zero consideration" },
-  { id: "SR-006", label: "SR-006 · Schedule L missing" },
-  { id: "SR-010", label: "SR-010 · Missing 990" },
-  { id: "SR-012", label: "SR-012 · No conflict-of-interest policy" },
-  { id: "SR-013", label: "SR-013 · Zero officer pay" },
-  { id: "SR-015", label: "SR-015 · Insider property swap" },
-  { id: "SR-017", label: "SR-017 · Blanket lien" },
-  { id: "SR-021", label: "SR-021 · Revenue spike" },
-  { id: "SR-024", label: "SR-024 · Charity conduit" },
-  { id: "SR-025", label: "SR-025 · False disclosure" },
-  { id: "SR-026", label: "SR-026 · Contractor denial" },
-  { id: "SR-028", label: "SR-028 · Material diversion" },
-  { id: "SR-029", label: "SR-029 · Low program ratio" },
-];
-
-const RULE_IDS = new Set(SIGNAL_RULES.map((r) => r.id));
 
 // ---------------------------------------------------------------------------
 // Evidence weight options (display order matches severity progression)
@@ -62,11 +38,6 @@ const EVIDENCE_WEIGHTS: { value: EvidenceWeight; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 type Outcome = "confirmed" | "exhausted";
-
-/** Resolve finding.rule_id to a valid SIGNAL_RULES id, defaulting to MANUAL. */
-function resolveRuleId(ruleId: string): string {
-  return RULE_IDS.has(ruleId) ? ruleId : "MANUAL";
-}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -93,16 +64,34 @@ export default function TieOffModal({
   onTiedOff,
 }: TieOffModalProps) {
   // Controlled form state — pre-filled from the finding.
-  const [ruleId, setRuleId] = useState<string>(() => resolveRuleId(finding.rule_id));
+  // Default outcome: confirmed for active/new angles, exhausted only if already dismissed.
   const [evidenceWeight, setEvidenceWeight] = useState<EvidenceWeight>(
     () => finding.evidence_weight,
   );
   const [outcome, setOutcome] = useState<Outcome>(
-    () => (finding.status === "CONFIRMED" ? "confirmed" : "exhausted"),
+    () => (finding.status === "DISMISSED" ? "exhausted" : "confirmed"),
   );
   const [dismissalRationale, setDismissalRationale] = useState("");
   const [rationaleError, setRationaleError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [overreachAck, setOverreachAck] = useState(false);
+  const [serverUnmet, setServerUnmet] = useState<string[] | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Local gate preview — compute unmet conditions
+  // ---------------------------------------------------------------------------
+
+  const hasCitation = finding.document_links.length > 0;
+  const hasNarrative = (finding.narrative || "").trim().length > 0;
+  const hasWeight = evidenceWeight === "DOCUMENTED" || evidenceWeight === "TRACED";
+  const localUnmet = [
+    !hasCitation ? "citation" : null,
+    !hasWeight ? "evidence_weight" : null,
+    !hasNarrative ? "narrative" : null,
+    !overreachAck ? "overreach" : null,
+  ].filter((x): x is string => x !== null);
+  const confirmBlocked = outcome === "confirmed" && localUnmet.length > 0;
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -117,6 +106,10 @@ export default function TieOffModal({
   async function handleConfirm() {
     if (saving) return;
 
+    // Reset server error state at start of each attempt.
+    setServerUnmet(null);
+    setSubmitError(null);
+
     // Validate: exhausted outcome requires a rationale.
     if (outcome === "exhausted" && dismissalRationale.trim() === "") {
       setRationaleError(true);
@@ -124,18 +117,30 @@ export default function TieOffModal({
     }
 
     setSaving(true);
+    const body = {
+      status: outcome === "confirmed" ? ("CONFIRMED" as const) : ("DISMISSED" as const),
+      evidence_weight: evidenceWeight,
+      overreach_reviewed: outcome === "confirmed" ? true : finding.overreach_reviewed,
+      investigator_note:
+        outcome === "exhausted" ? dismissalRationale.trim() : finding.investigator_note,
+    };
     try {
-      const body = {
-        status: outcome === "confirmed" ? ("CONFIRMED" as const) : ("DISMISSED" as const),
-        evidence_weight: evidenceWeight,
-        investigator_note:
-          outcome === "exhausted"
-            ? dismissalRationale.trim()
-            : `Rule: ${ruleId}`,
-      };
       const updated = await updateAngle(caseId, finding.id, body);
       onTiedOff(updated);
       onClose();
+    } catch (e) {
+      const unmet = (e as { body?: { errors?: { gate?: { unmet?: string[] } } } })
+        ?.body?.errors?.gate?.unmet;
+      if (Array.isArray(unmet)) {
+        setServerUnmet(unmet);
+      } else {
+        // Non-gate failure (network, 500, CSRF, etc.) — never swallow it.
+        // Keep the modal open and show a generic submit error so tie-off
+        // never silently does nothing.
+        setSubmitError(
+          e instanceof Error && e.message ? e.message : "Tie-off failed. Please try again.",
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -219,25 +224,10 @@ export default function TieOffModal({
               </section>
             )}
 
-            {/* Signal rule dropdown */}
+            {/* Signal rule (read-only — rule_id is part of the dedup identity) */}
             <section aria-label="Signal rule">
-              <label className="panel-section__title" htmlFor="tieoff-rule-select">
-                Signal rule
-              </label>
-              <div className="tieoff-select-wrapper">
-                <select
-                  id="tieoff-rule-select"
-                  className="tieoff-select"
-                  value={ruleId}
-                  onChange={(e) => setRuleId(e.target.value)}
-                >
-                  {SIGNAL_RULES.map((rule) => (
-                    <option key={rule.id} value={rule.id}>
-                      {rule.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <p className="panel-section__title">Signal rule</p>
+              <p className="tieoff-rule-readonly">{finding.rule_id || "MANUAL"}</p>
             </section>
 
             {/* Evidence weight pills */}
@@ -261,6 +251,24 @@ export default function TieOffModal({
                   </button>
                 ))}
               </div>
+            </section>
+
+            {/* Overreach acknowledgement — the 4th gate condition */}
+            <section aria-label="Investigator attestation">
+              <p className="panel-section__title">Overreach review</p>
+              <label className="tieoff-overreach">
+                <input
+                  type="checkbox"
+                  aria-label="Overreach acknowledgement"
+                  checked={overreachAck}
+                  onChange={(e) => setOverreachAck(e.target.checked)}
+                />
+                <span>
+                  I confirm the narrative states only what the cited documents establish;
+                  inferences are labeled as questions, not conclusions; and identity/timing
+                  matches are caveated where not proven.
+                </span>
+              </label>
             </section>
 
             {/* Outcome pills */}
@@ -339,6 +347,23 @@ export default function TieOffModal({
                 </div>
               )}
             </section>
+
+            {/* Gate feedback */}
+            {confirmBlocked && (
+              <p className="tieoff-error" role="status">
+                Needs: {localUnmet.join(", ")} before this angle is referral-grade.
+              </p>
+            )}
+            {serverUnmet && (
+              <p id="rationale-error" className="tieoff-error" role="alert">
+                Server blocked tie-off — missing: {serverUnmet.join(", ")}.
+              </p>
+            )}
+            {submitError && (
+              <p className="tieoff-error" role="alert">
+                {submitError}
+              </p>
+            )}
           </div>
 
           {/* Footer */}
@@ -349,7 +374,7 @@ export default function TieOffModal({
             <button
               type="button"
               className="btn-primary"
-              disabled={saving}
+              disabled={saving || confirmBlocked}
               onClick={handleConfirm}
             >
               {saving ? "Saving…" : "Confirm angle"}

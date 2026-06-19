@@ -1756,19 +1756,9 @@ body {
 .tieoff-doc-ref { font-size: 11px; font-weight: 600; color: var(--accent); font-family: monospace; }
 .tieoff-doc-name { flex: 1; color: var(--text-2); }
 .tieoff-doc-page { font-size: 11px; color: var(--text-3); }
-.tieoff-select-wrapper { position: relative; }
-.tieoff-select {
-  width: 100%;
-  font-size: 12px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-md);
-  background: var(--bg-2);
-  color: var(--text-1);
-  outline: none;
-  appearance: none;
-}
-.tieoff-select:focus { border-color: var(--accent); }
+.tieoff-rule-readonly { font-size: 12px; font-family: monospace; color: var(--text-2); padding: 4px 0; }
+.tieoff-overreach { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; line-height: 1.5; }
+.tieoff-overreach input[type="checkbox"] { flex-shrink: 0; margin-top: 2px; }
 .tieoff-rationale { margin-top: 10px; }
 .tieoff-error { font-size: 11px; color: var(--color-critical); margin: 4px 0 0; }
 
