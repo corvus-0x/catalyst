@@ -1,15 +1,41 @@
 # Case Map and Thread Builder Redesign
 
-**Date:** 2026-06-19  
-**Status:** Draft spec — expanded product/architecture direction  
+**Date:** 2026-06-19 (rev. 2026-06-19 — promoted to controlling plan)
+**Status:** **CONTROLLING PLAN** — supersedes/absorbs the context-panel work; ready to plan Phase 1A + 1B
 **Scope:** Frontend product language, Case Map workspace, relationship strength, graph visual system, inspector pattern, and Thread Builder direction
+
+> ### Relationship to other specs
+> - **Controls** `2026-06-19-context-panel-three-state-design.md`, which is now **partially
+>   superseded**. That spec's **focus reducer** (context owns Investigate navigation;
+>   `navStack` deleted) and **"What's Missing" panel** are **kept** and absorbed into Phase 2
+>   / §9 here. Its **state-swap / canvas-hidden layout is dropped** in favor of the persistent
+>   Case Map + right inspector defined in §5.
+> - **Refines, does not replace** `docs/architecture/case-workspace-design.md` (the
+>   confirmation-centered reframe) and `frontend-design-spec.md` (shipped behavior). Update
+>   those section-by-section as phases land.
+> - **Vocabulary supersedes** the locked frontend vocabulary table in `CLAUDE.md` once Phase
+>   1A's doc-alignment task ships (see §2 "Vocabulary source of truth").
+
+> ### What this revision locked (2026-06-19)
+> 1. Case Map spec is the **controlling plan**; context-panel spec marked partially superseded.
+> 2. **Phase 1 split** into **1A** (`/case-map/` backend contract + relationship-strength
+>    builder) and **1B** (visual Case Map foundation consuming 1A). 1B depends on 1A.
+> 3. **Endpoint split locked:** new `/api/cases/:id/case-map/` feeds the visible Case Map;
+>    `/graph/` stays as-is for Timeline/legacy until a later cleanup (resolves §12 Q5).
+> 4. **Focus reducer is kept**, but `focusEntity`/`focusRelationship`/`focusThread` render
+>    inspectors **beside a visible map**, not full-width swaps (see §5.1).
+> 5. **Locked v1 `/case-map/` contract** added (§4 "Locked v1 contract").
+> 6. **Property-transaction subject-pair summarization** called out as the core builder
+>    challenge (§4 "Property transaction summarization").
+> 7. **Phase 1 test plan** added (§11A test plan), incl. strength levels + SR-path attachment.
+> 8. **Strength levels locked** to `observed | documented | repeated | material` (resolves
+>    §12 Q2).
 
 ## 1. Purpose
 
 Catalyst is moving from an ad hoc investigation tool into a professional investigation workbench for citizen investigators building defensible handoff packages. The frontend should feel closer to an investigative journalism platform than a generic graph demo or compliance dashboard.
 
-The current frontend has the right core workflow, but some of the language and visual choices still feel like internal scaffolding:
-
+The current frontend has the right core workflow, but some of the language and visual choices still feel like internal scaffolding
 - `Angle` and `Knot` helped describe the puzzle model, but they do not sound like referral or investigation package language.
 - The graph can feel clip-art-like because nodes use pictogram icons, bright categorical colors, and prototype-style toolbar glyphs.
 - The Case Map disappears during drill-down, which weakens the spatial investigation model.
@@ -47,6 +73,22 @@ Backend model names do not need to change. This is a frontend copy, component na
 - Use **Thread** throughout the active workspace.
 - Use **Finding** only where a formal package/export needs more official language.
 - Treat the "red string on a cork board" as a conceptual metaphor only. Do not render literal corkboard, pins, yarn, tape, paper scraps, or detective-wall imagery.
+
+### Vocabulary source of truth
+
+The new vocabulary is **not** real until the project's source-of-truth docs say so. Today
+`CLAUDE.md` (FRONTEND VOCABULARY table) locks `Angle / Knot / Web / Connection`, so every
+implementation agent will keep "correcting" the new language back unless that table is updated
+first.
+
+**Locked plan:**
+- **Phase 1A includes a doc-alignment task** that rewrites the `CLAUDE.md` FRONTEND
+  VOCABULARY table (and any `AGENTS.md`) to the new terms — *before* component work in 1B/2 —
+  so naming stops drifting. Backend model names (`Finding`, `Person`, `Organization`,
+  `Relationship`) are unchanged; only user-facing copy, component names, and docs move.
+- Until that task ships, **no partial rename** in code (avoids a half-migrated vocabulary).
+- The `CLAUDE.md` table gains a column noting the *backend* model each term maps to, so the
+  Subject↔Person/Org and Thread↔Finding bridges stay legible in API calls and types.
 
 ## 3. Core Experience
 
@@ -299,6 +341,12 @@ Thread severity may add amber/coral emphasis, but the base relationship strength
 
 ### Proposed API Shape
 
+> **Note (rev. 2026-06-19):** the JSON below is the original *illustrative* draft. The
+> **binding** shape is the **"Locked v1 `/case-map/` contract"** later in this section — where
+> field names and invariants are fixed (e.g. `state` uses the four-value
+> `observed|documented|repeated|material` vocabulary, not the draft's `source_backed`). Where
+> the two differ, the locked contract governs.
+
 The preferred implementation is a new summarized Case Map endpoint:
 
 ```text
@@ -391,6 +439,157 @@ Examples:
 - SR-028 may trigger on an organization and may not need a multi-subject path; the inspector should show it as organization/source evidence.
 - SR-030 may trigger from Schedule L transactions and should link the disclosed party to matching subjects when available.
 
+### Locked v1 `/case-map/` contract
+
+This is the binding shape for Phase 1A so frontend and backend cannot drift. Field *names*
+are now fixed; only additive changes are allowed without a spec revision.
+
+**Endpoint:** `GET /api/cases/:id/case-map/` → `200`
+
+**Top-level response:**
+
+```json
+{
+  "case_id": "uuid",
+  "nodes": [ /* SubjectNode */ ],
+  "edges": [ /* SummaryEdge */ ],
+  "stats": {
+    "subject_count": 12,
+    "edge_count": 18,
+    "by_level": { "observed": 6, "documented": 7, "repeated": 4, "material": 1 },
+    "material_edge_count": 1,
+    "handoff_edge_count": 0,
+    "generated_at": "ISO8601"
+  }
+}
+```
+
+**SubjectNode** (only `person` and `organization` are subjects; property and
+financial-instrument records are *evidence*, never primary nodes in v1):
+
+```json
+{
+  "id": "uuid",
+  "type": "person" | "organization",
+  "label": "display name",
+  "subtype": "org_type or null",
+  "flags": {
+    "status_unknown": false,
+    "has_active_thread": true,
+    "has_substantiated_thread": false
+  },
+  "metadata": { "thread_count": 2, "document_count": 5 }
+}
+```
+
+> **`flags.status_unknown`** is a **neutral data-completeness** flag — true when the org's
+> registration `status` is `UNKNOWN`. It is **not** a shell-company accusation (per §10 "color
+> the claim, not the person"); the UI should treat it as "status not yet established," not as a
+> warning. (Renamed from the earlier `unknown_or_shell`, which read as an accusation and would
+> have flagged every freshly-created org, since `Organization.status` defaults to `UNKNOWN`.)
+
+**SummaryEdge** — exactly one per unordered subject pair (see edge-id stability):
+
+```json
+{
+  "id": "subjectMin__subjectMax",
+  "source": "subjectMin",
+  "target": "subjectMax",
+  "relationship": "SUMMARY",
+  "label": "Documented relationship",
+  "state": "observed | documented | repeated | material",
+  "strength": {
+    "score": 64,
+    "level": "observed | documented | repeated | material",
+    "categories": ["formal_role", "co_mentioned", "transaction"],
+    "source_count": 4,
+    "transaction_count": 1,
+    "role_count": 1,
+    "thread_count": 1,
+    "substantiated_thread_count": 0,
+    "handoff_included": false,
+    "relationship_types": ["OFFICER_OF", "CO_APPEARS_IN", "PURCHASED"],
+    "reasons": ["Board role documented", "Appears together in 4 source documents"]
+  },
+  "evidence_refs": [
+    { "kind": "source_document", "document_id": "uuid", "label": "Form 990 — 2022", "category": "formal_role" }
+  ],
+  "thread_refs": [
+    { "thread_id": "uuid", "title": "…", "status": "NEEDS_EVIDENCE", "severity": "HIGH",
+      "rule_id": "SR-015", "signal_type": "INSIDER_SWAP", "handoff_ready": false }
+  ],
+  "underlying_relationships": [
+    { "kind": "OFFICER_OF", "label": "Board member", "source": "person_org", "source_id": "uuid" }
+  ]
+}
+```
+
+**Locked field semantics** (these are the exact predicates the 1A builder implements):
+
+- **`thread_ref.handoff_ready`** = the **referral-grade tie-off predicate**
+  (`referral_grade.is_referral_grade` / `referral_grade_qs`), i.e. CONFIRMED ∧ ≥1 cited
+  document ∧ weight ∈ {DOCUMENTED, TRACED} ∧ `overreach_reviewed`. **Not** `status ==
+  CONFIRMED`. This keeps the Case Map aligned with the existing tie-off gate.
+- **`strength.substantiated_thread_count`** = count of linked threads with **`status ==
+  CONFIRMED`** (user-facing "Substantiated"). This is the *broader* set — a thread can be
+  Substantiated without yet being handoff-ready.
+- **`strength.handoff_included`** = `true` iff **at least one** linked thread is
+  `handoff_ready` (full package-ready predicate above) **and** the relationship is part of that
+  thread's cited evidence. This is the field that may elevate `level` to `material`.
+- **Elevation rule restated precisely:** `material` requires
+  `substantiated_thread_count ≥ 1` **and** that the substantiated/handoff thread relies on this
+  relationship. A `CONFIRMED`-but-not-handoff-ready thread can still elevate to `material`
+  (substantiated is enough for materiality); `handoff_included` is a *stronger* signal used for
+  edge emphasis and package status, not a precondition for `material`.
+- **`node.flags.has_substantiated_thread`** / **`metadata.thread_count`** use the same
+  CONFIRMED definition as `substantiated_thread_count`.
+- **`underlying_relationships[].source`** is a locked enum: `person_org` · `co_mention` ·
+  `property_transaction` · `manual_relationship` · `shared_address` · `financial_instrument` ·
+  `thread_reference`. **`category`** values (on `evidence_refs` and in `strength.categories`)
+  remain the §"Relationship Evidence Categories" set: `co_mentioned` · `formal_role` ·
+  `transaction` · `family_or_personal` · `business_association` · `shared_address` ·
+  `financial_link` · `thread_referenced`.
+
+**Locked invariants:**
+
+1. **Edge id stability.** `id = "{minId}__{maxId}"` where `minId`/`maxId` are the two subject
+   UUIDs sorted lexicographically. The id is therefore **order-independent and stable** across
+   reloads, so the frontend can key selection/focus state off it. `source`/`target` follow the
+   same sort. (This differs from the raw `/graph/` edge id, which encodes relationship type.)
+2. **One edge per subject pair.** All underlying relationship records between the two subjects
+   collapse into this single edge; `underlying_relationships` carries the un-summarized list
+   for inspector drill-down.
+3. **`level` ↔ `state` agree.** `state` mirrors `strength.level`; both use the same four-value
+   vocabulary. (`state` exists for parity with the raw graph edge shape; consumers should read
+   `strength.level`.)
+4. **`material` requires thread relevance.** Per §"First Scoring Formula": raw evidence caps at
+   `repeated`; only a substantiated/handoff-ready `thread_ref` elevates to `material`. The
+   builder enforces this after scoring, not in the threshold table.
+5. **Reasons are user-facing truth; score is internal.** `score` drives sort + edge thickness
+   only; the inspector shows `level` + `reasons`, never a bare number as judgment.
+6. **No PII beyond what `/graph/` already exposes.** Same auth/serialization guarantees as the
+   existing graph endpoint.
+
+### Property transaction summarization (core builder challenge)
+
+The raw graph routes property transactions through **property nodes** (`subject —PURCHASED→
+property ←SOLD_BY— counterparty`). The Case Map has **no property nodes**, but it must still
+show a **subject-to-subject** relationship line carrying that transaction as evidence.
+
+**Builder rule:** for each `PropertyTransaction`, resolve the buyer subject and the seller
+subject (both must resolve to a `person`/`organization` subject in the case), and attribute the
+transaction to **that subject pair's** summary edge as a `transaction` category with a
+`transaction`-kind `evidence_ref` (the property is named in the ref label, not as a node). If
+only one side resolves to a subject (e.g. an out-of-case seller), the transaction contributes to
+the resolved subject's `metadata` but creates no edge. This is the trickiest part of 1A and
+gets dedicated tests (§11A).
+
+The same "trigger may sit on a non-subject record" problem applies to signal rules: the builder
+must consult `Finding.evidence_snapshot` and underlying relationship records — **not only**
+`FindingEntity.trigger_entity_id` — to attach a `thread_ref` to the correct subject-pair edge
+(e.g. SR-015 triggers on a property transaction but the map path is insider→org and
+counterparty→transaction).
+
 ## 5. Persistent Workspace
 
 The Case Map should remain visible during drill-down.
@@ -403,6 +602,26 @@ Current behavior replaces the graph with Profile / Angle views. The new directio
 - Document view can still take more space, but the user should not lose the investigation context entirely.
 
 This is the biggest platform-feel improvement. The user should feel like they are moving through a case map, not jumping between disconnected pages.
+
+### Focus reducer (absorbed from the context-panel spec)
+
+The mechanism is the **focus reducer** from `2026-06-19-context-panel-three-state-design.md`:
+`CaseWorkspaceContext` owns Investigate-tab navigation via `useReducer`, and the local
+`navStack` in `InvestigateTab` is deleted. What changes from that spec is **what each focus
+action renders** — beside a still-visible map, not as a full-width swap:
+
+| Action | Old (superseded) | New (this plan) |
+|--------|------------------|-----------------|
+| `focusEntity(subject)` | full-width `ProfilePanel` | **Subject Inspector** in the right panel; **map stays visible**, selected subject gets a focus ring |
+| `focusRelationship(edgeId)` | n/a (edge was local state) | selects the summarized `/case-map/` edge → **Relationship Inspector** in the right panel; map stays visible |
+| `focusThread(thread)` | full-width `AngleView` | **Thread Path Mode** (§7): highlight the thread's relationships, dim the rest, show thread summary in the inspector; an **"Open full Thread"** action navigates to the existing `AngleView` (full-width) until Phase 4 |
+| `focusDocument(doc)` | full-width `DocumentView` | unchanged — document may take the larger area, but the inspector context persists |
+| `goBack` / `goTo` | history truncation + pointer recompute | unchanged; the pointer-recompute invariant (active thread persists while drilling into a document opened from it) still holds |
+
+So `selectedConnection` from the context-panel spec is generalized to a focus frame backed by
+the **stable `/case-map/` edge id** (§4 locked invariant 1). The "What's Missing" panel becomes
+the §9 readiness module. The reducer's transitions and the pointer-recompute rule carry over
+verbatim — only the rendered surface and the persistent-map layout change.
 
 ### First Implementation Scope
 
@@ -726,22 +945,74 @@ Pattern flags must link to the relevant Thread/Finding. They should not appear a
 
 This redesign should be planned as a complete path with a controlled first build slice.
 
-### Phase 1 — Relationship Summary Backend + Case Map Visual Foundation
+### Phase 1A — `/case-map/` backend contract + relationship-strength builder
 
-- Add backend relationship-summary aggregation for subject pairs.
-- Extend graph API or add Case Map API with summarized relationship edges.
-- Add strength level, categories, reasons, evidence refs, and thread refs.
-- Replace pictogram graph nodes with abstract markers.
-- Replace toolbar glyphs with Lucide icons.
-- Render edge thickness from strength level.
-- Keep strong color reserved for thread/severity/handoff meaning.
+Backend only. Ships the locked v1 contract (§4) so 1B has real data to render. No frontend
+visual work depends on guesswork.
+
+- New `GET /api/cases/:id/case-map/` endpoint returning the §4 locked shape (nodes, summarized
+  edges, stats). **Leave `/graph/` untouched** — Timeline and legacy consumers keep using it.
+- Subject-pair **relationship-strength builder**: merge co-mentions, formal roles, transactions,
+  manual relationships, financial links, shared address, and thread references into one
+  `strength` object per pair (score + level + categories + reasons + counts).
+- **Property-transaction summarization** (§4): resolve buyer/seller subjects, attribute the
+  transaction to the subject-pair edge as `transaction` evidence; no property nodes.
+- **Signal/thread attachment** beyond `trigger_entity_id`: consult `evidence_snapshot` +
+  underlying relationships to attach `thread_refs` to the correct subject-pair edges.
+- Enforce the **`material` cap rule** (raw evidence ≤ `repeated`; only substantiated/handoff
+  thread relevance elevates).
+- **Doc-alignment task** (§2 "Vocabulary source of truth"): update `CLAUDE.md` FRONTEND
+  VOCABULARY (+ `AGENTS.md`) to the new terms with backend-mapping column, before 1B.
+
+### Phase 1B — Case Map visual foundation (consumes 1A)
+
+Frontend, depends on 1A's endpoint.
+
+- Point the Investigate Case Map at `/case-map/`; keep `/graph/` for Timeline.
+- Replace pictogram nodes with **abstract markers** (shape/ring for subject type per §4 Node
+  Direction).
+- Replace toolbar glyphs/emoji with **Lucide icons** (stable 32px, tooltips).
+- **Edge thickness from `strength.level`**; keep base edges quiet/neutral, reserving strong
+  color for thread severity / blocker / handoff meaning.
+- Map legend + the ethical explanatory copy (§10).
+
+### Phase 1 test plan (§11A)
+
+**Backend (relationship-strength builder) — locked cases:**
+- co-mention only ⇒ `observed`
+- single formal role ⇒ `documented`
+- single direct transaction ⇒ `documented`
+- multiple sources / multiple categories ⇒ `repeated`
+- raw score ≥ 80 **without** a substantiated/handoff thread ⇒ still capped at `repeated`
+- substantiated (or handoff-ready) thread reference ⇒ elevates to `material`
+- additional-document cap (+5 each, max +20) and transaction cap (max +50) honored
+- **property transaction** with both subjects in case ⇒ one subject-pair edge with `transaction`
+  category + transaction `evidence_ref`; one-sided (out-of-case counterparty) ⇒ no edge
+- **SR-015** (triggers on property txn) ⇒ `thread_ref` attached to the insider↔counterparty
+  subject-pair edge, not only the trigger entity
+- **SR-025** (triggers on 990/org) ⇒ `thread_ref` attached across the related-party subject pair
+- edge-id stability: `"{minId}__{maxId}"` regardless of buyer/seller order
+- contract shape: response validates against §4 (stats `by_level` sums to `edge_count`, etc.)
+
+**Frontend (1B):** edge thickness maps to level; abstract markers render per subject type;
+toolbar renders Lucide icons with accessible labels; map consumes `/case-map/` without touching
+the Timeline's `/graph/` calls.
+
+Backend tests run on Railway (Postgres + ArrayField); frontend tests run locally (Vitest).
 
 ### Phase 2 — Right Inspector Workspace
 
-- Keep Case Map visible when selecting subjects and relationships.
-- Convert current ProfilePanel into Subject Inspector behavior.
-- Convert current ConnectionDetailPanel into Relationship Inspector behavior.
-- Preserve current full AngleView navigation for threads until Thread Builder is redesigned.
+- Land the **focus reducer** (absorbed from the context-panel spec, §5.1): context owns
+  Investigate navigation, `navStack` deleted.
+- Keep Case Map visible when selecting subjects and relationships (right inspector, fixed
+  320–360px).
+- Convert current `ProfilePanel` into Subject Inspector behavior.
+- Convert current `ConnectionDetailPanel` into Relationship Inspector behavior, keyed off the
+  stable `/case-map/` edge id.
+- Add the **"What's Missing" / readiness presence** module (§9), consuming the existing
+  `referral-readiness` endpoint.
+- Preserve current full `AngleView` navigation for threads ("Open full Thread") until the
+  Thread Builder redesign (Phase 4).
 
 ### Phase 3 — Thread Path Mode
 
@@ -764,22 +1035,35 @@ This redesign should be planned as a complete path with a controlled first build
 
 ## 12. Open Questions
 
-These decisions should be made before implementation planning:
+**Resolved (2026-06-19):**
 
-1. What exact graph node marker system should be used for person, organization, unknown/shell, selected, developing thread, and substantiated thread?
-2. Should the relationship strength levels be `observed`, `documented`, `repeated`, `material` as proposed?
-3. What fields should the first Subject Inspector show?
-4. What fields should the first Relationship Inspector show?
-5. Should Phase 1 fully switch InvestigateTab to `/case-map/`, or load `/case-map/` for the visible map while continuing to use `/graph/` for timeline/context data until cleanup?
+- **Q2 — strength levels:** ✅ **Locked** to `observed | documented | repeated | material`
+  (§4, §"Relationship Strength Levels").
+- **Q5 — endpoint strategy:** ✅ **Locked** — the Investigate **Case Map** reads `/case-map/`
+  (Phase 1B); the **Timeline** and any legacy graph consumers keep reading `/graph/` unchanged.
+  In other words, only the map surface moves to `/case-map/` in Phase 1 — `/graph/` is not
+  modified and is not removed. A later cleanup pass can migrate remaining `/graph/` consumers.
+
+**Still open — but do NOT block Phase 1A planning (they are 1B / Phase 2 detail):**
+
+1. **(1B)** Exact node marker system for person, organization, unknown/shell, selected,
+   developing-thread, and substantiated-thread states. Lock during 1B design.
+3. **(Phase 2)** Exact first Subject Inspector field list (§6 gives the shape; finalize when
+   building it).
+4. **(Phase 2)** Exact first Relationship Inspector field list (§6 gives the shape).
 
 ## 13. Recommended Next Step
 
-Before implementation planning, finish this spec by locking:
+Locked and ready to plan (this revision):
 
-- the relationship strength scoring levels and thresholds,
-- the exact `/api/cases/:id/case-map/` response contract,
-- the exact subject/relationship inspector field list,
-- the graph node/edge visual encoding,
-- the Phase 1 test plan.
+- ✅ relationship-strength levels + thresholds + `material` cap rule,
+- ✅ `/api/cases/:id/case-map/` v1 response contract (§4 "Locked v1 contract"),
+- ✅ endpoint strategy (`/case-map/` for the map, `/graph/` for Timeline),
+- ✅ Phase 1 split (1A backend, 1B visual) + Phase 1 test plan,
+- ✅ vocabulary source-of-truth update sequenced into 1A.
 
-After the expanded spec is approved, convert it into an implementation plan.
+Still to lock *at their phase* (not blocking 1A): node marker system (1B), inspector field
+lists (Phase 2), Thread Builder structure (Phase 4).
+
+**Next step:** convert **Phase 1A + 1B** into a step-by-step implementation plan
+(TDD-first on the relationship-strength builder, using the §11A test cases as the red tests).

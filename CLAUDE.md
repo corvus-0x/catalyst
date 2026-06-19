@@ -244,6 +244,12 @@ cd backend && ruff check .                 # Lint
 cd frontend && npx tsc --noEmit            # Type check
 python tests/api_health_check.py           # API smoke test
 cd backend && python manage.py seed_demo   # Load demo case
+
+# Backend test suite — runs in the already-running Docker stack:
+docker exec catalyst_backend python manage.py test investigations --keepdb --noinput
+#   --noinput : avoid the "destroy leftover test DB?" prompt (EOFs non-interactively)
+#   --keepdb  : reuse test_catalyst_db, skip the migration replay (fast loop)
+#   narrow with e.g. ...test investigations.tests.test_case_map
 ```
 
 ---
@@ -253,9 +259,16 @@ cd backend && python manage.py seed_demo   # Load demo case
 1. **Read this file first.**
 2. **Check the connector wiring table** before building anything — wire existing code first.
 3. **Use the decision model** (GREEN/YELLOW/RED) for all choices.
-4. **Run tests** before and after changes: `python tests/api_health_check.py`
-5. **Tyler commits from his local machine** (sandbox git has permission issues with hooks).
-6. **Backend tests can't run locally** (Postgres + ArrayField) — validate on Railway after push.
+4. **Run tests** before and after changes. API smoke test: `python tests/api_health_check.py`.
+   Full backend suite (needs Postgres + ArrayField) runs in the **already-running Docker
+   stack**: `docker exec catalyst_backend python manage.py test investigations --keepdb --noinput`.
+5. **Always branch for feature/non-trivial work — never commit it directly to `main`.** Claude
+   creates the branch and makes the commits (pre-commit hooks are dormant in this environment,
+   so run `ruff check`/`ruff format` manually before each commit). Pushing + opening the PR is
+   an outward-facing step — confirm with Tyler first.
+6. **Validate before `main` in three stages:** local Docker suite (fast red/green TDD) →
+   Railway **PR preview deployment** (integration / live API-shape on the real endpoint) →
+   merge to `main` (prod deploy gate).
 
 ---
 
