@@ -29,6 +29,7 @@ function setup(overrides: Partial<FindingItem> = {}) {
 describe("TieOffModal gate", () => {
   it("disables Confirm until overreach is acknowledged", () => {
     setup();
+    fireEvent.click(screen.getByRole("radio", { name: /confirmed — send to referral package/i }));
     const confirm = screen.getByRole("button", { name: /confirm angle/i });
     expect(confirm).toBeDisabled();
     fireEvent.click(screen.getByLabelText(/overreach/i));
@@ -40,6 +41,7 @@ describe("TieOffModal gate", () => {
     setup();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByText(/SR-015/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /confirmed — send to referral package/i }));
     fireEvent.click(screen.getByLabelText(/overreach/i));
     fireEvent.click(screen.getByRole("button", { name: /confirm angle/i }));
     await waitFor(() => expect(updateAngle).toHaveBeenCalled());
@@ -56,6 +58,7 @@ describe("TieOffModal gate", () => {
     err.body = { errors: { gate: { unmet: ["citation"] } } };
     (updateAngle as any).mockRejectedValue(err);
     setup();  // baseFinding has narrative + a document_link + DOCUMENTED weight
+    fireEvent.click(screen.getByRole("radio", { name: /confirmed — send to referral package/i }));
     fireEvent.click(screen.getByLabelText(/overreach/i));
     const confirm = screen.getByRole("button", { name: /confirm angle/i });
     expect(confirm).toBeEnabled();
@@ -72,6 +75,7 @@ describe("TieOffModal gate", () => {
     render(
       <TieOffModal open caseId="c" finding={baseFinding} onClose={onClose} onTiedOff={() => {}} />,
     );
+    fireEvent.click(screen.getByRole("radio", { name: /confirmed — send to referral package/i }));
     fireEvent.click(screen.getByLabelText(/overreach/i));
     fireEvent.click(screen.getByRole("button", { name: /confirm angle/i }));
     await waitFor(() => expect(screen.getByText(/network down/i)).toBeInTheDocument());

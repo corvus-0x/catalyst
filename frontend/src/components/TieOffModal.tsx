@@ -64,12 +64,13 @@ export default function TieOffModal({
   onTiedOff,
 }: TieOffModalProps) {
   // Controlled form state — pre-filled from the finding.
-  // Default outcome: confirmed for active/new angles, exhausted only if already dismissed.
+  // Default outcome: confirmed if already confirmed, otherwise exhausted (safe default —
+  // confirmed sends the angle to the referral package so we never default into it).
   const [evidenceWeight, setEvidenceWeight] = useState<EvidenceWeight>(
     () => finding.evidence_weight,
   );
   const [outcome, setOutcome] = useState<Outcome>(
-    () => (finding.status === "DISMISSED" ? "exhausted" : "confirmed"),
+    () => (finding.status === "CONFIRMED" ? "confirmed" : "exhausted"),
   );
   const [dismissalRationale, setDismissalRationale] = useState("");
   const [rationaleError, setRationaleError] = useState(false);
@@ -355,7 +356,7 @@ export default function TieOffModal({
               </p>
             )}
             {serverUnmet && (
-              <p id="rationale-error" className="tieoff-error" role="alert">
+              <p id="gate-error" className="tieoff-error" role="alert">
                 Server blocked tie-off — missing: {serverUnmet.join(", ")}.
               </p>
             )}
