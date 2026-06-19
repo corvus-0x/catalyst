@@ -160,18 +160,29 @@ every 2s. AI pattern analysis also async (202). All others synchronous.
 ## FRONTEND VOCABULARY
 
 These are NOT synonyms — use them in all component names, comments, and user-visible strings.
-Backend model names appear only in API calls and TypeScript types.
+Backend model names appear only in API calls and TypeScript types and **do not change**.
+
+Vocabulary moved to investigative-journalism / public-accountability language per
+`docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md` §2.
 
 | Frontend term | Backend model / concept | Notes |
 |---------------|------------------------|-------|
-| **Angle** | `Finding` | The investigation's narrative unit. |
-| **Knot** | `Person` or `Organization` | Only these two appear as graph nodes. `Property` is NOT a knot. |
-| **Connection** | Graph edge (Relationship / PersonOrganization / PropertyTransaction) | Lines between knots. |
-| **Web** | The Cytoscape graph canvas | Primary investigation workspace. |
+| **Thread** | `Finding` | The investigation's narrative unit (was "Angle"). Use **Finding** only in formal package/export language. |
+| **Subject** | `Person` or `Organization` | Only these two appear as Case Map nodes (was "Knot"). `Property` is NOT a Subject. |
+| **Relationship** | Summarized `/case-map/` edge (Relationship / PersonOrganization / PropertyTransaction) | One line per Subject pair (was "Connection"). |
+| **Case Map** | The Cytoscape graph canvas | Primary investigation workspace (was "Web"). |
+| **Substantiated** | `Finding.status == CONFIRMED` | A Thread supported by cited sources. |
+| **Set Aside** | `Finding.status == DISMISSED` | Reversible — may return if new sources/rules make it relevant. |
+| **Handoff Package** | Referral package (workflow term) | **Referral Package** specifically = agency-directed export (AG/IRS/FBI). |
 | **Lead** | AI pattern analysis result (`FindingSource.AI`) | NEVER show "Sonnet", "Claude", "AI", "LLM" — call it "Lead". |
 | **Intake** | Document extraction pipeline | NEVER show "Haiku", "Claude", "AI" — call it "Intake". |
-| **Quick capture** | `InvestigatorNote` | Free-text note on a knot, connection, or angle. |
-| **Pending connections** | `FuzzyMatchCandidate` review queue | Badge on Web toolbar. |
+| **Observation** | `InvestigatorNote` | Free-text note on a Subject, Relationship, or Thread (was "Quick capture"). |
+| **Pending relationships** | `FuzzyMatchCandidate` review queue | Badge on the Case Map toolbar (was "Pending connections"). |
+
+> **Rename in progress (Phase 1A doc-alignment).** This table is the **target** vocabulary and
+> the source of truth. The frontend *code* still uses the prior terms (Angle/Knot/Web/Connection)
+> until Phase 1B/2 migrate it. **Do not partially rename** — the code rename lands as its own
+> phase so the vocabulary never half-migrates.
 
 **Banned strings in any user-visible text:** "Haiku", "Sonnet", "Opus", "Claude", "AI assistant", "LLM", "GPT"
 
@@ -244,6 +255,16 @@ cd backend && ruff check .                 # Lint
 cd frontend && npx tsc --noEmit            # Type check
 python tests/api_health_check.py           # API smoke test
 cd backend && python manage.py seed_demo   # Load demo case
+
+# Backend test suite — runs in the already-running Docker stack.
+# Use --exclude-tag=eval to MATCH CI (ci.yml): the @tag("eval") AI suite is
+# non-deterministic (hits the model) and is excluded from CI. Running it locally
+# produces false reds — only include it when deliberately checking AI quality.
+docker exec catalyst_backend python manage.py test investigations --exclude-tag=eval --keepdb --noinput
+#   --exclude-tag=eval : skip the flaky AI evals (CI-equivalent gate)
+#   --noinput          : avoid the "destroy leftover test DB?" prompt (EOFs non-interactively)
+#   --keepdb           : reuse test_catalyst_db, skip the migration replay (fast loop)
+#   narrow with e.g. ...test investigations.tests.test_case_map
 ```
 
 ---
@@ -253,9 +274,18 @@ cd backend && python manage.py seed_demo   # Load demo case
 1. **Read this file first.**
 2. **Check the connector wiring table** before building anything — wire existing code first.
 3. **Use the decision model** (GREEN/YELLOW/RED) for all choices.
-4. **Run tests** before and after changes: `python tests/api_health_check.py`
-5. **Tyler commits from his local machine** (sandbox git has permission issues with hooks).
-6. **Backend tests can't run locally** (Postgres + ArrayField) — validate on Railway after push.
+4. **Run tests** before and after changes. API smoke test: `python tests/api_health_check.py`.
+   Full backend suite (needs Postgres + ArrayField) runs in the **already-running Docker
+   stack**, CI-equivalent: `docker exec catalyst_backend python manage.py test investigations
+   --exclude-tag=eval --keepdb --noinput`. (Omit `--exclude-tag=eval` only to deliberately run
+   the flaky AI eval suite — CI excludes it, so include it locally to match CI and avoid false reds.)
+5. **Always branch for feature/non-trivial work — never commit it directly to `main`.** Claude
+   creates the branch and makes the commits (pre-commit hooks are dormant in this environment,
+   so run `ruff check`/`ruff format` manually before each commit). Pushing + opening the PR is
+   an outward-facing step — confirm with Tyler first.
+6. **Validate before `main` in three stages:** local Docker suite (fast red/green TDD) →
+   Railway **PR preview deployment** (integration / live API-shape on the real endpoint) →
+   merge to `main` (prod deploy gate).
 
 ---
 
