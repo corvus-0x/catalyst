@@ -13,13 +13,14 @@
 ## Global Constraints
 
 - **One atomic PR.** The migration + serializer gate + `TieOffModal` change ship together and merge in one commit. `main` deploys straight to Railway — a half-merged state breaks confirms in production. Do all tasks on one branch.
+- **Commits are local checkpoints; squash before merge.** Each task's `git commit` step is a *checkpoint* **Tyler runs from his local machine** (sandbox git has hook-permission issues per CLAUDE.md). The per-task commits make review/rollback easy during implementation; **squash-merge the branch into one commit** so the deploy stays atomic. The per-task `git commit` lines below are the suggested checkpoint messages — they are not a contradiction of the atomic-PR rule.
 - **Line length 100 max**; double quotes; spaces; LF. `views.py` is **not** E501-exempt — break long strings with parenthesized f-strings.
 - **Frontend vocabulary (user-visible strings):** Angle = Finding, Knot = Person/Org, Lead = AI finding, Intake = extraction. **Banned strings anywhere user-visible:** "Haiku", "Sonnet", "Opus", "Claude", "AI assistant", "LLM", "GPT".
 - **AuditLog is append-only — never UPDATE or DELETE.** Only the server writes it, only inside `transaction.atomic()`.
 - **Referral-grade predicate (verbatim):** an Angle is referral-grade iff `status == CONFIRMED` ∧ `≥1 cited document` ∧ `evidence_weight ∈ {DOCUMENTED, TRACED}` ∧ `overreach_reviewed == True`.
 - **Gate trigger (verbatim):** fire only when `instance.status != CONFIRMED` **and** the payload sets `status == CONFIRMED`. Never re-fire on edits of an already-confirmed angle (condition loss is allowed).
 - **Error envelope (verbatim):** `400 {"errors": {"gate": {"unmet": [...]}}}` — condition keys only (`"citation"`, `"evidence_weight"`, `"narrative"`, `"overreach"`), no record contents.
-- **Backend tests don't run cleanly in the default shell (2-min timeout).** Use the native fast loop: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.<module> --keepdb`. Full validation happens on Docker/Railway.
+- **Backend tests don't run cleanly in the default shell (2-min timeout).** Use the native fast loop: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.<module> --keepdb`. Full validation happens on Docker/Railway.
 - **Frontend checks:** `cd frontend && npx tsc --noEmit` and `npx vitest run <path>`.
 
 ---
@@ -65,7 +66,7 @@ class OverreachFieldTests(TestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_overreach_field --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_overreach_field --keepdb`
 Expected: FAIL — `AttributeError`/`FieldError`: `overreach_reviewed` does not exist.
 
 - [ ] **Step 3: Add the field**
@@ -84,12 +85,12 @@ In `models.py`, in the `Finding` model immediately after the `evidence_weight` f
 
 - [ ] **Step 4: Generate the migration**
 
-Run: `..\.venv\Scripts\python.exe backend/manage.py makemigrations investigations`
+Run: `.\.venv\Scripts\python.exe backend\manage.py makemigrations investigations`
 Expected: creates `0035_finding_overreach_reviewed.py` adding a `BooleanField(default=False)`. Confirm the file name/number; if the next number differs, rename references accordingly.
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_overreach_field --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_overreach_field --keepdb`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -124,8 +125,15 @@ from investigations.models import (
 from investigations.referral_grade import is_referral_grade, referral_grade_qs
 
 
-def _doc(case):
-    return Document.objects.create(case=case, filename="d.pdf", sha256="x" * 64)
+def _document(case, suffix="a"):
+    # Document requires file_path, sha256_hash, file_size (NOT `sha256`).
+    return Document.objects.create(
+        case=case,
+        filename=f"evidence-{suffix}.pdf",
+        file_path=f"cases/test/evidence-{suffix}.pdf",
+        sha256_hash=suffix * 64,
+        file_size=1024,
+    )
 
 
 class ReferralGradeTests(TestCase):
@@ -145,7 +153,7 @@ class ReferralGradeTests(TestCase):
 
     def test_full_predicate_is_grade(self):
         f = self._confirmed()
-        FindingDocument.objects.create(finding=f, document=_doc(self.case))
+        FindingDocument.objects.create(finding=f, document=_document(self.case))
         self.assertTrue(is_referral_grade(f))
         self.assertEqual(referral_grade_qs(self.case).count(), 1)
 
@@ -156,18 +164,18 @@ class ReferralGradeTests(TestCase):
 
     def test_overreach_false_not_grade(self):
         f = self._confirmed(overreach_reviewed=False)
-        FindingDocument.objects.create(finding=f, document=_doc(self.case))
+        FindingDocument.objects.create(finding=f, document=_document(self.case))
         self.assertFalse(is_referral_grade(f))
 
     def test_weak_weight_not_grade(self):
         f = self._confirmed(evidence_weight=EvidenceWeight.SPECULATIVE)
-        FindingDocument.objects.create(finding=f, document=_doc(self.case))
+        FindingDocument.objects.create(finding=f, document=_document(self.case))
         self.assertFalse(is_referral_grade(f))
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_referral_grade --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_referral_grade --keepdb`
 Expected: FAIL — `ModuleNotFoundError: investigations.referral_grade`.
 
 - [ ] **Step 3: Implement the predicate module**
@@ -215,7 +223,7 @@ def is_referral_grade(finding) -> bool:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_referral_grade --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_referral_grade --keepdb`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -254,7 +262,7 @@ git commit -m "feat(backend): centralized referral-grade predicate"
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_overreach_field.OverreachFieldTests.test_serializer_round_trips_overreach --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_overreach_field.OverreachFieldTests.test_serializer_round_trips_overreach --keepdb`
 Expected: FAIL — `overreach_reviewed` rejected as an unexpected field.
 
 - [ ] **Step 3a: Add to `serialize_finding`**
@@ -296,7 +304,7 @@ And in the `update_fields` list assembly (after the `evidence_weight` append ~li
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_overreach_field --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_overreach_field --keepdb`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -329,8 +337,14 @@ from investigations.models import (
 from investigations.serializers import FindingUpdateSerializer
 
 
-def _doc(case):
-    return Document.objects.create(case=case, filename="d.pdf", sha256="y" * 64)
+def _document(case, suffix="a"):
+    return Document.objects.create(
+        case=case,
+        filename=f"evidence-{suffix}.pdf",
+        file_path=f"cases/test/evidence-{suffix}.pdf",
+        sha256_hash=suffix * 64,
+        file_size=1024,
+    )
 
 
 class TieOffGateTests(TestCase):
@@ -351,7 +365,7 @@ class TieOffGateTests(TestCase):
 
     def test_confirm_with_all_conditions_in_one_payload(self):
         f = self._new_finding(status=FindingStatus.NEW)
-        doc = _doc(self.case)
+        doc = _document(self.case)
         s = FindingUpdateSerializer(
             data={
                 "status": "CONFIRMED",
@@ -373,7 +387,7 @@ class TieOffGateTests(TestCase):
             narrative="n",
             overreach_reviewed=True,
         )
-        doc = _doc(self.case)
+        doc = _document(self.case)
         FindingDocument.objects.create(finding=f, document=doc)
         s = FindingUpdateSerializer(
             data={"remove_document_ids": [str(doc.id)]}, instance=f
@@ -387,14 +401,14 @@ class TieOffGateTests(TestCase):
             narrative="n",
             overreach_reviewed=True,
         )
-        FindingDocument.objects.create(finding=f, document=_doc(self.case))
+        FindingDocument.objects.create(finding=f, document=_document(self.case))
         s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=f)
         self.assertTrue(s.is_valid(), s.errors)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_tie_off_gate --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_tie_off_gate --keepdb`
 Expected: FAIL — confirms succeed today with no gate (`is_valid` returns True).
 
 - [ ] **Step 3: Implement the gate** (in `is_valid`, immediately before `return True`):
@@ -438,7 +452,7 @@ Ensure `EvidenceWeight` and `FindingStatus` are imported at the top of `serializ
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_tie_off_gate --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_tie_off_gate --keepdb`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -465,7 +479,7 @@ git commit -m "feat(gate): enforce referral-grade predicate on CONFIRMED transit
     def test_confirm_emits_signal_confirmed_audit_row(self):
         from investigations.models import AuditLog, AuditAction
         f = self._new_finding(status=FindingStatus.NEW)
-        doc = _doc(self.case)
+        doc = _document(self.case)
         FindingDocument.objects.create(finding=f, document=doc)
         resp = self.client.patch(
             f"/api/cases/{self.case.pk}/findings/{f.pk}/",
@@ -489,7 +503,7 @@ git commit -m "feat(gate): enforce referral-grade predicate on CONFIRMED transit
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_tie_off_gate.TieOffGateTests.test_confirm_emits_signal_confirmed_audit_row --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_tie_off_gate.TieOffGateTests.test_confirm_emits_signal_confirmed_audit_row --keepdb`
 Expected: FAIL — only `FINDING_UPDATED` is written today.
 
 - [ ] **Step 3: Emit the transition row** (in the PATCH branch, inside `with transaction.atomic():`, immediately after the existing `AuditLog.log(action=AuditAction.FINDING_UPDATED, ...)` call):
@@ -516,7 +530,7 @@ Confirm `FindingStatus` and `AuditAction` are imported in `views.py` (both are a
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_tie_off_gate --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_tie_off_gate --keepdb`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -556,7 +570,11 @@ def _grade(case, **kw):
         overreach_reviewed=True, narrative="n", **kw,
     )
     FindingDocument.objects.create(
-        finding=f, document=Document.objects.create(case=case, filename="d.pdf", sha256="z" * 64)
+        finding=f,
+        document=Document.objects.create(
+            case=case, filename="d.pdf", file_path="cases/t/d.pdf",
+            sha256_hash="z" * 64, file_size=1024,
+        ),
     )
     return f
 
@@ -579,20 +597,31 @@ class CredibilityTests(TestCase):
         self.assertEqual(c["need_work"], 2)
         self.assertEqual(c["agency_leads"], 0)
 
-    def test_readiness_blocked_when_only_unreviewed_confirmed(self):
-        Finding.objects.create(
+    def test_readiness_blocked_and_names_overreach_when_only_unreviewed_confirmed(self):
+        # Confirmed + cited + documented but overreach NOT reviewed: one ack away.
+        f = Finding.objects.create(
             case=self.case, rule_id="MANUAL", title="U",
             status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
-            overreach_reviewed=False,
+            overreach_reviewed=False, narrative="n",
+        )
+        FindingDocument.objects.create(
+            finding=f,
+            document=Document.objects.create(
+                case=self.case, filename="d.pdf", file_path="cases/t/d.pdf",
+                sha256_hash="w" * 64, file_size=1024,
+            ),
         )
         readiness = build_case_readiness(self.case)
         self.assertEqual(readiness["status"], "BLOCKED")
         self.assertEqual(readiness["credibility"]["referral_grade"], 0)
+        # The missing condition is named, not hidden behind the generic FAIL.
+        by_key = {item["key"]: item for item in readiness["items"]}
+        self.assertEqual(by_key["overreach_review"]["status"], "WARN")
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_credibility --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_credibility --keepdb`
 Expected: FAIL — `build_credibility` undefined; no `credibility` key.
 
 - [ ] **Step 3a: Add `build_credibility`** (in `views.py`, just above `build_case_readiness` ~line 2270):
@@ -646,6 +675,60 @@ Then change the `confirmed_angles` `_readiness_item(...)` (~line 2316) to key of
         ),
 ```
 
+Also compute the **overreach-pending** count (angles one acknowledgement away from referral-grade) near the other counts:
+
+```python
+    overreach_pending = (
+        confirmed_qs.filter(
+            evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
+            overreach_reviewed=False,
+        )
+        .annotate(_cc=Count("document_links"))
+        .filter(_cc__gt=0)
+        .count()
+    )
+```
+
+And add a dedicated checklist item to the `items` list so the missing condition is **legible** (not hidden behind a generic confirmed-angles FAIL):
+
+```python
+        _readiness_item(
+            "overreach_review",
+            "Overreach review",
+            "WARN" if overreach_pending else "PASS",
+            (
+                f"{overreach_pending} confirmed angle"
+                f"{'' if overreach_pending == 1 else 's'} need an overreach acknowledgement "
+                "to become referral-grade."
+                if overreach_pending
+                else "All cited, documented angles have passed overreach review."
+            ),
+            overreach_pending,
+            "investigate",
+        ),
+```
+
+> **WARN, not FAIL, on purpose:** the zero-referral-grade blocker is already carried by
+> `confirmed_angles`. Making overreach a second FAIL would block a case that *does* have a
+> referral-grade angle merely because a *secondary* angle is mid-tie-off. WARN surfaces the
+> reason legibly without over-blocking a referable case.
+
+- [ ] **Step 3a-2: Register the new readiness key's weight.** `_build_case_quality` looks up `READINESS_QUALITY_WEIGHTS[item["key"]]` and will `KeyError` on an unregistered key. Add `overreach_review` with weight **0** (score-neutral — legibility only, so the existing 100-point scale and prior score assertions are unchanged):
+
+```python
+READINESS_QUALITY_WEIGHTS = {
+    "citation_coverage": 25,
+    "evidence_weight": 20,
+    "confirmed_angles": 20,
+    "failed_extraction": 15,
+    "referral_target": 10,
+    "pending_connections": 4,
+    "pending_extraction": 3,
+    "active_jobs": 3,
+    "overreach_review": 0,
+}
+```
+
 - [ ] **Step 3c: Add `credibility` to the readiness return** (~line 2434):
 
 ```python
@@ -662,7 +745,7 @@ Then change the `confirmed_angles` `_readiness_item(...)` (~line 2316) to key of
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_credibility --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_credibility --keepdb`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -691,27 +774,33 @@ git commit -m "feat(api): credibility triplet + predicate-driven readiness"
         # A confirmed, documented, cited angle that is NOT overreach-reviewed
         # must not appear in the package (and must not satisfy readiness alone).
         from investigations.models import (
-            Document, Finding, FindingDocument, FindingStatus, EvidenceWeight,
+            Case, Document, Finding, FindingDocument, FindingStatus, EvidenceWeight,
+            ReferralTarget,
         )
-        case = self._case_with_target()  # existing helper that adds a ReferralTarget
+        case = Case.objects.create(name="PDF excl")
+        ReferralTarget.objects.create(
+            case=case, agency_name="Ohio AG", complaint_type="Charitable fraud",
+        )
         f = Finding.objects.create(
             case=case, rule_id="MANUAL", title="Unreviewed",
             status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
             overreach_reviewed=False, narrative="n",
         )
         FindingDocument.objects.create(
-            finding=f, document=Document.objects.create(case=case, filename="d.pdf", sha256="q" * 64)
+            finding=f,
+            document=Document.objects.create(
+                case=case, filename="d.pdf", file_path="cases/t/d.pdf",
+                sha256_hash="q" * 64, file_size=1024,
+            ),
         )
         resp = self.client.post(f"/api/cases/{case.pk}/referral-pdf/")
         # Zero referral-grade angles ⇒ readiness BLOCKED ⇒ 400.
         self.assertEqual(resp.status_code, 400, resp.content)
 ```
 
-> If `_case_with_target` does not exist in the test module, inline the existing setup pattern used by the other tests in that file (create case + `ReferralTarget`). Read the file's existing helpers first.
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_referral_pdf --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_referral_pdf --keepdb`
 Expected: FAIL — today the angle passes the `confirmed ∧ DOCUMENTED/TRACED` filter and readiness, so it is not excluded.
 
 - [ ] **Step 3a: Replace the export filter** in `api_case_referral_pdf` (~6057):
@@ -730,7 +819,7 @@ Expected: FAIL — today the angle passes the `confirmed ∧ DOCUMENTED/TRACED` 
 
 - [ ] **Step 4: Run the affected suites to verify green**
 
-Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py test investigations.tests.test_referral_pdf investigations.tests.test_referral_readiness --keepdb`
+Run: `$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py test investigations.tests.test_referral_pdf investigations.tests.test_referral_readiness --keepdb`
 Expected: PASS (new test passes; updated fixtures keep prior assertions green).
 
 - [ ] **Step 5: Commit**
@@ -972,14 +1061,21 @@ describe("TieOffModal gate", () => {
     expect(body.overreach_reviewed).toBe(true);
   });
 
-  it("renders the server gate reason when confirm 400s", async () => {
+  it("renders the server gate reason when confirm 400s despite a valid-looking local state", async () => {
+    // Locally valid (narrative + citation + DOCUMENTED + overreach ack) so the
+    // button is ENABLED and the click reaches the request — but the server
+    // rejects with a stale-state 400 (e.g. the doc was removed elsewhere).
     const err: any = new Error("gate"); err.status = 400;
-    err.body = { errors: { gate: { unmet: ["narrative"] } } };
+    err.body = { errors: { gate: { unmet: ["citation"] } } };
     (updateAngle as any).mockRejectedValue(err);
-    setup({ narrative: "" });
+    setup();  // baseFinding has narrative + a document_link + DOCUMENTED weight
     fireEvent.click(screen.getByLabelText(/overreach/i));
-    fireEvent.click(screen.getByRole("button", { name: /confirm angle/i }));
-    await waitFor(() => expect(screen.getByText(/narrative/i)).toBeInTheDocument());
+    const confirm = screen.getByRole("button", { name: /confirm angle/i });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(screen.getByText(/missing: citation/i)).toBeInTheDocument(),
+    );
   });
 });
 ```
@@ -1116,11 +1212,15 @@ import { CredibilityHeader } from "./InvestigateTab";
 
 describe("CredibilityHeader", () => {
   it("shows the triplet and never the score/100", () => {
-    render(<CredibilityHeader credibility={{ referral_grade: 3, need_work: 5, agency_leads: 2 }} />);
-    expect(screen.getByText(/3 referral-grade/i)).toBeInTheDocument();
-    expect(screen.getByText(/5 need work/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 agency leads/i)).toBeInTheDocument();
-    expect(screen.queryByText(/\/ 100/)).toBeNull();
+    const { container } = render(
+      <CredibilityHeader credibility={{ referral_grade: 3, need_work: 5, agency_leads: 2 }} />,
+    );
+    // Robust to text split across spans/nodes: assert on combined textContent.
+    const text = container.textContent ?? "";
+    expect(text).toContain("3 referral-grade");
+    expect(text).toContain("5 need work");
+    expect(text).toContain("2 agency leads");
+    expect(text).not.toContain("/ 100");
   });
 });
 ```
@@ -1206,6 +1306,18 @@ git commit -m "feat(investigate): lead with credibility triplet; drop score/100 
 
 - [ ] **Step 2: Render advisory gaps separately** (below the blocking list) so they read as hints, not blockers. Reuse the existing list markup; label the advisory group "Suggestions" and keep the `readyForReferral` status driven by `blockingGaps` + `isConfirmed` only.
 
+- [ ] **Step 2b: Distinguish three summary states in the copy** so an angle that meets every evidence requirement but is not yet tied off doesn't read as "0 gaps" or "Ready":
+
+```tsx
+  const summaryText = readyForReferral
+    ? "This angle is referral-grade."
+    : blockingGaps.length === 0 && !isConfirmed
+      ? "Meets evidence requirements — tie off to make this angle referral-grade."
+      : `${pluralize(blockingGaps.length, "gap")} before referral-grade.`;
+```
+
+Use `summaryText` for the panel summary, and only show the "Ready" status pill when `readyForReferral` is true; otherwise show "Needs evidence" (existing behavior).
+
 - [ ] **Step 3: Typecheck + existing tests**
 
 Run: `cd frontend && npx tsc --noEmit && npx vitest run src/views`
@@ -1251,8 +1363,8 @@ Place this after citations and evidence weights are assigned, so the marked subs
 
 Run (native DB):
 ```
-$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; ..\.venv\Scripts\python.exe backend/manage.py seed_demo
-..\.venv\Scripts\python.exe backend/manage.py shell -c "from investigations.models import Case; from investigations.views import build_credibility; c=Case.objects.first(); print(build_credibility(c))"
+$env:DB_HOST="127.0.0.1"; $env:DB_PORT="5433"; .\.venv\Scripts\python.exe backend\manage.py seed_demo
+.\.venv\Scripts\python.exe backend\manage.py shell -c "from investigations.models import Case; from investigations.views import build_credibility; c=Case.objects.first(); print(build_credibility(c))"
 ```
 Expected: `referral_grade` > 0 **and** `need_work` > 0 (a mix, not all-or-nothing).
 
