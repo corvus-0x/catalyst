@@ -17,6 +17,7 @@ from .models import (
     Person,
     PersonDocument,
     PersonOrganization,
+    PropertyTransaction,
 )
 
 # ── Scoring constants (spec §"First Scoring Formula") ──
@@ -255,6 +256,44 @@ def _collect_roles(case, subjects, evidence):
         )
 
 
+def _collect_transactions(case, subjects, evidence):
+    """Summarize buyer<->seller property transactions into subject-pair edges.
+
+    Properties are NOT nodes; the transaction is attributed to the buyer/seller
+    subject pair. A transaction with only one side resolving to a case subject
+    contributes no edge (spec §"Property transaction summarization").
+    """
+    qs = PropertyTransaction.objects.filter(property__case=case).select_related("property")
+    for tx in qs:
+        buyer = str(tx.buyer_id) if tx.buyer_id else None
+        seller = str(tx.seller_id) if tx.seller_id else None
+        if not buyer or not seller:
+            continue
+        if buyer not in subjects or seller not in subjects:
+            continue
+        lo, hi, _ = pair_edge_id(buyer, seller)
+        ev = evidence.setdefault((lo, hi), _new_evidence())
+        ev["transaction_count"] += 1
+        ev["relationship_types"].add("PURCHASED")
+        prop_label = tx.property.address or tx.property.parcel_number or "property"
+        ev["evidence_refs"].append(
+            {
+                "kind": "property_transaction",
+                "document_id": str(tx.document_id) if tx.document_id else None,
+                "label": f"Transaction — {prop_label}",
+                "category": "transaction",
+            }
+        )
+        ev["underlying"].append(
+            {
+                "kind": "PURCHASED",
+                "label": f"{tx.buyer_name or 'Buyer'} ← {tx.seller_name or 'Seller'}",
+                "source": "property_transaction",
+                "source_id": str(tx.id),
+            }
+        )
+
+
 def _build_edges(evidence, subjects):
     edges = []
     for (lo, hi), ev in evidence.items():
@@ -295,6 +334,7 @@ def build_case_map(case):
     evidence = {}
     _collect_co_mentions(case, subjects, evidence)
     _collect_roles(case, subjects, evidence)
+    _collect_transactions(case, subjects, evidence)
     edges = _build_edges(evidence, subjects)
     nodes = list(subjects.values())
     return {

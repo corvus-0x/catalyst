@@ -1,3 +1,5 @@
+import uuid
+
 from django.test import TestCase
 
 from investigations.case_map import (
@@ -15,6 +17,8 @@ from investigations.models import (
     Person,
     PersonDocument,
     PersonOrganization,
+    Property,
+    PropertyTransaction,
 )
 
 
@@ -163,3 +167,40 @@ class FormalRoleTests(TestCase):
         self.assertEqual(s["role_count"], 1)
         self.assertIn("formal_role", s["categories"])
         self.assertEqual(result["edges"][0]["underlying_relationships"][0]["source"], "person_org")
+
+
+class PropertyTransactionTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.buyer = Organization.objects.create(case=self.case, name="Charity")
+        self.seller = Person.objects.create(case=self.case, full_name="Insider")
+        self.prop = Property.objects.create(case=self.case, address="123 Main St")
+
+    def _tx(self, buyer_id, seller_id):
+        return PropertyTransaction.objects.create(
+            property=self.prop,
+            buyer_id=buyer_id,
+            buyer_type="ORGANIZATION",
+            buyer_name="Charity",
+            seller_id=seller_id,
+            seller_type="PERSON",
+            seller_name="Insider",
+        )
+
+    def test_two_sided_transaction_makes_subject_pair_edge(self):
+        self._tx(self.buyer.id, self.seller.id)
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        edge = result["edges"][0]
+        lo, hi, eid = pair_edge_id(self.buyer.id, self.seller.id)
+        self.assertEqual(edge["id"], eid)
+        self.assertEqual(edge["strength"]["transaction_count"], 1)
+        self.assertIn("transaction", edge["strength"]["categories"])
+        kinds = [u["source"] for u in edge["underlying_relationships"]]
+        self.assertIn("property_transaction", kinds)
+
+    def test_one_sided_transaction_makes_no_edge(self):
+        # seller id does not resolve to any case subject
+        self._tx(self.buyer.id, uuid.uuid4())
+        result = build_case_map(self.case)
+        self.assertEqual(result["edges"], [])
