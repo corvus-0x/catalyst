@@ -164,6 +164,10 @@ describe("AngleView narrative autosave failure", () => {
 
     // Tie-off should be enabled again (narrative now matches server value)
     expect(screen.getByRole("button", { name: /tie off/i })).not.toBeDisabled();
+
+    // The retry must actually re-issue the save (guard against a future regression
+    // where the failed save silently short-circuits the second blur).
+    expect(api.updateAngle).toHaveBeenCalledTimes(2);
   });
 
   it("tie-off is disabled while narrative is dirty (unsaved but no error)", async () => {
