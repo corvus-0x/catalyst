@@ -121,7 +121,7 @@ export default function TieOffModal({
     const body = {
       status: outcome === "confirmed" ? ("CONFIRMED" as const) : ("DISMISSED" as const),
       evidence_weight: evidenceWeight,
-      overreach_reviewed: outcome === "confirmed" ? true : finding.overreach_reviewed,
+      overreach_reviewed: outcome === "confirmed" ? overreachAck : finding.overreach_reviewed,
       investigator_note:
         outcome === "exhausted" ? dismissalRationale.trim() : finding.investigator_note,
     };

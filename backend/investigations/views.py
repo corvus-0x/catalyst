@@ -2269,15 +2269,19 @@ def _build_case_quality(items):
     }
 
 
-def build_credibility(case):
+def build_credibility(case, referral_grade=None):
     """Header triplet: referral-grade vs need-work Angles + agency leads.
 
     agency_leads is 0 until RecipientGap lands (case-workspace item 4); the slot
     exists now so the header shape is final.
+
+    Pass `referral_grade` (an already-computed int) to avoid a redundant query
+    when the caller has already fetched that count (e.g. build_case_readiness).
     """
     from .referral_grade import referral_grade_qs
 
-    referral_grade = referral_grade_qs(case).count()
+    if referral_grade is None:
+        referral_grade = referral_grade_qs(case).count()
     confirmed = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED).count()
     active = Finding.objects.filter(
         case=case, status__in=[FindingStatus.NEW, FindingStatus.NEEDS_EVIDENCE]
@@ -2485,7 +2489,7 @@ def build_case_readiness(case):
         "summary": summary,
         "items": items,
         "quality": _build_case_quality(items),
-        "credibility": build_credibility(case),
+        "credibility": build_credibility(case, referral_grade_count),
     }
 
 

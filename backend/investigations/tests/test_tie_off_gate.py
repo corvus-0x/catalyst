@@ -96,3 +96,43 @@ class TieOffGateTests(TestCase):
                 action=AuditAction.SIGNAL_CONFIRMED,
             ).exists()
         )
+
+    def test_http_gate_blocks_confirm_with_no_conditions_met(self):
+        """PATCH to CONFIRMED with nothing met must return 400 with the full gate envelope."""
+        f = self._new_finding(status=FindingStatus.NEW)
+        resp = self.client.patch(
+            f"/api/cases/{self.case.pk}/findings/{f.pk}/",
+            data={"status": "CONFIRMED"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        unmet = resp.json()["errors"]["gate"]["unmet"]
+        self.assertIn("citation", unmet)
+        self.assertIn("evidence_weight", unmet)
+        self.assertIn("narrative", unmet)
+        self.assertIn("overreach", unmet)
+        self.assertEqual(
+            sorted(unmet),
+            ["citation", "evidence_weight", "narrative", "overreach"],
+        )
+
+    def test_dismiss_emits_signal_dismissed_audit_row(self):
+        """PATCH to DISMISSED with a rationale must emit a SIGNAL_DISMISSED audit row."""
+        from investigations.models import AuditLog, AuditAction
+        f = self._new_finding(status=FindingStatus.NEW)
+        resp = self.client.patch(
+            f"/api/cases/{self.case.pk}/findings/{f.pk}/",
+            data={
+                "status": "DISMISSED",
+                "investigator_note": "Lead did not pan out — no corroborating records found.",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                case_id=self.case.pk,
+                record_id=f.pk,
+                action=AuditAction.SIGNAL_DISMISSED,
+            ).exists()
+        )

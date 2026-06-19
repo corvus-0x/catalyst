@@ -1,8 +1,8 @@
 """Single source of truth for the referral-grade predicate.
 
 An Angle (Finding) is "referral-grade" iff it is CONFIRMED, has at least one
-cited document, has evidence weight DOCUMENTED or TRACED, and the investigator
-acknowledged the overreach checklist at tie-off. Used by readiness, the
+cited document, has evidence weight DOCUMENTED or TRACED, and
+`overreach_reviewed` is True on the finding. Used by readiness, the
 credibility counts, and the referral PDF filter so the definition never drifts.
 """
 
@@ -14,7 +14,7 @@ REFERRAL_WEIGHTS = [EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED]
 
 
 def referral_grade_qs(case):
-    """Queryset of referral-grade Angles for a case (O(1) queries)."""
+    """Queryset of referral-grade Angles for a case (a single SQL statement)."""
     return (
         Finding.objects.filter(
             case=case,

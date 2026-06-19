@@ -1058,10 +1058,12 @@ class Command(BaseCommand):
         # ────────────────────────────────────────────────────────────────
         # 11a. OVERREACH REVIEW — author a realistic in-progress case:
         # some angles fully tied off (referral-grade), some still need
-        # work.  No silent grandfathering — the seed legitimately authors
-        # reviewed angles by setting overreach_reviewed=True on the first
-        # len//2 + 1 confirmed+cited angles ordered by creation time.
-        # This must run AFTER citations and evidence weights are assigned.
+        # work.  No silent grandfathering — the seed selects confirmed
+        # angles (which in this demo are already cited and DOCUMENTED or
+        # TRACED) and sets overreach_reviewed=True on the first
+        # len//2 + 1 of them, ordered by creation time.  That subset then
+        # meets every referral-grade condition.  This must run AFTER
+        # citations and evidence weights are assigned.
         # ────────────────────────────────────────────────────────────────
 
         confirmed = list(
@@ -1079,7 +1081,7 @@ class Command(BaseCommand):
         )
 
         # ────────────────────────────────────────────────────────────────
-        # 11a. AI FINDING (seeded to demonstrate AI pattern analysis)
+        # 11c. AI FINDING (seeded to demonstrate AI pattern analysis)
         # ────────────────────────────────────────────────────────────────
 
         ai_finding, _ = Finding.objects.get_or_create(
