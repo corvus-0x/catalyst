@@ -18,6 +18,7 @@ from .models import (
     PersonDocument,
     PersonOrganization,
     PropertyTransaction,
+    Relationship,
 )
 
 # ── Scoring constants (spec §"First Scoring Formula") ──
@@ -294,6 +295,27 @@ def _collect_transactions(case, subjects, evidence):
         )
 
 
+def _collect_relationships(case, subjects, evidence):
+    """Manual/person Relationship rows → family_or_personal evidence."""
+    qs = Relationship.objects.filter(case=case).select_related("person_a", "person_b")
+    for rel in qs:
+        a, b = str(rel.person_a_id), str(rel.person_b_id)
+        if a not in subjects or b not in subjects:
+            continue
+        lo, hi, _ = pair_edge_id(a, b)
+        ev = evidence.setdefault((lo, hi), _new_evidence())
+        ev["has_family"] = True
+        ev["relationship_types"].add(rel.relationship_type)
+        ev["underlying"].append(
+            {
+                "kind": rel.relationship_type,
+                "label": rel.get_relationship_type_display(),
+                "source": "manual_relationship",
+                "source_id": str(rel.id),
+            }
+        )
+
+
 def _build_edges(evidence, subjects):
     edges = []
     for (lo, hi), ev in evidence.items():
@@ -335,6 +357,7 @@ def build_case_map(case):
     _collect_co_mentions(case, subjects, evidence)
     _collect_roles(case, subjects, evidence)
     _collect_transactions(case, subjects, evidence)
+    _collect_relationships(case, subjects, evidence)
     edges = _build_edges(evidence, subjects)
     nodes = list(subjects.values())
     return {

@@ -19,6 +19,7 @@ from investigations.models import (
     PersonOrganization,
     Property,
     PropertyTransaction,
+    Relationship,
 )
 
 
@@ -204,3 +205,26 @@ class PropertyTransactionTests(TestCase):
         self._tx(self.buyer.id, uuid.uuid4())
         result = build_case_map(self.case)
         self.assertEqual(result["edges"], [])
+
+
+class ManualRelationshipTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.a = Person.objects.create(case=self.case, full_name="A")
+        self.b = Person.objects.create(case=self.case, full_name="B")
+
+    def test_manual_relationship_adds_family_evidence(self):
+        Relationship.objects.create(
+            case=self.case,
+            person_a=self.a,
+            person_b=self.b,
+            relationship_type="SPOUSE",
+        )
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        s = result["edges"][0]["strength"]
+        self.assertIn("family_or_personal", s["categories"])
+        self.assertEqual(
+            result["edges"][0]["underlying_relationships"][0]["source"],
+            "manual_relationship",
+        )
