@@ -212,34 +212,41 @@ function EvidencePanel({ finding, narrative }: EvidencePanelProps) {
   const citedCount = finding.document_links.length;
   const hasNarrative = narrative.trim().length > 0;
   const hasReferralWeight = REFERRAL_READY_WEIGHTS.has(finding.evidence_weight);
-  const hasKnots = finding.entity_links.some((link) =>
-    link.entity_type === "person" || link.entity_type === "organization"
+  const hasKnots = finding.entity_links.some(
+    (link) => link.entity_type === "person" || link.entity_type === "organization"
   );
   const isConfirmed = finding.status === "CONFIRMED";
 
-  const gapItems = [
+  // Official four blocking requirements — must all pass for referral-grade
+  const blockingGaps = [
     citedCount === 0 ? "Cite at least one source document." : null,
     !hasNarrative ? "Write the angle narrative." : null,
+    !hasReferralWeight ? "Raise evidence weight to Documented or Traced." : null,
+    !finding.overreach_reviewed ? "Acknowledge the overreach checklist at tie-off." : null,
+  ].filter((item): item is string => item !== null);
+
+  // Advisory — helpful hints that do not block referral status
+  const advisoryGaps = [
     docRefs.length === 0 && citedCount > 0
       ? "Add [Doc-N] references where the narrative makes evidence claims."
       : null,
-    !hasReferralWeight ? "Raise evidence weight to Documented or Traced before referral." : null,
     !hasKnots ? "Tie this angle to at least one person or organization knot." : null,
-    !isConfirmed ? "Tie off this angle as confirmed when the narrative is complete." : null,
   ].filter((item): item is string => item !== null);
 
-  const readyForReferral = gapItems.length === 0;
+  const readyForReferral = blockingGaps.length === 0 && isConfirmed;
+
+  const summaryText = readyForReferral
+    ? "This angle is referral-grade."
+    : blockingGaps.length === 0 && !isConfirmed
+      ? "Meets evidence requirements — tie off to make this angle referral-grade."
+      : `${pluralize(blockingGaps.length, "gap")} before referral-grade.`;
 
   return (
     <div className="angle-evidence-panel">
       <div className="angle-evidence-panel__header">
         <div>
           <p className="panel-section__title">EVIDENCE</p>
-          <p className="angle-evidence-panel__summary">
-            {readyForReferral
-              ? "This angle has referral-ready citation support."
-              : `${pluralize(gapItems.length, "gap")} before referral-ready.`}
-          </p>
+          <p className="angle-evidence-panel__summary">{summaryText}</p>
         </div>
         <span
           className={
@@ -281,12 +288,23 @@ function EvidencePanel({ finding, narrative }: EvidencePanelProps) {
         </div>
       )}
 
-      {gapItems.length > 0 && (
+      {blockingGaps.length > 0 && (
         <ul className="angle-evidence-gaps">
-          {gapItems.map((gap) => (
+          {blockingGaps.map((gap) => (
             <li key={gap}>{gap}</li>
           ))}
         </ul>
+      )}
+
+      {advisoryGaps.length > 0 && (
+        <>
+          <p className="angle-evidence-panel__suggestions-label">Suggestions</p>
+          <ul className="angle-evidence-gaps angle-evidence-gaps--advisory">
+            {advisoryGaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
