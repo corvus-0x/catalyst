@@ -1077,6 +1077,19 @@ describe("TieOffModal gate", () => {
       expect(screen.getByText(/missing: citation/i)).toBeInTheDocument(),
     );
   });
+
+  it("shows a generic error (modal stays open) on a non-gate failure", async () => {
+    // A network/500 failure must not be swallowed or thrown unhandled.
+    (updateAngle as any).mockRejectedValue(new Error("Network down"));
+    const onClose = vi.fn();
+    render(
+      <TieOffModal open caseId="c" finding={baseFinding} onClose={onClose} onTiedOff={() => {}} />,
+    );
+    fireEvent.click(screen.getByLabelText(/overreach/i));
+    fireEvent.click(screen.getByRole("button", { name: /confirm angle/i }));
+    await waitFor(() => expect(screen.getByText(/network down/i)).toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();  // modal stays open
+  });
 });
 ```
 
@@ -1133,7 +1146,7 @@ Expected: FAIL — no overreach control, dropdown still present, no gate-error r
   const confirmBlocked = outcome === "confirmed" && localUnmet.length > 0;
 ```
 
-4. **Server-truth fallback.** Add `const [serverUnmet, setServerUnmet] = useState<string[] | null>(null);` and in `handleConfirm`, send `overreach_reviewed` and read the gate error:
+4. **Server-truth fallback.** Add `const [serverUnmet, setServerUnmet] = useState<string[] | null>(null);` and `const [submitError, setSubmitError] = useState<string | null>(null);`. Reset both at the top of `handleConfirm` (`setServerUnmet(null); setSubmitError(null);`). Then send `overreach_reviewed` and read the gate error:
 
 ```tsx
       const body = {
@@ -1149,8 +1162,16 @@ Expected: FAIL — no overreach control, dropdown still present, no gate-error r
       } catch (e) {
         const unmet = (e as { body?: { errors?: { gate?: { unmet?: string[] } } } })
           ?.body?.errors?.gate?.unmet;
-        if (Array.isArray(unmet)) setServerUnmet(unmet);
-        else throw e;
+        if (Array.isArray(unmet)) {
+          setServerUnmet(unmet);
+        } else {
+          // Non-gate failure (network, 500, CSRF, etc.) — never swallow it.
+          // Keep the modal open and show a generic submit error so tie-off
+          // never silently does nothing.
+          setSubmitError(
+            e instanceof Error && e.message ? e.message : "Tie-off failed. Please try again.",
+          );
+        }
       } finally {
         setSaving(false);
       }
@@ -1169,6 +1190,11 @@ Expected: FAIL — no overreach control, dropdown still present, no gate-error r
             {serverUnmet && (
               <p id="rationale-error" className="tieoff-error" role="alert">
                 Server blocked tie-off — missing: {serverUnmet.join(", ")}.
+              </p>
+            )}
+            {submitError && (
+              <p className="tieoff-error" role="alert">
+                {submitError}
               </p>
             )}
 ```
@@ -1396,6 +1422,176 @@ git commit -m "docs: contract + design-spec updates for tie-off gate + credibili
 
 ---
 
+### Task 15: Surface narrative autosave failure + guard tie-off against unsaved narrative
+
+**Why:** Tie-off reads `finding.narrative` (the server value). `handleNarrativeBlur` (`AngleView.tsx:523`) swallows save failures (`catch {}`), so a user can write a narrative, have the blur-save silently fail, then open tie-off — which reads stale/empty server narrative and blocks on `"narrative"` for no visible reason. Make the failure visible and never tie off over unsaved text.
+
+**Files:**
+- Modify: `frontend/src/views/AngleView.tsx` — `handleNarrativeBlur` (~523), the tie-off trigger button (~757)
+- Test: `frontend/src/views/AngleView.test.tsx` (extend; mirror existing api mocks if the file exists)
+
+**Interfaces:**
+- Consumes: `updateAngle`, `savedNarrativeRef`.
+
+- [ ] **Step 1: Write the failing test**
+
+```tsx
+// in AngleView.test.tsx — mock "../api" the same way existing AngleView tests do.
+it("shows an error and blocks tie-off when narrative autosave fails", async () => {
+  (updateAngle as any).mockRejectedValueOnce(new Error("save failed"));
+  // render AngleView with the existing harness/mocks, type into the narrative editor, blur:
+  const editor = await screen.findByLabelText(/narrative/i);
+  fireEvent.change(editor, { target: { value: "New narrative text" } });
+  fireEvent.blur(editor);
+  await waitFor(() => expect(screen.getByText(/couldn.t save the narrative/i)).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: /tie off/i })).toBeDisabled();
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd frontend && npx vitest run src/views/AngleView.test.tsx`
+Expected: FAIL — failure is swallowed; no error text; tie-off still enabled.
+
+- [ ] **Step 3: Track save failure + dirty state.** Add state `const [narrativeSaveFailed, setNarrativeSaveFailed] = useState(false);`. Update `handleNarrativeBlur`:
+
+```tsx
+  async function handleNarrativeBlur() {
+    if (!finding) return;
+    if (narrative === savedNarrativeRef.current) return;
+    try {
+      const updated = await updateAngle(caseId, angleId, { narrative });
+      setFinding(updated);
+      savedNarrativeRef.current = updated.narrative ?? "";
+      setNarrativeSaveFailed(false);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch {
+      // Never silent — the investigator must know the narrative is unsaved,
+      // because tie-off reads the SERVER narrative, not this local text.
+      setNarrativeSaveFailed(true);
+    }
+  }
+```
+
+- [ ] **Step 4: Show the error + guard tie-off.** Near the narrative editor, render when `narrativeSaveFailed`:
+
+```tsx
+        {narrativeSaveFailed && (
+          <p className="angle-narrative-error" role="alert">
+            Couldn’t save the narrative — your changes are unsaved. Fix your connection and
+            click out of the field again before tying off.
+          </p>
+        )}
+```
+
+Compute `const narrativeUnsaved = narrative !== savedNarrativeRef.current || narrativeSaveFailed;` and disable the tie-off trigger (~757):
+
+```tsx
+          disabled={narrativeUnsaved}
+          title={
+            narrativeUnsaved
+              ? "Save the narrative before tying off."
+              : "Tie off this angle with a final status"
+          }
+          onClick={() => setShowTieOff(true)}
+```
+
+- [ ] **Step 5: Run test + typecheck**
+
+Run: `cd frontend && npx vitest run src/views/AngleView.test.tsx && npx tsc --noEmit`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend/src/views/AngleView.tsx frontend/src/views/AngleView.test.tsx
+git commit -m "fix(angle): surface narrative autosave failure; block tie-off on unsaved narrative"
+```
+
+---
+
+### Task 16: Readiness-aware referral export (disable on unknown readiness; consume 400 readiness body)
+
+**Why:** The PDF button only disables when `readiness?.status === "BLOCKED"` (`ReferralsTab.tsx:448`). If readiness failed to load (`:298` leaves it `null`), the button stays enabled and export is attempted against unknown state. And the 400 handler (`:337`) shows only `err.message`, discarding the `{readiness}` the server returns — so the panel never updates to explain the block.
+
+**Files:**
+- Modify: `frontend/src/views/ReferralsTab.tsx` — PDF button disable (~448), `handleGeneratePdf` catch (~348)
+- Test: `frontend/src/views/ReferralsTab.test.tsx` (extend/create)
+
+**Interfaces:**
+- Consumes: `ApiError.body` (Task 9), `ReferralReadiness` type, `readiness` state.
+
+- [ ] **Step 1: Write the failing tests**
+
+```tsx
+// ReferralsTab.test.tsx
+it("disables PDF export when readiness is unknown (load failed)", async () => {
+  // Mock fetchReferralReadiness to reject; targets resolve.
+  const btn = await screen.findByRole("button", { name: /generate referral/i });
+  expect(btn).toBeDisabled();
+});
+
+it("refreshes the readiness panel from a 400 export body", async () => {
+  const err: any = new Error("blocked"); err.status = 400;
+  err.body = { error: "blocked", readiness: { status: "BLOCKED", summary: "1 blocker", items: [], quality: { score: 10, status: "BLOCKED", grade: "Blocked", top_issues: [] }, credibility: { referral_grade: 0, need_work: 2, agency_leads: 0 } } };
+  (generateReferralPdf as any).mockRejectedValue(err);
+  // with a READY readiness loaded so the button is enabled, click Generate:
+  fireEvent.click(screen.getByRole("button", { name: /generate referral/i }));
+  await waitFor(() => expect(screen.getByText(/1 blocker/i)).toBeInTheDocument());
+});
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd frontend && npx vitest run src/views/ReferralsTab.test.tsx`
+Expected: FAIL — button enabled with null readiness; 400 body ignored.
+
+- [ ] **Step 3a: Disable on unknown readiness.** Replace the button's disabled condition (~448):
+
+```tsx
+  const canExport = !loading && readiness !== null && readiness.status !== "BLOCKED";
+```
+
+```tsx
+          disabled={pdfLoading || !canExport}
+          title={
+            !canExport
+              ? "Resolve readiness before exporting the referral package."
+              : "Generate the referral package PDF"
+          }
+```
+
+- [ ] **Step 3b: Consume the 400 readiness body.** In `handleGeneratePdf`’s `catch`, refresh the panel from the server body:
+
+```tsx
+    } catch (e) {
+      const body = (e as { body?: { readiness?: typeof readiness } })?.body;
+      if (body?.readiness) {
+        setReadiness(body.readiness);
+        setPdfError("Export blocked — see the updated readiness checklist below.");
+      } else {
+        setPdfError(e instanceof Error ? e.message : "PDF generation failed.");
+      }
+    } finally {
+      setPdfLoading(false);
+    }
+```
+
+- [ ] **Step 4: Run tests + typecheck**
+
+Run: `cd frontend && npx vitest run src/views/ReferralsTab.test.tsx && npx tsc --noEmit`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/views/ReferralsTab.tsx frontend/src/views/ReferralsTab.test.tsx
+git commit -m "fix(referrals): readiness-aware export gating + consume 400 readiness body"
+```
+
+---
+
 ## Final Verification (before opening the PR)
 
 - [ ] Backend (Docker, full suite — local times out): `docker compose up -d` then `docker compose exec backend python manage.py test investigations --keepdb`. Expected: green (≥ the prior count + new tests).
@@ -1418,3 +1614,4 @@ git commit -m "docs: contract + design-spec updates for tie-off gate + credibili
 | §10 seed mix + tests | T13, tests across T1–T12 |
 | §11 atomic PR | Global Constraints + Final Verification |
 | §11.5 types / AuditAction fix / api-contract | T8, T14 |
+| §4 invariant — gate never reads as a silent failure | T10 (non-gate error), T15 (narrative autosave), T16 (readiness-aware export) |

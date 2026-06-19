@@ -206,6 +206,16 @@ credibility = {
   `ApiError`, populate it in `fetchApi`'s non-2xx branch, and have `TieOffModal` read
   `err.body.errors.gate.unmet` as the fallback truth when its local preview disagrees. Without
   this, the server's gate reason can't reach the modal.
+- **The stricter gate must never read as a silent failure.** Because tie-off now has more ways
+  to be rejected, every adjacent client failure path must surface, not swallow:
+  - `TieOffModal` non-gate errors (network/500/CSRF) → keep the modal open + show a generic
+    submit error (not just structured `gate.unmet`).
+  - `AngleView` narrative autosave failure (`AngleView.tsx:523`, currently `catch {}`) → show a
+    visible error and **block tie-off while the narrative is unsaved** (tie-off reads the *server*
+    narrative, so unsaved local text would wrongly fail the gate).
+  - `ReferralsTab` export → disable the PDF button when readiness is `null`/loading/errored (not
+    only when `BLOCKED`), and consume the `400 {readiness}` body to refresh the checklist
+    (`ReferralsTab.tsx:298,337,448`).
 - **Align `EvidencePanel` (`AngleView.tsx:210`).** It currently flags missing knot links and
   missing `[Doc-N]` refs but **not** `overreach_reviewed` — divergent from the official
   predicate. Make the official four (citation, weight, narrative, overreach) the **blocking**
