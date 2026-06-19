@@ -308,6 +308,14 @@ export interface CaseQuality {
   top_issues: CaseQualityIssue[];
 }
 
+/** Credibility tier counts used by the dashboard tie-off gate widget. */
+export interface CredibilityCounts {
+  referral_grade: number;
+  need_work: number;
+  /** Open RecipientGap items. 0 until case-workspace item 4. */
+  agency_leads: number;
+}
+
 /**
  * Response from GET /api/cases/:id/dashboard/.
  *
@@ -357,6 +365,7 @@ export interface DashboardResponse {
   };
   /** Optional during partial deploys; render nothing if absent. */
   quality?: CaseQuality;
+  credibility: CredibilityCounts;
 }
 
 // ---------------------------------------------------------------------------
@@ -754,6 +763,8 @@ export interface FindingItem {
   /** See FindingStatus for frontend vocabulary (Active / Confirmed / Exhausted / Untriaged) */
   status: FindingStatus;
   evidence_weight: EvidenceWeight;
+  /** Investigator acknowledged the overreach checklist at tie-off (4th gate condition). */
+  overreach_reviewed: boolean;
   /**
    * How this finding was created.
    * UI chip labels: AUTO → "Rule" | MANUAL → "Manual" | AI → "AI" (shown, but use "Lead" in tooltips)
@@ -816,6 +827,7 @@ export interface UpdateFindingBody {
   narrative?: string;
   severity?: FindingSeverity;
   evidence_weight?: EvidenceWeight;
+  overreach_reviewed?: boolean;
   status?: FindingStatus;
   investigator_note?: string;
   legal_refs?: string[];
@@ -1052,8 +1064,8 @@ export type AuditAction =
   | "DOCUMENT_DELETED"
   | "FINDING_CREATED"
   | "FINDING_UPDATED"
-  | "FINDING_DISMISSED"
-  | "FINDING_CONFIRMED"
+  | "SIGNAL_DISMISSED"
+  | "SIGNAL_CONFIRMED"
   | "CASE_CREATED"
   | "CASE_UPDATED"
   | "ENTITY_CREATED"
