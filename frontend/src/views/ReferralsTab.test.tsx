@@ -63,6 +63,7 @@ const readyReadiness = {
   summary: "All checks passed.",
   items: [],
   quality: { score: 85, status: "READY" as const, grade: "Strong" as const, top_issues: [] },
+  credibility: { referral_grade: 2, need_work: 1, agency_leads: 0 },
 };
 
 const blockedReadiness = {
@@ -70,6 +71,7 @@ const blockedReadiness = {
   summary: "1 blocker",
   items: [],
   quality: { score: 10, status: "BLOCKED" as const, grade: "Blocked" as const, top_issues: [] },
+  credibility: { referral_grade: 0, need_work: 2, agency_leads: 0 },
 };
 
 // ---------------------------------------------------------------------------

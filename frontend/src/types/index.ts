@@ -1357,6 +1357,7 @@ export interface ReferralReadinessResponse {
   summary: string;
   items: ReferralReadinessItem[];
   quality: CaseQuality;
+  credibility: CredibilityCounts;
 }
 
 /**
