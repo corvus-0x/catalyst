@@ -111,7 +111,9 @@ class ReferralReadinessTests(TestCase):
 
     def test_readiness_warns_for_mixed_referral_evidence_weight(self):
         self._target()
-        documented = self._confirmed_finding(evidence_weight=EvidenceWeight.DOCUMENTED)
+        documented = self._confirmed_finding(
+            evidence_weight=EvidenceWeight.DOCUMENTED, overreach_reviewed=True
+        )
         directional = self._confirmed_finding(
             title="Directional angle",
             evidence_weight=EvidenceWeight.DIRECTIONAL,
@@ -128,7 +130,7 @@ class ReferralReadinessTests(TestCase):
 
     def test_readiness_warns_for_pending_review_items(self):
         self._target()
-        finding = self._confirmed_finding()
+        finding = self._confirmed_finding(overreach_reviewed=True)
         FindingDocument.objects.create(finding=finding, document=self._document())
         FuzzyMatchCandidate.objects.create(
             case=self.case,
@@ -186,7 +188,9 @@ class ReferralReadinessTests(TestCase):
 
     def test_readiness_ready_when_all_checks_pass(self):
         self._target()
-        finding = self._confirmed_finding(evidence_weight=EvidenceWeight.TRACED)
+        finding = self._confirmed_finding(
+            evidence_weight=EvidenceWeight.TRACED, overreach_reviewed=True
+        )
         FindingDocument.objects.create(finding=finding, document=self._document())
 
         payload = self._get_readiness()
@@ -200,7 +204,9 @@ class ReferralReadinessTests(TestCase):
 
     def test_dashboard_quality_matches_readiness_quality(self):
         self._target()
-        finding = self._confirmed_finding(evidence_weight=EvidenceWeight.TRACED)
+        finding = self._confirmed_finding(
+            evidence_weight=EvidenceWeight.TRACED, overreach_reviewed=True
+        )
         FindingDocument.objects.create(finding=finding, document=self._document())
 
         readiness = self._get_readiness()
