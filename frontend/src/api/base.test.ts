@@ -14,14 +14,11 @@ describe("fetchApi error body", () => {
         }),
       ),
     );
-    await expect(fetchApi("/api/x/")).rejects.toMatchObject({
-      status: 400,
-    });
-    try {
-      await fetchApi("/api/x/");
-    } catch (e) {
-      const err = e as ApiError;
-      expect((err.body as any)?.errors?.gate?.unmet).toEqual(["narrative"]);
-    }
+    // Single rejected promise — assert status AND body together so the body
+    // check can never be silently skipped by an unexpected resolve.
+    const err = await fetchApi("/api/x/").catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(400);
+    expect(((err as ApiError).body as any)?.errors?.gate?.unmet).toEqual(["narrative"]);
   });
 });

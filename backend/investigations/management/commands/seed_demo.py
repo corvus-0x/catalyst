@@ -1067,16 +1067,23 @@ class Command(BaseCommand):
         # ────────────────────────────────────────────────────────────────
 
         confirmed = list(
-            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED).order_by("created_at")
+            Finding.objects.filter(
+                case=case,
+                status=FindingStatus.CONFIRMED,
+                document_links__isnull=False,
+            )
+            .distinct()
+            .order_by("created_at")
         )
-        for finding in confirmed[: len(confirmed) // 2 + 1]:
+        reviewed_count = (len(confirmed) // 2 + 1) if confirmed else 0
+        for finding in confirmed[:reviewed_count]:
             finding.overreach_reviewed = True
             finding.save(update_fields=["overreach_reviewed"])
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"  ✓ Overreach reviewed: {len(confirmed) // 2 + 1} of {len(confirmed)} "
-                f"confirmed angles marked referral-grade"
+                f"  ✓ Overreach reviewed: {reviewed_count} of {len(confirmed)} "
+                f"cited confirmed angles marked referral-grade"
             )
         )
 
