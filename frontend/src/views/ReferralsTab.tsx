@@ -345,12 +345,20 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      setPdfError(err instanceof Error ? err.message : "PDF generation failed.");
+    } catch (e) {
+      const body = (e as { body?: { readiness?: ReferralReadinessResponse } })?.body;
+      if (body?.readiness) {
+        setReadiness(body.readiness);
+        setPdfError("Export blocked — see the updated readiness checklist below.");
+      } else {
+        setPdfError(e instanceof Error ? e.message : "PDF generation failed.");
+      }
     } finally {
       setPdfLoading(false);
     }
   }
+
+  const canExport = !loading && readiness !== null && readiness.status !== "BLOCKED";
 
   if (loading) {
     return (
@@ -445,7 +453,12 @@ export default function ReferralsTab({ caseId }: ReferralsTabProps) {
           type="button"
           className="btn-secondary ref-pdf-btn"
           onClick={handleGeneratePdf}
-          disabled={pdfLoading || readiness?.status === "BLOCKED"}
+          disabled={pdfLoading || !canExport}
+          title={
+            !canExport
+              ? "Resolve readiness before exporting the referral package."
+              : "Generate the referral package PDF"
+          }
         >
           {pdfLoading ? (
             <><Loader2 size={14} className="spin" /> Generating…</>
