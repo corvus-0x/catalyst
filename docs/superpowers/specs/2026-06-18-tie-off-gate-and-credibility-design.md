@@ -38,6 +38,13 @@ CONFIRMED  ∧  ≥1 cited document  ∧  evidence_weight ∈ {DOCUMENTED, TRACE
   inline citation. It performs **no precondition checks**.
 - `build_case_readiness` (`views.py:2271`) already computes `confirmed_count`, `eligible_count`
   (DOCUMENTED/TRACED), and `uncited_count`, and a `quality.score/100`.
+- The referral PDF endpoint (`views.py:6039`) **already gates**: returns 400 when readiness is
+  `BLOCKED`, and the export query already filters to `confirmed ∧ DOCUMENTED/TRACED`. The
+  Referrals tab disables PDF generation when blocked (`ReferralsTab.tsx:296`, `:448`). So the
+  *package-level* gate is real today; the *tie-off-level* gate is what's missing.
+- The TieOffModal rule `<select>` is **misleading**: it writes `investigator_note: "Rule: <id>"`
+  but `rule_id` is not in `FindingUpdateSerializer.allowed_fields`, so the selection is silently
+  discarded. `rule_id` is part of the Finding dedup key and must stay non-editable here.
 - `InvestigateTab.tsx` renders `CaseQualityPanel` with `{quality.score} / 100` (line 292) — the
   exact "get-it-to-100-then-refer" psychology §5 rejects.
 
@@ -54,6 +61,7 @@ So this is **extend + replace in known files + one migration**, not a greenfield
 | Gate location | where enforced | **`FindingUpdateSerializer`** (server is the gate); frontend previews only |
 | Provenance / PDF | who/when tied off | **AuditLog at PDF-render time**; no denormalized `_by`/`_at` columns |
 | Condition loss | confirmed angle later loses a condition | **Allow, recount as need-work** (non-blocking); also drops from PDF |
+| Rule selector | the TieOffModal dropdown silently discards its selection | **Make read-only** — show the angle's existing `rule_id`, never rewrite it (it's part of the dedup identity) |
 
 ## 4. Security posture (invariant)
 
@@ -114,14 +122,23 @@ Define `is_referral_grade(finding)` (and/or an equivalent queryset annotation) *
 1. the `referral_grade` header count,
 2. the `need_work` header count (`status∈{NEW,NEEDS_EVIDENCE}` OR `CONFIRMED ∧ ¬predicate`;
    excludes DISMISSED),
-3. **the referral PDF inclusion filter** (replacing today's `confirmed ∧ DOCUMENTED/TRACED`).
+3. **the referral PDF inclusion filter** — the export query at `views.py:6039` today filters to
+   `confirmed ∧ DOCUMENTED/TRACED`; extend it to the full predicate (add `≥1 citation` and
+   `overreach_reviewed`).
 
 > Aligning the PDF filter is what makes the gate *real*. Without it, a confirmed angle with
 > `overreach_reviewed=False` (e.g. every existing one, post "no-grandfathering") would still
 > export — the customer-facing package would contradict the gate.
 
-Prefer a queryset annotation so all three call sites share one `.filter()` (O(1) queries) and the
-definition lives in exactly one place.
+**Readiness interaction.** The PDF endpoint at `views.py:6039` also returns 400 when
+`build_case_readiness` is `BLOCKED`. The readiness "confirmed angles" / "citation coverage" /
+"evidence weight" checks should be driven by the **same predicate** so that a case whose only
+confirmed angles are overreach-unreviewed reads as **not yet referable** (zero referral-grade),
+rather than passing readiness but exporting an empty package. Reuse the predicate; do not add a
+parallel definition.
+
+Prefer a queryset annotation so every call site (header counts, PDF filter, readiness) shares one
+`.filter()` (O(1) queries) and the definition lives in exactly one place.
 
 ## 8. Credibility counts (API)
 
@@ -153,6 +170,12 @@ credibility = {
   - **Preview, don't decide:** disable Confirm and list unmet conditions by reading the same
     conditions locally; the server stays authoritative. If the preview is stale/wrong, render the
     400's `gate.unmet` as fallback truth.
+  - **Fix the misleading rule selector.** Today the dropdown writes `investigator_note:
+    "Rule: <id>"` and the selection is silently discarded (`rule_id` is not in
+    `FindingUpdateSerializer.allowed_fields`, and must not be — it is part of the Finding dedup
+    key `(case, rule_id, trigger_entity_id)`). Replace the editable `<select>` with a
+    **read-only label** showing the angle's existing `rule_id`. Tie-off never mutates `rule_id`,
+    and `handleConfirm` stops fabricating the `"Rule: ..."` note.
 
 ## 10. Seed + tests
 
@@ -165,7 +188,13 @@ credibility = {
   - idempotent re-confirm;
   - condition-loss recounts (not blocked);
   - credibility triplet math;
-  - PDF filter excludes overreach-unreviewed confirmed angles.
+  - PDF filter excludes overreach-unreviewed confirmed angles;
+  - readiness reads BLOCKED when the only confirmed angles are overreach-unreviewed;
+  - `rule_id` is unchanged by a tie-off PATCH (never in `allowed_fields`).
+- **Tests (frontend — Vitest):** `TieOffModal` behavioral tests replacing the current
+  render-only ones — Confirm disabled until all conditions met, overreach acknowledgment toggles
+  the gate, dismissal rationale still required, successful confirm sends `overreach_reviewed`,
+  rule shown read-only.
 
 ## 11. Deployment coupling (atomic PR)
 
