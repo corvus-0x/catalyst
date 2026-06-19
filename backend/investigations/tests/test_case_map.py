@@ -14,6 +14,7 @@ from investigations.models import (
     OrganizationStatus,
     Person,
     PersonDocument,
+    PersonOrganization,
 )
 
 
@@ -145,3 +146,20 @@ class CoMentionEdgeTests(TestCase):
         self.assertIn("co_mentioned", edge["strength"]["categories"])
         self.assertEqual(edge["strength"]["source_count"], 1)
         self.assertEqual(result["stats"]["by_level"]["observed"], 1)
+
+
+class FormalRoleTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.p = Person.objects.create(case=self.case, full_name="Officer")
+        self.o = Organization.objects.create(case=self.case, name="Org")
+
+    def test_single_role_is_documented_edge(self):
+        PersonOrganization.objects.create(person=self.p, org=self.o, role="Board member")
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        s = result["edges"][0]["strength"]
+        self.assertEqual(s["level"], "documented")
+        self.assertEqual(s["role_count"], 1)
+        self.assertIn("formal_role", s["categories"])
+        self.assertEqual(result["edges"][0]["underlying_relationships"][0]["source"], "person_org")

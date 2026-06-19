@@ -16,6 +16,7 @@ from .models import (
     OrgDocument,
     Person,
     PersonDocument,
+    PersonOrganization,
 )
 
 # ── Scoring constants (spec §"First Scoring Formula") ──
@@ -233,6 +234,27 @@ def _collect_co_mentions(case, subjects, evidence):
                     )
 
 
+def _collect_roles(case, subjects, evidence):
+    """PersonOrganization officer/board/employee roles → formal_role evidence."""
+    qs = PersonOrganization.objects.filter(person__case=case).select_related("person", "org")
+    for po in qs:
+        a, b = str(po.person_id), str(po.org_id)
+        if a not in subjects or b not in subjects:
+            continue
+        lo, hi, _ = pair_edge_id(a, b)
+        ev = evidence.setdefault((lo, hi), _new_evidence())
+        ev["role_count"] += 1
+        ev["relationship_types"].add("OFFICER_OF")
+        ev["underlying"].append(
+            {
+                "kind": "OFFICER_OF",
+                "label": po.role or "Member",
+                "source": "person_org",
+                "source_id": str(po.id),
+            }
+        )
+
+
 def _build_edges(evidence, subjects):
     edges = []
     for (lo, hi), ev in evidence.items():
@@ -272,6 +294,7 @@ def build_case_map(case):
     subjects = _subject_index(case)
     evidence = {}
     _collect_co_mentions(case, subjects, evidence)
+    _collect_roles(case, subjects, evidence)
     edges = _build_edges(evidence, subjects)
     nodes = list(subjects.values())
     return {
