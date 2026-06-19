@@ -62,6 +62,8 @@ So this is **extend + replace in known files + one migration**, not a greenfield
 | Provenance / PDF | who/when tied off | **AuditLog at PDF-render time**; no denormalized `_by`/`_at` columns |
 | Condition loss | confirmed angle later loses a condition | **Allow, recount as need-work** (non-blocking); also drops from PDF |
 | Rule selector | the TieOffModal dropdown silently discards its selection | **Make read-only** — show the angle's existing `rule_id`, never rewrite it (it's part of the dedup identity) |
+| Audit action | finding PATCH writes only `FINDING_UPDATED` | **Emit `SIGNAL_CONFIRMED`/`SIGNAL_DISMISSED`** on the status transition (alongside `FINDING_UPDATED`); PDF attribution reads those rows |
+| EvidencePanel | existing checks differ from the official predicate | **Official four are blocking**; existing knot-link / `[Doc-N]` checks become **advisory** warnings |
 
 ## 4. Security posture (invariant)
 
@@ -89,13 +91,19 @@ overreach_reviewed = models.BooleanField(default=False)
 - The stored 4th gate input.
 - One migration, `default=False`, **no backfill** (honors "no grandfathering").
 - Tie-off attribution (who/when) is **not** denormalized — it lives in the `SIGNAL_CONFIRMED`
-  `AuditLog` row the server writes on confirm. The referral PDF queries the latest such row per
-  confirmed angle at render time.
+  `AuditLog` row. **Important:** the finding PATCH path (`api_case_finding_detail`,
+  `views.py:3407`) currently writes only `AuditAction.FINDING_UPDATED`; it does **not** write
+  `SIGNAL_CONFIRMED` today. This work adds emission of `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on
+  the status transition (see §6), alongside the existing `FINDING_UPDATED`. The referral PDF then
+  queries the latest `SIGNAL_CONFIRMED` row per confirmed angle at render time.
 
 ## 6. The gate (backend enforcement)
 
-In `FindingUpdateSerializer.is_valid()`, add a guard that fires **only when the payload
-transitions status to CONFIRMED** (`new_status == CONFIRMED`).
+In `FindingUpdateSerializer.is_valid()`, add a guard that fires **only on a genuine transition
+into CONFIRMED** — precisely: `instance.status != CONFIRMED` **and** the payload sets
+`status == CONFIRMED`. This exact predicate matters: gating on "payload sets CONFIRMED" alone
+would re-run the gate on every edit of an already-confirmed angle and accidentally **block the
+"condition loss is allowed" rule**. An edit to a row already CONFIRMED never re-triggers the gate.
 
 - **Evaluate against the *post-PATCH* state**, not the stored row. A single tie-off PATCH
   typically sets weight + narrative + `add_document_ids` + `overreach_reviewed` at once; the
@@ -104,8 +112,10 @@ transitions status to CONFIRMED** (`new_status == CONFIRMED`).
   write). This is the core reason the gate belongs in the serializer, not a separate endpoint.
 - **Collect all unmet conditions**, not the first failure — tie-off is a checklist; four
   sequential round-trips to discover four gaps is exactly the silent friction to avoid.
-- **Error shape:** `400 {"gate": {"unmet": ["citation", "evidence_weight", "narrative",
-  "overreach"]}}` — condition keys only.
+- **Error shape:** the serializer returns `{"gate": {"unmet": ["citation", "evidence_weight",
+  "narrative", "overreach"]}}`, and the view wraps serializer errors, so the wire envelope is
+  `400 {"errors": {"gate": {"unmet": [...]}}}` — condition keys only, no record contents. The
+  frontend reads `err.body.errors.gate.unmet` (see §9 transport fix).
 - **Idempotent re-confirm:** re-PATCHing an already-CONFIRMED angle that still meets the gate is
   a no-op success, not a 400.
 - **"Narrative present"** means the post-PATCH `narrative` is non-empty after `.strip()`. No
@@ -114,6 +124,11 @@ transitions status to CONFIRMED** (`new_status == CONFIRMED`).
 - **Condition loss is allowed:** a PATCH that strips a confirmed angle below the predicate
   (removes last citation, downgrades weight) succeeds; the angle stays `status=CONFIRMED` but the
   computed predicate now fails, so it recounts as need-work and drops from the PDF. No block.
+- **Audit emission (status transitions).** In the view (`api_case_finding_detail`,
+  `views.py:3407`), when the PATCH transitions status, also write a `SIGNAL_CONFIRMED` (→CONFIRMED)
+  or `SIGNAL_DISMISSED` (→DISMISSED) `AuditLog` row, inside the same `transaction.atomic()` as the
+  existing `FINDING_UPDATED` row. This gives the PDF a precise, queryable "who/when tied off"
+  event (today only the older `api_case_signal_detail` path emits it).
 
 ## 7. The predicate (one definition, three call sites)
 
@@ -175,7 +190,20 @@ credibility = {
     `FindingUpdateSerializer.allowed_fields`, and must not be — it is part of the Finding dedup
     key `(case, rule_id, trigger_entity_id)`). Replace the editable `<select>` with a
     **read-only label** showing the angle's existing `rule_id`. Tie-off never mutates `rule_id`,
-    and `handleConfirm` stops fabricating the `"Rule: ..."` note.
+    and `handleConfirm` stops fabricating the `"Rule: ..."` note. Remove the now-dead
+    `SIGNAL_RULES`/`RULE_IDS`/`resolveRuleId`/`ruleId` state machinery and the `.tieoff-select*`
+    CSS (`index.css:1762`).
+- **Transport fix — structured errors must survive `fetchApi`.** Today `ApiError` (`base.ts:46`)
+  carries only `status` + `message`, and `fetchApi` flattens JSON error bodies to a string, so
+  `{"errors": {"gate": {"unmet": [...]}}}` is lost. Add a `body` (parsed JSON) field to
+  `ApiError`, populate it in `fetchApi`'s non-2xx branch, and have `TieOffModal` read
+  `err.body.errors.gate.unmet` as the fallback truth when its local preview disagrees. Without
+  this, the server's gate reason can't reach the modal.
+- **Align `EvidencePanel` (`AngleView.tsx:210`).** It currently flags missing knot links and
+  missing `[Doc-N]` refs but **not** `overreach_reviewed` — divergent from the official
+  predicate. Make the official four (citation, weight, narrative, overreach) the **blocking**
+  set, and relabel the existing knot-link / doc-ref-format checks as **advisory** warnings (useful
+  hints, not part of "referral-grade").
 
 ## 10. Seed + tests
 
@@ -207,6 +235,34 @@ commit. Splitting breaks confirms in production (Catalyst deploys `main` → Rai
 There is no safe split order. (An expand/contract three-PR sequence would avoid mid-deploy
 breakage for a multi-user system, but buys nothing for this single-dev, single-demo repo with an
 instant deploy.)
+
+## 11.5 Touch-points (for the implementation plan)
+
+Verified file/line anchors so the plan doesn't re-discover them:
+
+**Add / change**
+- `models.py:1230` — `Finding.overreach_reviewed = BooleanField(default=False)` + migration `0035`.
+- `serializers.py:698` — add `overreach_reviewed` to `serialize_finding`, and to
+  `FindingUpdateSerializer.allowed_fields` + validation + `save()` + `update_fields`.
+- `views.py:2271` (readiness) + `:6039` (PDF filter) — centralize the **one** referral-grade
+  predicate; both call it.
+- `views.py:3407` — emit `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on status transition.
+- dashboard payload + `frontend/src/types/index.ts:318` — add `credibility`.
+- `base.ts:46` — `ApiError.body`; `fetchApi` populates it on non-2xx.
+- `TieOffModal.tsx` — overreach checklist, send `overreach_reviewed`, render gate errors,
+  read-only rule label.
+- `InvestigateTab.tsx:240` — `CaseQualityPanel` leads with credibility counts (keep `quality` in API).
+- `AngleView.tsx:210` — align `EvidencePanel` (official four blocking; rest advisory).
+- `seed_demo` — deliberate mix of referral-grade and need-work angles.
+
+**Remove / reduce**
+- `TieOffModal.tsx:26` — `SIGNAL_RULES`, `RULE_IDS`, `resolveRuleId`, `ruleId`/`setRuleId`,
+  `investigator_note: "Rule: ..."` fabrication.
+- `index.css:1762` — `.tieoff-select*` after the select is gone.
+- `TieOffModal.test.tsx:28` — replace render-only tests with behavioral ones.
+
+**Correct stale docs**
+- `frontend-design-spec.md:542` still says tie-off sends `rule_id=<selected>` — correct when this lands.
 
 ## 12. Out of scope (defer)
 
