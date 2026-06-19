@@ -8,11 +8,23 @@ from investigations.case_map import (
 )
 from investigations.models import (
     Case,
+    Document,
     FindingStatus,
     Organization,
     OrganizationStatus,
     Person,
+    PersonDocument,
 )
+
+
+def _doc(case, h):
+    return Document.objects.create(
+        case=case,
+        filename="d.pdf",
+        file_path="cases/t/d.pdf",
+        sha256_hash=h * 64,
+        file_size=1024,
+    )
 
 
 class CaseMapSubjectTests(TestCase):
@@ -109,3 +121,27 @@ class ScoreEvidenceTests(TestCase):
         s = score_evidence(ev)
         self.assertTrue(s["handoff_included"])
         self.assertEqual(s["level"], "material")
+
+
+class CoMentionEdgeTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.a = Person.objects.create(case=self.case, full_name="A")
+        self.b = Person.objects.create(case=self.case, full_name="B")
+
+    def test_single_shared_doc_makes_one_observed_edge(self):
+        d = _doc(self.case, "a")
+        PersonDocument.objects.create(person=self.a, document=d)
+        PersonDocument.objects.create(person=self.b, document=d)
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        edge = result["edges"][0]
+        lo, hi, eid = pair_edge_id(self.a.id, self.b.id)
+        self.assertEqual(edge["id"], eid)
+        self.assertEqual(edge["source"], lo)
+        self.assertEqual(edge["target"], hi)
+        self.assertEqual(edge["relationship"], "SUMMARY")
+        self.assertEqual(edge["strength"]["level"], "observed")
+        self.assertIn("co_mentioned", edge["strength"]["categories"])
+        self.assertEqual(edge["strength"]["source_count"], 1)
+        self.assertEqual(result["stats"]["by_level"]["observed"], 1)

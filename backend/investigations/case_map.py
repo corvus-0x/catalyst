@@ -190,6 +190,70 @@ def _subject_index(case):
     return idx
 
 
+_LEVEL_LABEL = {
+    "observed": "Observed relationship",
+    "documented": "Documented relationship",
+    "repeated": "Repeated relationship",
+    "material": "Material relationship",
+}
+
+
+def _collect_co_mentions(case, subjects, evidence):
+    """Shared-document co-mentions → co_mentioned evidence (mirrors /graph/)."""
+    doc_subjects = {}
+    for pd in PersonDocument.objects.filter(person__case=case):
+        doc_subjects.setdefault(str(pd.document_id), []).append(str(pd.person_id))
+    for od in OrgDocument.objects.filter(org__case=case):
+        doc_subjects.setdefault(str(od.document_id), []).append(str(od.org_id))
+
+    for doc_id, members in doc_subjects.items():
+        present = [m for m in members if m in subjects]
+        for i, a in enumerate(present):
+            for b in present[i + 1 :]:
+                lo, hi, _ = pair_edge_id(a, b)
+                ev = evidence.setdefault((lo, hi), _new_evidence())
+                if doc_id not in ev["doc_ids"]:
+                    ev["doc_ids"].add(doc_id)
+                    ev["relationship_types"].add("CO_APPEARS_IN")
+                    ev["evidence_refs"].append(
+                        {
+                            "kind": "source_document",
+                            "document_id": doc_id,
+                            "label": "Shared source document",
+                            "category": "co_mentioned",
+                        }
+                    )
+                    ev["underlying"].append(
+                        {
+                            "kind": "CO_APPEARS_IN",
+                            "label": "Co-appears in document",
+                            "source": "co_mention",
+                            "source_id": doc_id,
+                        }
+                    )
+
+
+def _build_edges(evidence, subjects):
+    edges = []
+    for (lo, hi), ev in evidence.items():
+        strength = score_evidence(ev)
+        edges.append(
+            {
+                "id": f"{lo}__{hi}",
+                "source": lo,
+                "target": hi,
+                "relationship": "SUMMARY",
+                "label": _LEVEL_LABEL[strength["level"]],
+                "state": strength["level"],
+                "strength": strength,
+                "evidence_refs": ev["evidence_refs"],
+                "thread_refs": ev["thread_refs"],
+                "underlying_relationships": ev["underlying"],
+            }
+        )
+    return edges
+
+
 def _build_stats(nodes, edges):
     by_level = Counter({"observed": 0, "documented": 0, "repeated": 0, "material": 0})
     for e in edges:
@@ -206,7 +270,9 @@ def _build_stats(nodes, edges):
 
 def build_case_map(case):
     subjects = _subject_index(case)
-    edges = []
+    evidence = {}
+    _collect_co_mentions(case, subjects, evidence)
+    edges = _build_edges(evidence, subjects)
     nodes = list(subjects.values())
     return {
         "case_id": str(case.id),
