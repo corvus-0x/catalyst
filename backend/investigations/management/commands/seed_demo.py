@@ -1056,6 +1056,29 @@ class Command(BaseCommand):
             )
 
         # ────────────────────────────────────────────────────────────────
+        # 11a. OVERREACH REVIEW — author a realistic in-progress case:
+        # some angles fully tied off (referral-grade), some still need
+        # work.  No silent grandfathering — the seed legitimately authors
+        # reviewed angles by setting overreach_reviewed=True on the first
+        # len//2 + 1 confirmed+cited angles ordered by creation time.
+        # This must run AFTER citations and evidence weights are assigned.
+        # ────────────────────────────────────────────────────────────────
+
+        confirmed = list(
+            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED).order_by("created_at")
+        )
+        for finding in confirmed[: len(confirmed) // 2 + 1]:
+            finding.overreach_reviewed = True
+            finding.save(update_fields=["overreach_reviewed"])
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  ✓ Overreach reviewed: {len(confirmed) // 2 + 1} of {len(confirmed)} "
+                f"confirmed angles marked referral-grade"
+            )
+        )
+
+        # ────────────────────────────────────────────────────────────────
         # 11a. AI FINDING (seeded to demonstrate AI pattern analysis)
         # ────────────────────────────────────────────────────────────────
 
