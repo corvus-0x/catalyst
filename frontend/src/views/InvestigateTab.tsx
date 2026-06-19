@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { fetchGraph, fetchFuzzyMatches, fetchEntityDetail, fetchDashboard, runAiPatternAnalysis, reevaluateSignals } from "../api";
 import type {
   CaseQuality,
+  CredibilityCounts,
   DashboardResponse,
   DocumentItem,
   EdgeFindingLink,
@@ -237,6 +238,22 @@ function Breadcrumb({ stack, onNavigateTo }: { stack: NavEntry[]; onNavigateTo: 
   );
 }
 
+/* ─── CredibilityHeader ───────────────────────────────────────────────────────── */
+
+export function CredibilityHeader({ credibility }: { credibility?: CredibilityCounts }) {
+  if (!credibility) return null;
+  const { referral_grade, need_work, agency_leads } = credibility;
+  return (
+    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1)" }}>
+      <span style={{ color: "var(--color-success, #34d399)" }}>● {referral_grade} referral-grade</span>
+      {"  ·  "}
+      <span style={{ color: "#fbbf24" }}>◐ {need_work} need work</span>
+      {"  ·  "}
+      <span style={{ color: "var(--text-3)" }}>◷ {agency_leads} agency leads</span>
+    </div>
+  );
+}
+
 function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
   if (!quality) return null;
 
@@ -284,13 +301,10 @@ function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           gap: 8,
         }}
       >
-        <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text-1)" }}>
-          {quality.score} / 100
-        </span>
         <span
           style={{
             ...badgeStyle,
@@ -396,6 +410,7 @@ function WebRightPanel({
         {graph?.stats ? `${knotCount} knots · ${edgeCount} connections` : "Loading…"}
       </div>
 
+      <CredibilityHeader credibility={dashboard?.credibility} />
       <CaseQualityPanel quality={dashboard?.quality} />
 
       {dashboard && (
