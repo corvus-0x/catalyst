@@ -256,10 +256,14 @@ cd frontend && npx tsc --noEmit            # Type check
 python tests/api_health_check.py           # API smoke test
 cd backend && python manage.py seed_demo   # Load demo case
 
-# Backend test suite — runs in the already-running Docker stack:
-docker exec catalyst_backend python manage.py test investigations --keepdb --noinput
-#   --noinput : avoid the "destroy leftover test DB?" prompt (EOFs non-interactively)
-#   --keepdb  : reuse test_catalyst_db, skip the migration replay (fast loop)
+# Backend test suite — runs in the already-running Docker stack.
+# Use --exclude-tag=eval to MATCH CI (ci.yml): the @tag("eval") AI suite is
+# non-deterministic (hits the model) and is excluded from CI. Running it locally
+# produces false reds — only include it when deliberately checking AI quality.
+docker exec catalyst_backend python manage.py test investigations --exclude-tag=eval --keepdb --noinput
+#   --exclude-tag=eval : skip the flaky AI evals (CI-equivalent gate)
+#   --noinput          : avoid the "destroy leftover test DB?" prompt (EOFs non-interactively)
+#   --keepdb           : reuse test_catalyst_db, skip the migration replay (fast loop)
 #   narrow with e.g. ...test investigations.tests.test_case_map
 ```
 
@@ -272,7 +276,9 @@ docker exec catalyst_backend python manage.py test investigations --keepdb --noi
 3. **Use the decision model** (GREEN/YELLOW/RED) for all choices.
 4. **Run tests** before and after changes. API smoke test: `python tests/api_health_check.py`.
    Full backend suite (needs Postgres + ArrayField) runs in the **already-running Docker
-   stack**: `docker exec catalyst_backend python manage.py test investigations --keepdb --noinput`.
+   stack**, CI-equivalent: `docker exec catalyst_backend python manage.py test investigations
+   --exclude-tag=eval --keepdb --noinput`. (Omit `--exclude-tag=eval` only to deliberately run
+   the flaky AI eval suite — CI excludes it, so include it locally to match CI and avoid false reds.)
 5. **Always branch for feature/non-trivial work — never commit it directly to `main`.** Claude
    creates the branch and makes the commits (pre-commit hooks are dormant in this environment,
    so run `ruff check`/`ruff format` manually before each commit). Pushing + opening the PR is
