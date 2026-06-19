@@ -7,6 +7,9 @@ test covered; these tests pin the correct related names so it cannot silently
 regress again.
 """
 
+import io
+from unittest.mock import patch
+
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -127,3 +130,72 @@ class ReferralPdfTests(TestCase):
         resp = self.client.post(f"/api/cases/{case.pk}/referral-pdf/")
         # Zero referral-grade angles => readiness BLOCKED => 400.
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_export_filter_excludes_overreach_unreviewed_from_partial_case(self):
+        """Partial case: one referral-grade angle (Good) + one confirmed-but-not-referral-grade
+        angle (overreach_reviewed=False). The case passes readiness (200), but the excluded
+        angle must NOT appear in the findings passed to ReferralPDFGenerator.
+
+        Patching investigations.referral_export.ReferralPDFGenerator because the view
+        imports it locally as `from .referral_export import ReferralPDFGenerator` — the
+        lookup happens in that module's namespace, not in views.
+        """
+        case = Case.objects.create(name="Partial PDF filter test")
+        ReferralTarget.objects.create(
+            case=case, agency_name="Ohio AG", complaint_type="Charitable fraud",
+        )
+        shared_doc = Document.objects.create(
+            case=case,
+            filename="evidence.pdf",
+            file_path="cases/partial/evidence.pdf",
+            sha256_hash="b" * 64,
+            file_size=2048,
+        )
+
+        # Referral-grade angle: all criteria met (overreach_reviewed=True, cited)
+        good = Finding.objects.create(
+            case=case,
+            rule_id="SR-015",
+            title="Good",
+            severity=Severity.CRITICAL,
+            status=FindingStatus.CONFIRMED,
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=True,
+            narrative="This angle passes all referral-grade criteria.",
+        )
+        FindingDocument.objects.create(finding=good, document=shared_doc, page_reference="p. 1")
+
+        # Confirmed + documented + cited but overreach_reviewed=False — must be excluded
+        excluded_doc = Document.objects.create(
+            case=case,
+            filename="excluded.pdf",
+            file_path="cases/partial/excluded.pdf",
+            sha256_hash="c" * 64,
+            file_size=1024,
+        )
+        excluded = Finding.objects.create(
+            case=case,
+            rule_id="MANUAL",
+            title="Excluded",
+            severity=Severity.CRITICAL,
+            status=FindingStatus.CONFIRMED,
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=False,
+            narrative="Overreach not reviewed — must not appear in the referral package.",
+        )
+        FindingDocument.objects.create(finding=excluded, document=excluded_doc, page_reference="p. 1")
+
+        with patch("investigations.referral_export.ReferralPDFGenerator") as MockGen:
+            instance = MockGen.return_value
+            instance.generate.return_value = io.BytesIO(b"%PDF-1.4 fake")
+            resp = self.client.post(f"/api/cases/{case.pk}/referral-pdf/")
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Confirm the mock was actually called — if not, the patch target is wrong
+        self.assertTrue(instance.generate.called, "ReferralPDFGenerator.generate was not called")
+
+        # Inspect the findings queryset passed to the generator
+        passed = list(instance.generate.call_args.kwargs["findings"])
+        titles = {f.title for f in passed}
+        self.assertIn("Good", titles, "Referral-grade angle should be included")
+        self.assertNotIn("Excluded", titles, "overreach_reviewed=False angle must be excluded")
