@@ -1286,6 +1286,13 @@ class Finding(UUIDPrimaryKeyModel):
         choices=EvidenceWeight.choices,
         default=EvidenceWeight.SPECULATIVE,
     )
+    overreach_reviewed = models.BooleanField(
+        default=False,
+        help_text=(
+            "Investigator acknowledged the overreach checklist at tie-off. "
+            "The 4th referral-grade gate condition. Never backfilled."
+        ),
+    )
     source = models.CharField(
         max_length=20,
         choices=FindingSource.choices,

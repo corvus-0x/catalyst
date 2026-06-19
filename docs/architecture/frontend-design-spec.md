@@ -539,10 +539,12 @@ decides the final weight and outcome here, not on individual facts.
 
 On confirm:
 - PATCH `/api/cases/<uuid>/findings/<uuid>/` with `status=CONFIRMED` or `status=DISMISSED`,
-  `evidence_weight=<selected>`, `rule_id=<selected>`, `narrative=<text>`
+  `evidence_weight=<selected>`, `narrative=<text>`, and `overreach_reviewed=true` (tie-off acknowledgement)
+- The `rule_id` is shown as read-only in the dialog and is never sent in the PATCH
 - If confirmed: connection edges for knots associated with this angle update to solid
-  severity-based color in the web view
-- Toast: "Angle confirmed · Added to referral package" or "Angle marked exhausted"
+  severity-based color in the web view; angle becomes referral-grade if it passes the gate
+  (citations, evidence weight ≥ DOCUMENTED, narrative, and overreach acknowledgement)
+- Toast: "Angle confirmed · Now referral-grade" or "Angle confirmed · Tie-off required for referral" (if gate fails) or "Angle marked exhausted"
 
 ---
 

@@ -212,34 +212,41 @@ function EvidencePanel({ finding, narrative }: EvidencePanelProps) {
   const citedCount = finding.document_links.length;
   const hasNarrative = narrative.trim().length > 0;
   const hasReferralWeight = REFERRAL_READY_WEIGHTS.has(finding.evidence_weight);
-  const hasKnots = finding.entity_links.some((link) =>
-    link.entity_type === "person" || link.entity_type === "organization"
+  const hasKnots = finding.entity_links.some(
+    (link) => link.entity_type === "person" || link.entity_type === "organization"
   );
   const isConfirmed = finding.status === "CONFIRMED";
 
-  const gapItems = [
+  // Official four blocking requirements — must all pass for referral-grade
+  const blockingGaps = [
     citedCount === 0 ? "Cite at least one source document." : null,
     !hasNarrative ? "Write the angle narrative." : null,
+    !hasReferralWeight ? "Raise evidence weight to Documented or Traced." : null,
+    !finding.overreach_reviewed ? "Acknowledge the overreach checklist at tie-off." : null,
+  ].filter((item): item is string => item !== null);
+
+  // Advisory — helpful hints that do not block referral status
+  const advisoryGaps = [
     docRefs.length === 0 && citedCount > 0
       ? "Add [Doc-N] references where the narrative makes evidence claims."
       : null,
-    !hasReferralWeight ? "Raise evidence weight to Documented or Traced before referral." : null,
     !hasKnots ? "Tie this angle to at least one person or organization knot." : null,
-    !isConfirmed ? "Tie off this angle as confirmed when the narrative is complete." : null,
   ].filter((item): item is string => item !== null);
 
-  const readyForReferral = gapItems.length === 0;
+  const readyForReferral = blockingGaps.length === 0 && isConfirmed;
+
+  const summaryText = readyForReferral
+    ? "This angle is referral-grade."
+    : blockingGaps.length === 0 && !isConfirmed
+      ? "Meets evidence requirements — tie off to make this angle referral-grade."
+      : `${pluralize(blockingGaps.length, "gap")} before referral-grade.`;
 
   return (
     <div className="angle-evidence-panel">
       <div className="angle-evidence-panel__header">
         <div>
           <p className="panel-section__title">EVIDENCE</p>
-          <p className="angle-evidence-panel__summary">
-            {readyForReferral
-              ? "This angle has referral-ready citation support."
-              : `${pluralize(gapItems.length, "gap")} before referral-ready.`}
-          </p>
+          <p className="angle-evidence-panel__summary">{summaryText}</p>
         </div>
         <span
           className={
@@ -281,12 +288,23 @@ function EvidencePanel({ finding, narrative }: EvidencePanelProps) {
         </div>
       )}
 
-      {gapItems.length > 0 && (
+      {blockingGaps.length > 0 && (
         <ul className="angle-evidence-gaps">
-          {gapItems.map((gap) => (
+          {blockingGaps.map((gap) => (
             <li key={gap}>{gap}</li>
           ))}
         </ul>
+      )}
+
+      {advisoryGaps.length > 0 && (
+        <>
+          <p className="angle-evidence-panel__suggestions-label">Suggestions</p>
+          <ul className="angle-evidence-gaps angle-evidence-gaps--advisory">
+            {advisoryGaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
@@ -487,6 +505,10 @@ export default function AngleView({
   const [showCapture, setShowCapture] = useState(false);
   const [savingCapture, setSavingCapture] = useState(false);
 
+  // Narrative save failure state — true when the last blur-save threw an error.
+  // Never allow a silent failure: tie-off reads the SERVER narrative, not local state.
+  const [narrativeSaveFailed, setNarrativeSaveFailed] = useState(false);
+
   // Snapshot of the last saved narrative — used to detect dirty state on blur
   const savedNarrativeRef = useRef("");
 
@@ -528,10 +550,13 @@ export default function AngleView({
       const updated = await updateAngle(caseId, angleId, { narrative });
       setFinding(updated);
       savedNarrativeRef.current = updated.narrative ?? "";
+      setNarrativeSaveFailed(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch {
-      // Leave local text intact — next blur will retry
+      // Never silent — the investigator must know the narrative is unsaved,
+      // because tie-off reads the SERVER narrative, not this local text.
+      setNarrativeSaveFailed(true);
     }
   }
 
@@ -635,6 +660,8 @@ export default function AngleView({
   const isAiFinding = finding?.source === "AI";
   const isTiedOff = finding?.status === "CONFIRMED" || finding?.status === "DISMISSED";
   const citedDocCount = finding?.document_links?.length ?? 0;
+  // Guard tie-off against unsaved narrative: server reads finding.narrative, not local state.
+  const narrativeUnsaved = narrative !== savedNarrativeRef.current || narrativeSaveFailed;
 
   // ---------------------------------------------------------------------------
   // Loading state
@@ -754,13 +781,15 @@ export default function AngleView({
         <button
           type="button"
           className="toolbar-btn"
-          onClick={() => setShowTieOff(true)}
-          disabled={isTiedOff}
+          disabled={isTiedOff || narrativeUnsaved}
           title={
             isTiedOff
               ? "This angle is already tied off."
+              : narrativeUnsaved
+              ? "Save the narrative before tying off."
               : "Tie off this angle with a final status"
           }
+          onClick={() => setShowTieOff(true)}
         >
           <ChevronDown size={12} aria-hidden="true" />
           Tie off
@@ -832,6 +861,12 @@ export default function AngleView({
               placeholder="Build the narrative for this angle. Use [Doc-1], [Doc-2], … to cite documents."
               aria-label="Angle narrative"
             />
+            {narrativeSaveFailed && (
+              <p className="angle-narrative-error" role="alert">
+                Couldn't save the narrative — your changes are unsaved. Fix your connection and
+                click out of the field again before tying off.
+              </p>
+            )}
           </div>
 
           {/* Cited documents */}

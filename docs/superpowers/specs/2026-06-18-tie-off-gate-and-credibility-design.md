@@ -1,0 +1,310 @@
+# Tie-Off Gate + Credibility Counts — Design (case-workspace build item 2)
+
+**Status:** Design (approved, pre-plan). Implements build-sequence **item 2** of
+`docs/architecture/case-workspace-design.md` — Angle lifecycle + the tie-off gate (§4) and the
+credibility counts header (§5).
+**Date:** 2026-06-18
+**Owner:** Tyler Collins
+**Predecessor:** item 1 (shared state + feeders, PR #10, merged + verified live).
+
+> Read alongside `docs/architecture/case-workspace-design.md` (§4, §5, §7) and
+> `docs/architecture/api-contract.md`. This spec governs the tie-off gate and credibility
+> header once built; update those docs section-by-section as pieces land.
+
+---
+
+## 1. Goal
+
+Turn "CONFIRMED" from a free-text status into an **enforced, evidentiary gate**, and replace the
+workspace's `score / 100` headline with the **credibility triplet**
+(`N referral-grade · M need work · K agency leads`).
+
+"Referral-grade" — the only definition of "done" — is an Angle (Finding) that is:
+
+```
+CONFIRMED  ∧  ≥1 cited document  ∧  evidence_weight ∈ {DOCUMENTED, TRACED}
+           ∧  narrative present  ∧  overreach_reviewed == True
+```
+
+## 2. Current state (what already exists)
+
+- `Finding.status` (NEW/NEEDS_EVIDENCE/CONFIRMED/DISMISSED) and `evidence_weight`
+  (SPECULATIVE/DIRECTIONAL/DOCUMENTED/TRACED) already exist (`models.py`).
+- `FindingUpdateSerializer` (`serializers.py:850`) enforces a **dismissal rationale** but
+  enforces **nothing** on the transition to CONFIRMED — today an Angle can be confirmed with
+  SPECULATIVE weight, zero citations, and an empty narrative.
+- `TieOffModal.tsx` already exists as a **form** (weight + outcome + rule). `handleConfirm`
+  (line 117) sends `status + evidence_weight + investigator_note` only — no overreach, no
+  inline citation. It performs **no precondition checks**.
+- `build_case_readiness` (`views.py:2271`) already computes `confirmed_count`, `eligible_count`
+  (DOCUMENTED/TRACED), and `uncited_count`, and a `quality.score/100`.
+- The referral PDF endpoint (`views.py:6039`) **already gates**: returns 400 when readiness is
+  `BLOCKED`, and the export query already filters to `confirmed ∧ DOCUMENTED/TRACED`. The
+  Referrals tab disables PDF generation when blocked (`ReferralsTab.tsx:296`, `:448`). So the
+  *package-level* gate is real today; the *tie-off-level* gate is what's missing.
+- The TieOffModal rule `<select>` is **misleading**: it writes `investigator_note: "Rule: <id>"`
+  but `rule_id` is not in `FindingUpdateSerializer.allowed_fields`, so the selection is silently
+  discarded. `rule_id` is part of the Finding dedup key and must stay non-editable here.
+- `InvestigateTab.tsx` renders `CaseQualityPanel` with `{quality.score} / 100` (line 292) — the
+  exact "get-it-to-100-then-refer" psychology §5 rejects.
+
+So this is **extend + replace in known files + one migration**, not a greenfield build.
+
+## 3. Decisions (locked during brainstorming)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| Overreach | stored field vs frontend-only | **Stored** `overreach_reviewed` boolean — full server-side gate |
+| Header K (agency leads) | how to handle the 3rd count | **Header-ready now**; component accepts optional count; wired to RecipientGap in item 4 (K=0 for now) |
+| Existing confirmed angles | grandfather vs force re-tie-off | **No silent grandfathering** — no data migration flips the bit |
+| Demo seed | how `seed_demo` behaves | **A mix** — some angles fully tied off (referral-grade), some left need-work |
+| Gate location | where enforced | **`FindingUpdateSerializer`** (server is the gate); frontend previews only |
+| Provenance / PDF | who/when tied off | **AuditLog at PDF-render time**; no denormalized `_by`/`_at` columns |
+| Condition loss | confirmed angle later loses a condition | **Allow, recount as need-work** (non-blocking); also drops from PDF |
+| Rule selector | the TieOffModal dropdown silently discards its selection | **Make read-only** — show the angle's existing `rule_id`, never rewrite it (it's part of the dedup identity) |
+| Audit action | finding PATCH writes only `FINDING_UPDATED` | **Emit `SIGNAL_CONFIRMED`/`SIGNAL_DISMISSED`** on the status transition (alongside `FINDING_UPDATED`); PDF attribution reads those rows |
+| EvidencePanel | existing checks differ from the official predicate | **Official four are blocking**; existing knot-link / `[Doc-N]` checks become **advisory** warnings |
+
+## 4. Security posture (invariant)
+
+**The server is the sole decision-maker and the sole writer of state and `AuditLog`. The
+frontend is display + a non-authoritative preview.**
+
+- The frontend never decides what gets stored. It computes "the server will reject this" only to
+  disable the Confirm button and show *what's missing*. A raw-API bypass hits the same gate and
+  gets the same 400 — identical outcome.
+- Only the server writes `AuditLog`, only on a **successful** gated transition, inside the
+  existing `transaction.atomic()` (confirm + audit row commit together or not at all). A
+  tampered/buggy client cannot fabricate a referral-grade angle — worst case a wrong *preview*
+  and a 400.
+- Error responses name the **unmet condition keys** only; they do not echo record contents
+  (info-leak discipline).
+
+## 5. Data model
+
+Add one column to `Finding`:
+
+```python
+overreach_reviewed = models.BooleanField(default=False)
+```
+
+- The stored 4th gate input.
+- One migration, `default=False`, **no backfill** (honors "no grandfathering").
+- Tie-off attribution (who/when) is **not** denormalized — it lives in the `SIGNAL_CONFIRMED`
+  `AuditLog` row. **Important:** the finding PATCH path (`api_case_finding_detail`,
+  `views.py:3407`) currently writes only `AuditAction.FINDING_UPDATED`; it does **not** write
+  `SIGNAL_CONFIRMED` today. This work adds emission of `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on
+  the status transition (see §6), alongside the existing `FINDING_UPDATED`. **This PR emits the
+  audit rows** so the provenance data exists from day one. **Rendering the printed "Tied off by
+  X on Y" line in the PDF is deferred** — `referral_export.py:391` (`_build_findings_section`)
+  takes only `findings` and has no audit data; wiring it to query/receive the `SIGNAL_CONFIRMED`
+  rows is a small follow-up (see §12), not this slice.
+
+## 6. The gate (backend enforcement)
+
+In `FindingUpdateSerializer.is_valid()`, add a guard that fires **only on a genuine transition
+into CONFIRMED** — precisely: `instance.status != CONFIRMED` **and** the payload sets
+`status == CONFIRMED`. This exact predicate matters: gating on "payload sets CONFIRMED" alone
+would re-run the gate on every edit of an already-confirmed angle and accidentally **block the
+"condition loss is allowed" rule**. An edit to a row already CONFIRMED never re-triggers the gate.
+
+- **Evaluate against the *post-PATCH* state**, not the stored row. A single tie-off PATCH
+  typically sets weight + narrative + `add_document_ids` + `overreach_reviewed` at once; the
+  guard must check what the row *will be* after the payload applies (the serializer already
+  stages `_documents_to_add` / `_documents_to_remove`, so the post-state is computable before the
+  write). This is the core reason the gate belongs in the serializer, not a separate endpoint.
+- **Collect all unmet conditions**, not the first failure — tie-off is a checklist; four
+  sequential round-trips to discover four gaps is exactly the silent friction to avoid.
+- **Error shape:** the serializer returns `{"gate": {"unmet": ["citation", "evidence_weight",
+  "narrative", "overreach"]}}`, and the view wraps serializer errors, so the wire envelope is
+  `400 {"errors": {"gate": {"unmet": [...]}}}` — condition keys only, no record contents. The
+  frontend reads `err.body.errors.gate.unmet` (see §9 transport fix).
+- **Idempotent re-confirm:** re-PATCHing an already-CONFIRMED angle that still meets the gate is
+  a no-op success, not a 400.
+- **"Narrative present"** means the post-PATCH `narrative` is non-empty after `.strip()`. No
+  minimum length is imposed (YAGNI — the overreach checklist, not a character count, is the
+  quality control).
+- **Condition loss is allowed:** a PATCH that strips a confirmed angle below the predicate
+  (removes last citation, downgrades weight) succeeds; the angle stays `status=CONFIRMED` but the
+  computed predicate now fails, so it recounts as need-work and drops from the PDF. No block.
+- **Audit emission (status transitions).** In the view (`api_case_finding_detail`,
+  `views.py:3407`), when the PATCH transitions status, also write a `SIGNAL_CONFIRMED` (→CONFIRMED)
+  or `SIGNAL_DISMISSED` (→DISMISSED) `AuditLog` row, inside the same `transaction.atomic()` as the
+  existing `FINDING_UPDATED` row. This gives the PDF a precise, queryable "who/when tied off"
+  event (today only the older `api_case_signal_detail` path emits it).
+
+## 7. The predicate (one definition, three call sites)
+
+Define `is_referral_grade(finding)` (and/or an equivalent queryset annotation) **once**. Use it in:
+
+1. the `referral_grade` header count,
+2. the `need_work` header count (`status∈{NEW,NEEDS_EVIDENCE}` OR `CONFIRMED ∧ ¬predicate`;
+   excludes DISMISSED),
+3. **the referral PDF inclusion filter** — the export query at `views.py:6039` today filters to
+   `confirmed ∧ DOCUMENTED/TRACED`; extend it to the full predicate (add `≥1 citation` and
+   `overreach_reviewed`).
+
+> Aligning the PDF filter is what makes the gate *real*. Without it, a confirmed angle with
+> `overreach_reviewed=False` (e.g. every existing one, post "no-grandfathering") would still
+> export — the customer-facing package would contradict the gate.
+
+**Readiness interaction.** The PDF endpoint at `views.py:6039` also returns 400 when
+`build_case_readiness` is `BLOCKED`. The readiness "confirmed angles" / "citation coverage" /
+"evidence weight" checks should be driven by the **same predicate** so that a case whose only
+confirmed angles are overreach-unreviewed reads as **not yet referable** (zero referral-grade),
+rather than passing readiness but exporting an empty package. Reuse the predicate; do not add a
+parallel definition.
+
+Prefer a queryset annotation so every call site (header counts, PDF filter, readiness) shares one
+`.filter()` (O(1) queries) and the definition lives in exactly one place.
+
+## 8. Credibility counts (API)
+
+Add a helper `build_credibility(case)` returning:
+
+```
+credibility = {
+  "referral_grade": <count satisfying the predicate>,
+  "need_work":      <count of NEW/NEEDS_EVIDENCE OR (CONFIRMED ∧ ¬predicate)>,
+  "agency_leads":   0,   # slot reserved; wired to open RecipientGap count in item 4
+}
+```
+
+- Rides on the **existing** dashboard/readiness payload `InvestigateTab` already fetches, added
+  alongside `quality`.
+- `quality.score` **stays in the API** (dashboard still uses it). Only the **workspace** stops
+  surfacing `/100`, per §5 — same data, different framing.
+
+## 9. Frontend (display + non-authoritative preview)
+
+- **Replace** `CaseQualityPanel`'s `{score}/100` headline with the triplet:
+  `● N referral-grade · ◐ M need work · ◷ K agency leads`. The third segment reads
+  `credibility.agency_leads` (0 now), so item 4 lights it up with **no markup change**.
+- **Harden `TieOffModal`** into the gate's display layer:
+  - Add the **overreach checklist** — the three §7.2 statements — as a required acknowledgement
+    that sets `overreach_reviewed: true` in the PATCH body.
+  - Send `overreach_reviewed` in `handleConfirm` (today it sends none of the gate inputs).
+    **No inline cite picker in this slice.** TieOffModal does not gain a document-selection UI;
+    citations are added via the item-1 feeder flow (Financials/Timeline/Documents → Cite). If an
+    angle has no citation at tie-off, the gate blocks and the modal says so — the investigator
+    cites via a feeder and returns. (Avoids inventing a new UI surface; revisit only if a later
+    slice adds in-modal citation.)
+  - **Preview, don't decide:** disable Confirm and list unmet conditions by reading the same
+    conditions locally; the server stays authoritative. If the preview is stale/wrong, render the
+    400's `gate.unmet` as fallback truth.
+  - **Fix the misleading rule selector.** Today the dropdown writes `investigator_note:
+    "Rule: <id>"` and the selection is silently discarded (`rule_id` is not in
+    `FindingUpdateSerializer.allowed_fields`, and must not be — it is part of the Finding dedup
+    key `(case, rule_id, trigger_entity_id)`). Replace the editable `<select>` with a
+    **read-only label** showing the angle's existing `rule_id`. Tie-off never mutates `rule_id`,
+    and `handleConfirm` stops fabricating the `"Rule: ..."` note. Remove the now-dead
+    `SIGNAL_RULES`/`RULE_IDS`/`resolveRuleId`/`ruleId` state machinery and the `.tieoff-select*`
+    CSS (`index.css:1762`).
+- **Transport fix — structured errors must survive `fetchApi`.** Today `ApiError` (`base.ts:46`)
+  carries only `status` + `message`, and `fetchApi` flattens JSON error bodies to a string, so
+  `{"errors": {"gate": {"unmet": [...]}}}` is lost. Add a `body` (parsed JSON) field to
+  `ApiError`, populate it in `fetchApi`'s non-2xx branch, and have `TieOffModal` read
+  `err.body.errors.gate.unmet` as the fallback truth when its local preview disagrees. Without
+  this, the server's gate reason can't reach the modal.
+- **The stricter gate must never read as a silent failure.** Because tie-off now has more ways
+  to be rejected, every adjacent client failure path must surface, not swallow:
+  - `TieOffModal` non-gate errors (network/500/CSRF) → keep the modal open + show a generic
+    submit error (not just structured `gate.unmet`).
+  - `AngleView` narrative autosave failure (`AngleView.tsx:523`, currently `catch {}`) → show a
+    visible error and **block tie-off while the narrative is unsaved** (tie-off reads the *server*
+    narrative, so unsaved local text would wrongly fail the gate).
+  - `ReferralsTab` export → disable the PDF button when readiness is `null`/loading/errored (not
+    only when `BLOCKED`), and consume the `400 {readiness}` body to refresh the checklist
+    (`ReferralsTab.tsx:298,337,448`).
+- **Align `EvidencePanel` (`AngleView.tsx:210`).** It currently flags missing knot links and
+  missing `[Doc-N]` refs but **not** `overreach_reviewed` — divergent from the official
+  predicate. Make the official four (citation, weight, narrative, overreach) the **blocking**
+  set, and relabel the existing knot-link / doc-ref-format checks as **advisory** warnings (useful
+  hints, not part of "referral-grade").
+
+## 10. Seed + tests
+
+- **`seed_demo`:** author a **mix** — some angles fully tied off (`overreach_reviewed=True`,
+  cited, DOCUMENTED/TRACED → referral-grade) and some left need-work — so the public Railway demo
+  shows a realistic in-progress case.
+- **Tests (backend suite — Railway/Docker per CLAUDE.md):**
+  - gate rejects each missing condition individually;
+  - gate accepts when all four met in one post-PATCH payload;
+  - idempotent re-confirm;
+  - condition-loss recounts (not blocked);
+  - credibility triplet math;
+  - PDF filter excludes overreach-unreviewed confirmed angles;
+  - readiness reads BLOCKED when the only confirmed angles are overreach-unreviewed;
+  - `rule_id` is unchanged by a tie-off PATCH (never in `allowed_fields`);
+  - a status transition emits a `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` audit row.
+- **Existing tests will break and must be updated (not just added to):** fixtures in
+  `test_referral_pdf.py` and `test_referral_readiness.py` create confirmed findings **without**
+  `overreach_reviewed=True`; under the new predicate those angles are no longer referral-grade, so
+  the PDF/readiness assertions will fail until the fixtures set `overreach_reviewed=True` (and a
+  citation + DOCUMENTED/TRACED weight) where they intend a referable angle.
+- **Tests (frontend — Vitest):** `TieOffModal` behavioral tests replacing the current
+  render-only ones — Confirm disabled until all conditions met, overreach acknowledgment toggles
+  the gate, dismissal rationale still required, successful confirm sends `overreach_reviewed`,
+  rule shown read-only.
+
+## 11. Deployment coupling (atomic PR)
+
+The **migration + serializer gate + TieOffModal change ship as one atomic PR**, merged in one
+commit. Splitting breaks confirms in production (Catalyst deploys `main` → Railway directly):
+
+- backend-first → the modal never sends `overreach_reviewed`, so every confirm 400s in the gap;
+- frontend-first → the column doesn't exist, so the PATCH sends an unknown field and errors.
+
+There is no safe split order. (An expand/contract three-PR sequence would avoid mid-deploy
+breakage for a multi-user system, but buys nothing for this single-dev, single-demo repo with an
+instant deploy.)
+
+## 11.5 Touch-points (for the implementation plan)
+
+Verified file/line anchors so the plan doesn't re-discover them:
+
+**Add / change**
+- `models.py:1230` — `Finding.overreach_reviewed = BooleanField(default=False)` + migration `0035`.
+- `serializers.py:698` — add `overreach_reviewed` to `serialize_finding`, and to
+  `FindingUpdateSerializer.allowed_fields` + validation + `save()` + `update_fields`.
+- `views.py:2271` (readiness) + `:6039` (PDF filter) — centralize the **one** referral-grade
+  predicate; both call it.
+- `views.py:3407` — emit `SIGNAL_CONFIRMED` / `SIGNAL_DISMISSED` on status transition.
+- dashboard payload + `frontend/src/types/index.ts` — TS type coverage:
+  - `FindingItem.overreach_reviewed: boolean`,
+  - `UpdateFindingBody.overreach_reviewed?: boolean`,
+  - new `CredibilityCounts { referral_grade; need_work; agency_leads }` + `DashboardResponse.credibility` (`:318`),
+  - **fix phantom `AuditAction`** (`:1050`): backend emits only `SIGNAL_CONFIRMED`/`SIGNAL_DISMISSED`
+    (models.py:1413-1414); the TS type currently lists `FINDING_CONFIRMED`/`FINDING_DISMISSED`,
+    which the backend never produces. Add the real codes (and drop/justify the phantom ones) so
+    the activity feed types the rows this PR starts emitting.
+- `base.ts:46` — `ApiError.body: unknown` (parsed JSON); `fetchApi` populates it on non-2xx.
+- `TieOffModal.tsx` — overreach checklist, send `overreach_reviewed`, render gate errors,
+  read-only rule label.
+- `InvestigateTab.tsx:240` — `CaseQualityPanel` leads with credibility counts (keep `quality` in API).
+- `AngleView.tsx:210` — align `EvidencePanel` (official four blocking; rest advisory).
+- `seed_demo` — deliberate mix of referral-grade and need-work angles.
+
+**Remove / reduce**
+- `TieOffModal.tsx:26` — `SIGNAL_RULES`, `RULE_IDS`, `resolveRuleId`, `ruleId`/`setRuleId`,
+  `investigator_note: "Rule: ..."` fabrication.
+- `index.css:1762` — `.tieoff-select*` after the select is gone.
+- `TieOffModal.test.tsx:28` — replace render-only tests with behavioral ones.
+
+**Correct stale docs / contract**
+- `frontend-design-spec.md:542` still says tie-off sends `rule_id=<selected>` — correct when this lands.
+- `api-contract.md:586` — add/adjust: `FindingItem.overreach_reviewed`,
+  `UpdateFindingBody.overreach_reviewed`, `DashboardResponse.credibility`, readiness semantics
+  now keyed on referral-grade, the `400 {"errors": {"gate": {"unmet": [...]}}}` shape, and that
+  tie-off shows `rule_id` read-only and never PATCHes it.
+
+## 12. Out of scope (defer)
+
+- `RecipientGap` model and the real `agency_leads` count → **item 4**.
+- Dismissed opt-in package appendix, dismissal "kind" (`ruled_out` / `correction`) → item 4.
+- Context-panel three-state + idle "what's missing" → item 3.
+- Connectedness warning (WS-GAP-1) → item 5.
+- Whether `overreach_reviewed` later enables connectedness graduating warning→gate → deferred (§13).
+- **Printed PDF tie-off attribution line** ("Tied off by X on Y" in `_build_findings_section`,
+  `referral_export.py:391`) → small follow-up. The `SIGNAL_CONFIRMED` audit rows it will read are
+  emitted by *this* PR; only the render is deferred.

@@ -1604,6 +1604,7 @@ class SerializeFindingTests(TestCase):
             "narrative_source",
             "narrative_updated_at",
             "evidence_weight",
+            "overreach_reviewed",
             "source",
             "trigger_entity_id",
             "trigger_doc_id",
@@ -1678,7 +1679,19 @@ class FindingUpdateSerializerTests(TestCase):
         )
 
     def test_confirm_finding(self):
-        s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)
+        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
+        # non-empty narrative, and overreach_reviewed=True.
+        document = self._document()
+        FindingDocument.objects.create(finding=self.finding, document=document)
+        s = FindingUpdateSerializer(
+            data={
+                "status": "CONFIRMED",
+                "evidence_weight": "DOCUMENTED",
+                "narrative": "Confirmed insider swap with documented deed evidence.",
+                "overreach_reviewed": True,
+            },
+            instance=self.finding,
+        )
         self.assertTrue(s.is_valid(), s.errors)
         s.save()
         self.finding.refresh_from_db()
@@ -1727,7 +1740,19 @@ class FindingUpdateSerializerTests(TestCase):
         self.assertIn("add_document_ids", s.errors)
 
     def test_escalate_finding(self):
-        s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=self.finding)
+        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
+        # non-empty narrative, and overreach_reviewed=True.
+        document = self._document(suffix="e")
+        FindingDocument.objects.create(finding=self.finding, document=document)
+        s = FindingUpdateSerializer(
+            data={
+                "status": "CONFIRMED",
+                "evidence_weight": "DOCUMENTED",
+                "narrative": "Escalated to confirmed after reviewing all cited evidence.",
+                "overreach_reviewed": True,
+            },
+            instance=self.finding,
+        )
         self.assertTrue(s.is_valid(), s.errors)
         s.save()
         self.finding.refresh_from_db()
@@ -2035,9 +2060,19 @@ class FindingDetailApiTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_patch_confirms_finding(self):
+        # Gate requires: ≥1 cited document, DOCUMENTED/TRACED weight, narrative,
+        # and overreach_reviewed=True. Pre-cite a document, then supply the rest
+        # in the same PATCH so the post-update state satisfies all conditions.
+        doc = _make_document(self.case, filename="confirm-evidence.pdf")
+        FindingDocument.objects.create(finding=self.finding, document=doc)
         response = self.client.patch(
             self.url,
-            data=json.dumps({"status": "CONFIRMED"}),
+            data=json.dumps({
+                "status": "CONFIRMED",
+                "evidence_weight": "DOCUMENTED",
+                "narrative": "Confirmed: zero-consideration transfer documented by deed.",
+                "overreach_reviewed": True,
+            }),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -2096,9 +2131,19 @@ class FindingDetailApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_patch_returns_updated_finding(self):
+        # Gate requires: ≥1 cited document, DOCUMENTED/TRACED weight, narrative,
+        # and overreach_reviewed=True. Pre-cite a document, then satisfy the gate
+        # in the PATCH so the response body contains the updated finding.
+        doc = _make_document(self.case, filename="return-evidence.pdf")
+        FindingDocument.objects.create(finding=self.finding, document=doc)
         response = self.client.patch(
             self.url,
-            data=json.dumps({"status": "CONFIRMED"}),
+            data=json.dumps({
+                "status": "CONFIRMED",
+                "evidence_weight": "DOCUMENTED",
+                "narrative": "Finding confirmed after documentary review.",
+                "overreach_reviewed": True,
+            }),
             content_type="application/json",
         )
         data = response.json()

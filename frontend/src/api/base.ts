@@ -45,11 +45,13 @@ async function ensureCsrfCookie(): Promise<void> {
 /** Thrown whenever the API returns a non-2xx status code. */
 export class ApiError extends Error {
   readonly status: number;
+  readonly body: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -109,17 +111,16 @@ export async function fetchApi<T>(
   });
 
   if (!response.ok) {
-    // Attempt to extract a message from the error body
     let message = `${response.status} ${response.statusText}`;
+    let parsedBody: unknown;
     try {
-      const errBody = await response.json();
-      // Django REST Framework wraps errors in { detail: "..." } or { field: [...] }
+      parsedBody = await response.json();
+      const errBody = parsedBody as Record<string, unknown>;
       if (typeof errBody?.detail === "string") {
         message = errBody.detail;
       } else if (typeof errBody === "object" && errBody !== null) {
-        // Flatten first error found in DRF field-level errors
         const firstField = Object.keys(errBody)[0];
-        const firstMsg = errBody[firstField];
+        const firstMsg = (errBody as Record<string, unknown>)[firstField];
         if (Array.isArray(firstMsg) && typeof firstMsg[0] === "string") {
           message = `${firstField}: ${firstMsg[0]}`;
         }
@@ -127,7 +128,7 @@ export async function fetchApi<T>(
     } catch {
       // Non-JSON error body — keep the status text message
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, parsedBody);
   }
 
   // 204 No Content — return undefined cast to T

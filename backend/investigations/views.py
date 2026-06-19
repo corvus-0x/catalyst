@@ -2219,6 +2219,7 @@ READINESS_QUALITY_WEIGHTS = {
     "pending_connections": 4,
     "pending_extraction": 3,
     "active_jobs": 3,
+    "overreach_review": 0,  # score-neutral: legibility only, does not shift the 100-pt scale
 }
 
 
@@ -2268,12 +2269,41 @@ def _build_case_quality(items):
     }
 
 
+def build_credibility(case, referral_grade=None):
+    """Header triplet: referral-grade vs need-work Angles + agency leads.
+
+    agency_leads is 0 until RecipientGap lands (case-workspace item 4); the slot
+    exists now so the header shape is final.
+
+    Pass `referral_grade` (an already-computed int) to avoid a redundant query
+    when the caller has already fetched that count (e.g. build_case_readiness).
+    """
+    from .referral_grade import referral_grade_qs
+
+    if referral_grade is None:
+        referral_grade = referral_grade_qs(case).count()
+    confirmed = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED).count()
+    active = Finding.objects.filter(
+        case=case, status__in=[FindingStatus.NEW, FindingStatus.NEEDS_EVIDENCE]
+    ).count()
+    # need-work = active states + confirmed-but-not-referral-grade (excludes DISMISSED)
+    need_work = active + (confirmed - referral_grade)
+    return {
+        "referral_grade": referral_grade,
+        "need_work": need_work,
+        "agency_leads": 0,
+    }
+
+
 def build_case_readiness(case):
     """Build referral readiness and quality details for a case."""
+
+    from .referral_grade import referral_grade_qs
 
     target_count = ReferralTarget.objects.filter(case=case).count()
     confirmed_qs = Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
     confirmed_count = confirmed_qs.count()
+    referral_grade_count = referral_grade_qs(case).count()
     eligible_count = confirmed_qs.filter(
         evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
     ).count()
@@ -2298,6 +2328,15 @@ def build_case_readiness(case):
         case=case,
         status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
     ).count()
+    overreach_pending = (
+        confirmed_qs.filter(
+            evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
+            overreach_reviewed=False,
+        )
+        .annotate(_cc=Count("document_links"))
+        .filter(_cc__gt=0)
+        .count()
+    )
 
     items = [
         _readiness_item(
@@ -2316,14 +2355,14 @@ def build_case_readiness(case):
         _readiness_item(
             "confirmed_angles",
             "Confirmed angles",
-            "PASS" if confirmed_count else "FAIL",
+            "PASS" if referral_grade_count else "FAIL",
             (
-                f"{confirmed_count} confirmed angle"
-                f"{'' if confirmed_count == 1 else 's'} ready for review."
-                if confirmed_count
-                else "Confirm at least one angle before creating a referral package."
+                f"{referral_grade_count} referral-grade angle"
+                f"{'' if referral_grade_count == 1 else 's'} ready for referral."
+                if referral_grade_count
+                else "Tie off at least one referral-grade angle before export."
             ),
-            confirmed_count,
+            referral_grade_count,
             "investigate",
         ),
         _readiness_item(
@@ -2417,6 +2456,20 @@ def build_case_readiness(case):
             active_job_count,
             "research",
         ),
+        _readiness_item(
+            "overreach_review",
+            "Overreach review",
+            "WARN" if overreach_pending else "PASS",
+            (
+                f"{overreach_pending} confirmed angle"
+                f"{'' if overreach_pending == 1 else 's'} need an overreach acknowledgement "
+                "to become referral-grade."
+                if overreach_pending
+                else "All cited, documented angles have passed overreach review."
+            ),
+            overreach_pending,
+            "investigate",
+        ),
     ]
 
     fail_count = sum(1 for item in items if item["status"] == "FAIL")
@@ -2436,6 +2489,7 @@ def build_case_readiness(case):
         "summary": summary,
         "items": items,
         "quality": _build_case_quality(items),
+        "credibility": build_credibility(case, referral_grade_count),
     }
 
 
@@ -2451,6 +2505,7 @@ def api_case_referral_readiness(request, pk):
             "summary": readiness["summary"],
             "items": readiness["items"],
             "quality": readiness["quality"],
+            "credibility": readiness["credibility"],
         }
     )
 
@@ -3413,6 +3468,21 @@ def api_case_finding_detail(request, pk, finding_id):
             after_state=serializer.validated_data,
             performed_by=getattr(request, "api_token", None),
         )
+        if before["status"] != updated.status:
+            transition_action = {
+                FindingStatus.CONFIRMED: AuditAction.SIGNAL_CONFIRMED,
+                FindingStatus.DISMISSED: AuditAction.SIGNAL_DISMISSED,
+            }.get(updated.status)
+            if transition_action is not None:
+                AuditLog.log(
+                    action=transition_action,
+                    table_name="findings",
+                    record_id=updated.pk,
+                    case_id=case.pk,
+                    before_state={"status": before["status"]},
+                    after_state={"status": updated.status},
+                    performed_by=getattr(request, "api_token", None),
+                )
     return JsonResponse(serialize_finding(updated))
 
 
@@ -5399,6 +5469,7 @@ def api_case_dashboard(request, pk):
                 "total_documents_processed": total_docs,
             },
             "quality": readiness["quality"],
+            "credibility": readiness["credibility"],
         }
     )
 
@@ -6054,12 +6125,10 @@ def api_case_referral_pdf(request, pk):
             status=400,
         )
 
+    from .referral_grade import referral_grade_qs
+
     findings_qs = (
-        Finding.objects.filter(
-            case=case,
-            status=FindingStatus.CONFIRMED,
-            evidence_weight__in=[EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED],
-        )
+        referral_grade_qs(case)
         .prefetch_related("entity_links", "document_links")
         .order_by("-severity", "created_at")
     )
