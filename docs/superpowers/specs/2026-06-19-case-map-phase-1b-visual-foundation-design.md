@@ -78,7 +78,10 @@ demo surface (review finding 5). Concretely, rename visible strings in:
 
 - the toolbar tooltips/`aria-label`s,
 - the legend,
-- the stats bar labels (e.g. "Angles" → "Threads"),
+- the stats bar labels (e.g. "Angles" → "Threads", "Entities" → "Subjects") — and when "Entities"
+  becomes "Subjects" its **source must switch** from `dashboard.entities.total` (which counts
+  Property + FinancialInstrument too) to `caseMap.stats.subject_count`, so the relabeled metric is
+  truthful (review finding 3),
 - the Level-1 panel headings/copy (e.g. "X knots · Y connections" → "X subjects · Y relationships",
   "Case web" → "Case Map"),
 - the empty-state copy.
@@ -101,6 +104,13 @@ can change `flags.has_active_thread`, `flags.has_substantiated_thread`, `handoff
 
 Today the last two refetch `/graph/` only (`InvestigateTab.tsx:872`, `:906`); 1B adds the
 `/case-map/` refetch (and the `/graph/` refetch stays for the node-drill-down dataset).
+
+**Dashboard must refresh in the same two paths (review finding 2).** The surface reads `dashboard`
+for credibility, case quality, findings-by-status, document counts, and the stats bar
+(`InvestigateTab.tsx:413`, `:748`). Tie-off and creation change those values, but `onAngleTiedOff`
+and `onCreated` refetch only `/graph/` today. The Lead and re-run-rules handlers already refetch
+`dashboard`; 1B adds `fetchDashboard` to the tie-off and creation paths so all three datasets
+(`/case-map/`, `/graph/`, `dashboard`) stay coherent after every state-changing action.
 
 ---
 
@@ -134,12 +144,20 @@ Today the last two refetch `/graph/` only (`InvestigateTab.tsx:872`, `:906`); 1B
 - **Level-1 right-panel counts come from `caseMap.stats`** (review finding 4): subject_count /
   edge_count, so the panel and the visible map agree. Findings-by-status / document counts may
   continue to come from `dashboard`.
-- All four refresh handlers (Lead, re-run rules, tie-off, creation) refetch `/case-map/` per D5.
+- The top stats bar (`WebStatsBar`) "Subjects" metric reads `caseMap.stats.subject_count` (not
+  `dashboard.entities.total`) per D4/finding 3.
+- All four refresh handlers (Lead, re-run rules, tie-off, creation) refetch `/case-map/` per D5;
+  tie-off and creation additionally refetch `dashboard`.
 
 ### New component — `RelationshipSummaryPanel.tsx`
 Minimal right-panel view for a selected `SummaryEdge`: subject A/B labels, `strength.level` badge,
-the §10 neutral explanatory line, `strength.reasons` grouped by `categories`, and a list of
-`underlying_relationships` / `thread_refs`. Read-only in 1B (no actions yet — those are Phase 2).
+the §10 neutral explanatory line, and the evidence. **`strength.categories` and `strength.reasons`
+are rendered as two separate sections** — categories as neutral chips, reasons as a plain list —
+**not** "reasons grouped by category": the locked §4 contract exposes both as flat, unlinked
+`string[]`s with no reason→category mapping, so grouping is not derivable on the frontend (review
+finding 1). Also lists `underlying_relationships` / `thread_refs`. Read-only in 1B (no actions yet —
+those are Phase 2). (If reason↔category grouping is wanted later, it requires an additive contract
+change, e.g. a `reasons_by_category` shape — out of scope for 1B.)
 
 ### Toolbar — Lucide icons
 Replace emoji with Lucide (existing dep), icon-first, 32px, tooltips + `aria-label`:
@@ -166,8 +184,11 @@ Small collapsible legend on the canvas: marker key + edge-strength key + the loc
 - **Edge click opens `RelationshipSummaryPanel` from the `SummaryEdge`** (not
   `ConnectionDetailPanel`); panel shows `level` + `reasons`.
 - **Level-1 panel counts come from `caseMap.stats`** and match the rendered edge count.
-- `RelationshipSummaryPanel` renders `level`, `reasons`, and underlying-relationship rows from a
-  given `SummaryEdge`.
+- `RelationshipSummaryPanel` renders `level`, `categories` (as chips) and `reasons` (as a list) in
+  **separate** sections, plus underlying-relationship rows, from a given `SummaryEdge`.
+- Stats bar "Subjects" reflects `caseMap.stats.subject_count` (not the entity total).
+- After a simulated tie-off / creation, the refresh path calls `fetchCaseMap`, `fetchGraph`, **and**
+  `fetchDashboard`.
 
 Backend is unchanged, so no backend tests are added.
 
