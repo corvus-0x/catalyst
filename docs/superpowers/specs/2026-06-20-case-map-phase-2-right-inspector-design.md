@@ -74,7 +74,8 @@ interface FocusState {
 |--------|-----------|-------------|----------|
 | `selectSubject(id)` | unchanged (stays on `web`) | `{subject,id}` | `activeEntityId = id` |
 | `selectRelationship(edgeId)` | unchanged | `{relationship,edgeId}` | unchanged |
-| `selectThread(id, title)` | unchanged | `{thread,id}` | `activeAngleId/Title = id/title` (so feeders target it without opening full view) |
+| `selectThread(id, title)` | unchanged | `{thread,id}` | `activeAngleId/Title = id/title` (map-mode inspector) |
+| `activateThread({id, title})` | **unchanged** | **unchanged** | `activeAngleId/Title = id/title` — **pointer only** |
 | `clearSelection()` | unchanged | `{none}` | unchanged |
 | `openProfile(e)` | push `profile` (dedup) | `{none}` | `activeEntityId = e.id` |
 | `openThread(a)` | push `angle` (dedup) | `{none}` | `activeAngleId/Title = a` |
@@ -101,8 +102,15 @@ override (header chip); a later `goBack`/`goTo` may legitimately re-derive the p
 `useCaseWorkspace()` keeps the selector names `activeEntityId` / `activeAngleId` /
 `activeAngleTitle` (feeders, DocumentView, Timeline keep working unchanged) and adds
 `currentFrame`, `history`, `selection`, plus the action creators above. The old `setActiveEntity` /
-`setActiveAngle` setters are removed; callers migrate (`setActiveAngle(undefined)` →
-`clearActiveAngle()`; knot click → `selectSubject`).
+`setActiveAngle` setters are **removed, not kept as compatibility shims** (keeping them would
+recreate the two-source-of-truth problem this refactor exists to kill). Caller migration:
+- `useFeederActions` `setActiveAngle({id,title})` (set citation target off-tab) → **`activateThread`**
+  — pointer-only, no history, no selection. This is why `activateThread` exists separately from
+  `selectThread`/`openThread`: a feeder must make a thread the active cite target **without**
+  mutating breadcrumb history or the Investigate inspector.
+- `CaseDetailView` chip `setActiveAngle(undefined)` → `clearActiveAngle()`; the `onAngleActive`
+  bridge is deleted (`openThread` sets the pointer directly).
+- `InvestigateTab` knot click `setActiveEntity(id)` → `selectSubject(id)`.
 
 ---
 
@@ -140,6 +148,24 @@ visibility, loading/error, entity-detail cache, Lead job state.
 
 This also retires the now-dead `webSelectedEdge` → `ConnectionDetailPanel` branch flagged in the 1B
 review (the Case Map edge path now goes through `selectRelationship` → `RelationshipSummaryPanel`).
+
+### 4.1 Legacy deletion checklist ("retired" means deleted, not left sitting)
+
+Phase 2 must not leave dead code behind under new names. Each item is deleted in the task that
+removes its last caller (see §8a), and a final task verifies nothing dangling remains:
+
+- **DELETE `components/ConnectionDetailPanel.tsx`** (and its import) — its **only** caller is
+  `InvestigateTab` (line 28/357). Once `webSelectedEdge` is removed (task 4), it is fully unused;
+  delete the file. (`ProfilePanel` / `AngleView` / `DocumentView` are **not** dead — they remain the
+  full-frame escape targets.)
+- **Remove `WebRightPanel`'s idle case-stats body** once `WhatsMissingPanel` owns the idle rail
+  (task 6) — don't leave a dead local component in `InvestigateTab`.
+- **Gone entirely:** `NavEntry`, `entryLabel`, `sameEntry`, `navigate` / `navigateTo` /
+  `navigateBack`, `webSelectedEdge`, `selectedSummaryEdge`, and the `requestedAngle` /
+  `onAngleActive` / `onAngleConsumed` props (InvestigateTab + CaseDetailView).
+- **Old context setters removed, not shimmed:** `setActiveEntity` / `setActiveAngle` do not survive
+  "temporarily" (§3.4). `CaseWorkspaceContext.test.tsx` is rewritten for the reducer (its current
+  setter tests are replaced).
 
 ---
 
@@ -289,10 +315,15 @@ Keep the risky state refactor separate from the new UI surfaces:
    **existing panels still rendering** (no new inspectors yet); `DocumentView` gets `activeAngleId`
    from context; `refreshCaseData` + mount load gain readiness.
 4. **Relationship inspector migration** — route `selectRelationship` → `RelationshipSummaryPanel`,
-   extend it (§5.2). Retires the dead `webSelectedEdge`/`ConnectionDetailPanel` branch.
+   extend it (§5.2). Removes `webSelectedEdge` and **deletes `ConnectionDetailPanel.tsx`** (now
+   caller-less) in this same task (§4.1).
 5. **SubjectInspector** (§5.1).
-6. **WhatsMissingPanel** (§6).
+6. **WhatsMissingPanel** (§6) — also removes the dead `WebRightPanel` idle body.
 7. **ThreadInspector last** (§5.3) — after its `fetchAngle` data source is wired.
+8. **Dead-code sweep** — grep-verify nothing dangling remains: no `ConnectionDetailPanel`,
+   `WebRightPanel`, `navStack`, `NavEntry`, `webSelectedEdge`, `selectedSummaryEdge`,
+   `setActiveAngle`/`setActiveEntity`, `onAngleActive`/`requestedAngle`/`onAngleConsumed` references;
+   `tsc --noEmit` clean (no unused-import or unreachable warnings); full Vitest green.
 
 ---
 
