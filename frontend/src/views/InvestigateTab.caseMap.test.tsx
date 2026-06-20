@@ -118,7 +118,8 @@ describe("InvestigateTab Case Map wiring", () => {
     await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
     fireEvent.click(getByTestId("cy-edge"));
     await findByText("Formal role documented");
-    // node click navigates away (and must clear selectedSummaryEdge)
+    // node click calls clearSelection() then selectSubject() — selection.kind changes to "subject",
+    // hiding the relationship panel
     fireEvent.click(getByTestId("cy-node"));
     await waitFor(() => expect(queryByText("Formal role documented")).toBeNull());
   });

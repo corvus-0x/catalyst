@@ -3,6 +3,8 @@ import { render, fireEvent } from "@testing-library/react";
 import RelationshipSummaryPanel from "./RelationshipSummaryPanel";
 import type { SummaryEdge } from "../types";
 
+const noop = () => {};
+
 const edge: SummaryEdge = {
   id: "a__b", source: "a", target: "b", relationship: "SUMMARY",
   label: "Repeated relationship", state: "repeated",
@@ -23,7 +25,7 @@ const edge: SummaryEdge = {
 describe("RelationshipSummaryPanel", () => {
   it("shows level, categories, reasons (separately), and the neutral §10 note", () => {
     const { container } = render(
-      <RelationshipSummaryPanel edge={edge} subjectLabel={(id) => (id === "a" ? "Jay" : "Acme")} onClear={() => {}} />,
+      <RelationshipSummaryPanel edge={edge} subjectLabel={(id) => (id === "a" ? "Jay" : "Acme")} onClear={noop} onOpenSource={noop} onSelectThread={noop} onStartThread={noop} />,
     );
     const text = container.textContent ?? "";
     expect(text).toContain("Jay");
@@ -46,9 +48,31 @@ describe("RelationshipSummaryPanel", () => {
   it("invokes onClear when the close button is clicked", () => {
     const onClear = vi.fn();
     const { getByLabelText } = render(
-      <RelationshipSummaryPanel edge={edge} subjectLabel={(id) => id} onClear={onClear} />,
+      <RelationshipSummaryPanel edge={edge} subjectLabel={(id) => id} onClear={onClear} onOpenSource={noop} onSelectThread={noop} onStartThread={noop} />,
     );
     fireEvent.click(getByLabelText("Close relationship detail"));
     expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders supporting documents and threads-using sections; thread click selects it", () => {
+    const onSelectThread = vi.fn();
+    const richEdge: SummaryEdge = {
+      id: "p1__p2", source: "p1", target: "p2", relationship: "SUMMARY",
+      label: "Documented relationship", state: "documented",
+      strength: { score: 30, level: "documented", categories: ["co_mentioned"], source_count: 1,
+        transaction_count: 0, role_count: 0, thread_count: 1, substantiated_thread_count: 0,
+        handoff_included: false, relationship_types: [], reasons: ["Appears together in 1 source document"] },
+      evidence_refs: [{ kind: "source_document", document_id: "d1", label: "Form 990", category: "co_mentioned" }],
+      thread_refs: [{ thread_id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH",
+        rule_id: "SR-015", signal_type: "INSIDER_SWAP", handoff_ready: false }],
+      underlying_relationships: [],
+    };
+    const { getByText } = render(
+      <RelationshipSummaryPanel edge={richEdge} subjectLabel={(id) => id} onClear={noop}
+        onOpenSource={noop} onSelectThread={onSelectThread} onStartThread={noop} />,
+    );
+    expect(getByText("Form 990")).toBeTruthy();        // supporting doc
+    fireEvent.click(getByText("Insider swap"));         // thread row
+    expect(onSelectThread).toHaveBeenCalledWith("t1");
   });
 });

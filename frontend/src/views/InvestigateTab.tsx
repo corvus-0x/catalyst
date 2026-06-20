@@ -19,14 +19,11 @@ import type {
   DashboardResponse,
   DocumentItem,
   EntityType,
-  GraphEdge,
   GraphResponse,
   OrgDetailResponse,
   PersonDetailResponse,
   ReferralReadinessResponse,
-  SummaryEdge,
 } from "../types";
-import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
@@ -318,53 +315,24 @@ function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
   );
 }
 
-/* ─── Web-view right panel (always visible at Level 1) ────────────────────────── */
+/* ─── Web-view right panel (default stats, shown when nothing is selected) ────── */
 
 interface WebPanelProps {
-  graph: GraphResponse | null;
   caseMap: CaseMapResponse | null;
   dashboard: DashboardResponse | null;
-  documents: DocumentItem[];
-  selectedEdge: GraphEdge | null;
-  onOpenAngle: (angleId: string, angleTitle: string) => void;
-  onOpenDocument: (docId: string, docName: string) => void;
-  onClearEdge: () => void;
   leadStatus: "idle" | "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
   leadResult: { findings_created: number; patterns_dropped: number } | null;
 }
 
 function WebRightPanel({
-  graph,
   caseMap,
   dashboard,
-  documents,
-  selectedEdge,
-  onOpenAngle,
-  onOpenDocument,
-  onClearEdge,
   leadStatus,
   leadResult,
 }: WebPanelProps) {
-  // Keep graph available for ConnectionDetailPanel on legacy edges if ever needed,
-  // but counts now come from caseMap.
   const subjectCount = caseMap?.stats.subject_count ?? 0;
   const relationshipCount = caseMap?.stats.edge_count ?? 0;
 
-  if (selectedEdge) {
-    // Legacy path: ConnectionDetailPanel for raw graph edges (kept for future drill-down use).
-    return (
-      <ConnectionDetailPanel
-        edge={selectedEdge}
-        graph={graph}
-        documents={documents}
-        onOpenAngle={onOpenAngle}
-        onOpenDocument={onOpenDocument}
-        onClear={onClearEdge}
-      />
-    );
-  }
-
-  /* ── Default: case stats ── */
   return (
     <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
@@ -469,9 +437,6 @@ export default function InvestigateTab({
   /* ── Entity cache for Profile panel ── */
   const [entityData, setEntityData] = useState<PersonDetailResponse | OrgDetailResponse | null>(null);
 
-  /* ── Selected summary edge from /case-map/ (drives RelationshipSummaryPanel) — kept for Task 5 ── */
-  const [selectedSummaryEdge, setSelectedSummaryEdge] = useState<SummaryEdge | null>(null);
-
   /* ── Modals ── */
   const [showConnectionReview, setShowConnectionReview] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -492,6 +457,9 @@ export default function InvestigateTab({
     history,
     selection,
     selectSubject,
+    selectRelationship,
+    selectThread,
+    clearSelection,
     openThread,
     openDocument,
     goBack,
@@ -530,7 +498,7 @@ export default function InvestigateTab({
      the edge, so the panel must not stay pinned to a stale snapshot even if the
      refetch then fails. */
   async function refreshCaseData() {
-    setSelectedSummaryEdge(null);
+    clearSelection();
     const [cm, g, dash, ready] = await Promise.all([
       fetchCaseMap(caseId),
       fetchGraph(caseId),
@@ -576,7 +544,7 @@ export default function InvestigateTab({
   function handleNodeClick(nodeId: string) {
     if (currentFrame.kind !== "web") return;
     // Clear any selected relationship panel immediately — the user clicked away.
-    setSelectedSummaryEdge(null);
+    clearSelection();
     // Node detail resolves against /graph/ (not /case-map/); property/financial
     // instrument nodes are not subjects and are excluded from the canvas.
     const node = graph?.nodes.find((n) => n.id === nodeId);
@@ -596,17 +564,23 @@ export default function InvestigateTab({
     }
   }
 
-  /* ── Edge tap on canvas → select the matching SummaryEdge from /case-map/ ── */
+  /* ── Edge tap on canvas → selectRelationship (reducer path) ── */
   function handleEdgeClick(edgeId: string) {
     if (currentFrame.kind !== "web") return;
     if (!caseMap) return;
-    const edge = caseMap.edges.find((e) => e.id === edgeId) ?? null;
+    const edge = caseMap.edges.find((e) => e.id === edgeId);
     if (!edge) {
       console.warn("handleEdgeClick: no SummaryEdge for id", edgeId);
       return;
     }
-    setSelectedSummaryEdge(edge);
+    selectRelationship(edgeId);
   }
+
+  /* ── Resolve the currently-selected SummaryEdge for the relationship panel ── */
+  const selectedSummaryEdge =
+    selection.kind === "relationship"
+      ? (caseMap?.edges.find((e) => e.id === selection.edgeId) ?? null)
+      : null;
 
   /* ── Resolve the subject label for a selected subject ── */
   function selectedSubjectLabel(): string {
@@ -814,19 +788,25 @@ export default function InvestigateTab({
               <RelationshipSummaryPanel
                 edge={selectedSummaryEdge}
                 subjectLabel={(id) => caseMap?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"}
-                onClear={() => setSelectedSummaryEdge(null)}
+                onClear={clearSelection}
+                onOpenSource={(docId) => {
+                  const ref = selectedSummaryEdge.evidence_refs.find((r) => r.document_id === docId);
+                  openDocument({ id: docId, name: ref?.label ?? docId.slice(0, 8) + "…" });
+                }}
+                onSelectThread={(threadId) => {
+                  const ref = selectedSummaryEdge.thread_refs.find((t) => t.thread_id === threadId);
+                  selectThread(threadId, ref?.title ?? "");
+                }}
+                onStartThread={() => {
+                  setConnectPrefill({});
+                  setShowConnectModal(true);
+                }}
               />
             </Suspense>
           ) : (
             <WebRightPanel
-              graph={graph}
               caseMap={caseMap}
               dashboard={dashboard}
-              documents={documents}
-              selectedEdge={null}
-              onOpenAngle={(angleId, angleTitle) => openThread({ id: angleId, title: angleTitle })}
-              onOpenDocument={(documentId, docName) => openDocument({ id: documentId, name: docName })}
-              onClearEdge={() => {}}
               leadStatus={leadJob.status}
               leadResult={leadJob.result}
             />
