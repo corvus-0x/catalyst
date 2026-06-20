@@ -29,6 +29,7 @@ import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCa
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
 import SubjectInspector from "../components/SubjectInspector";
+import ThreadInspector from "../components/ThreadInspector";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 import { useCaseWorkspace } from "../context/CaseWorkspaceContext";
 
@@ -288,6 +289,7 @@ export default function InvestigateTab({
     goBack,
     goTo,
     activeAngleId,
+    activeAngleTitle,
   } = useCaseWorkspace();
 
   /* ── Load graph + case-map + dashboard + fuzzy counts + readiness ── */
@@ -638,6 +640,20 @@ export default function InvestigateTab({
                 }}
               />
             </Suspense>
+          ) : selection.kind === "thread" ? (
+            <ThreadInspector
+              caseId={caseId}
+              threadId={selection.id}
+              onOpenThread={() =>
+                openThread({ id: selection.id, title: activeAngleTitle ?? "" })
+              }
+              onClear={clearSelection}
+              onChanged={() => {
+                refreshCaseData().catch((err) => {
+                  console.error(err);
+                });
+              }}
+            />
           ) : readiness ? (
             <WhatsMissingPanel
               readiness={readiness}
