@@ -1,4 +1,4 @@
-import { CredibilityHeader } from "../views/InvestigateTab";
+import { CredibilityHeader } from "./CredibilityHeader";
 import type { ReferralReadinessItem, ReferralReadinessResponse, ReferralReadinessTargetTab } from "../types";
 
 interface WhatsMissingPanelProps {

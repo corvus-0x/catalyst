@@ -238,7 +238,10 @@ export default function ThreadInspector({
               style={{
                 fontSize: 11,
                 color:
-                  thread.status === "CONFIRMED" && citedCount > 0
+                  thread.status === "CONFIRMED" &&
+                  citedCount > 0 &&
+                  (thread.evidence_weight === "DOCUMENTED" || thread.evidence_weight === "TRACED") &&
+                  thread.overreach_reviewed
                     ? "var(--color-success, #34d399)"
                     : "var(--text-3)",
                 lineHeight: 1.5,

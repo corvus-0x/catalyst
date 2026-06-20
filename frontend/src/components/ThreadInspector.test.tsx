@@ -1,6 +1,10 @@
 import { render, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type MockInstance } from "vitest";
 
+const DOC_LINK = { document_id: "d1", document_filename: "exhibit.pdf", page_reference: "p. 1", context_note: "" };
+const DOC_LINK_2 = { document_id: "d2", document_filename: "exhibit2.pdf", page_reference: "p. 2", context_note: "" };
+
+// vi.mock is hoisted — BASE_THREAD must be defined inline here, NOT referencing outer vars.
 vi.mock("../api", () => ({
   fetchAngle: vi.fn().mockResolvedValue({
     id: "t1",
@@ -8,12 +12,30 @@ vi.mock("../api", () => ({
     status: "NEEDS_EVIDENCE",
     severity: "HIGH",
     narrative: "",
-    document_links: [{ document_id: "d1" }, { document_id: "d2" }],
+    evidence_weight: "SPECULATIVE",
+    overreach_reviewed: false,
+    document_links: [
+      { document_id: "d1", document_filename: "exhibit.pdf", page_reference: "p. 1", context_note: "" },
+      { document_id: "d2", document_filename: "exhibit2.pdf", page_reference: "p. 2", context_note: "" },
+    ],
   }),
   updateAngle: vi.fn().mockResolvedValue({}),
 }));
 import * as api from "../api";
 import ThreadInspector from "./ThreadInspector";
+
+// Shared base for per-test overrides (defined AFTER the hoisted mock block)
+const BASE_THREAD = {
+  id: "t1",
+  title: "Insider swap",
+  status: "NEEDS_EVIDENCE" as const,
+  severity: "HIGH" as const,
+  narrative: "",
+  evidence_weight: "SPECULATIVE" as const,
+  overreach_reviewed: false,
+  document_links: [DOC_LINK, DOC_LINK_2],
+};
+
 beforeEach(() => vi.clearAllMocks());
 
 describe("ThreadInspector", () => {
@@ -64,5 +86,57 @@ describe("ThreadInspector", () => {
     await findByText("Insider swap");
     fireEvent.click(getByText("Open full Thread"));
     expect(onOpenThread).toHaveBeenCalled();
+  });
+
+  it("CONFIRMED + cited but SPECULATIVE weight does NOT get the green/ready color", async () => {
+    // Mock returns CONFIRMED + 1 cited source BUT evidence_weight is SPECULATIVE and
+    // overreach_reviewed is false — full predicate not met, must NOT show success color.
+    (vi.mocked(api.fetchAngle) as MockInstance).mockResolvedValueOnce({
+      ...BASE_THREAD,
+      status: "CONFIRMED",
+      evidence_weight: "SPECULATIVE",
+      overreach_reviewed: false,
+      document_links: [DOC_LINK],
+    });
+    const { findByText } = render(
+      <ThreadInspector
+        caseId="c1"
+        threadId="t1"
+        onOpenThread={() => {}}
+        onClear={() => {}}
+        onChanged={() => {}}
+      />,
+    );
+    await findByText("Insider swap");
+    // The gap text mentions the unmet condition — confirms the non-green path
+    const gapEl = await findByText(/Evidence weight below Documented/);
+    // The immediate parent is the styled div — its color must NOT be the success color
+    const styledDiv = gapEl.closest("div[style]");
+    expect(styledDiv).toBeTruthy();
+    expect(styledDiv?.getAttribute("style") ?? "").not.toContain("color-success");
+  });
+
+  it("CONFIRMED + cited + DOCUMENTED weight + overreach_reviewed gets the green/ready color", async () => {
+    (vi.mocked(api.fetchAngle) as MockInstance).mockResolvedValueOnce({
+      ...BASE_THREAD,
+      status: "CONFIRMED",
+      evidence_weight: "DOCUMENTED",
+      overreach_reviewed: true,
+      document_links: [DOC_LINK],
+    });
+    const { findByText } = render(
+      <ThreadInspector
+        caseId="c1"
+        threadId="t1"
+        onOpenThread={() => {}}
+        onClear={() => {}}
+        onChanged={() => {}}
+      />,
+    );
+    await findByText("Insider swap");
+    const gapEl = await findByText(/All referral-grade conditions met/);
+    const styledDiv = gapEl.closest("div[style]");
+    expect(styledDiv).toBeTruthy();
+    expect(styledDiv?.getAttribute("style") ?? "").toContain("color-success");
   });
 });

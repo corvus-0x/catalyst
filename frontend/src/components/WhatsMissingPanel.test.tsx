@@ -48,4 +48,26 @@ describe("WhatsMissingPanel", () => {
     );
     expect(getByText(/Nothing's blocking/)).toBeTruthy();
   });
+
+  it("pending_connections FAIL calls onOpenPending and NOT onNavigateTab", () => {
+    const onOpenPending = vi.fn();
+    const onNavigateTab = vi.fn();
+    const pendingItem: ReferralReadinessItem = {
+      key: "pending_connections",
+      label: "Pending relationships",
+      status: "FAIL",
+      summary: "3 unresolved",
+      target_tab: "investigate",
+    };
+    const { getByText } = render(
+      <WhatsMissingPanel
+        readiness={readiness("BLOCKED", [pendingItem])}
+        onNavigateTab={onNavigateTab}
+        onOpenPending={onOpenPending}
+      />,
+    );
+    fireEvent.click(getByText("Pending relationships"));
+    expect(onOpenPending).toHaveBeenCalledTimes(1);
+    expect(onNavigateTab).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { CredibilityHeader, WebToolbar } from "./InvestigateTab";
+import { CredibilityHeader } from "../components/CredibilityHeader";
+import { WebToolbar } from "./InvestigateTab";
 
 describe("CredibilityHeader", () => {
   it("shows the triplet and never the score/100", () => {
