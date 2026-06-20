@@ -19,7 +19,7 @@ vi.mock("../components/CytoscapeCanvas", () => ({
 
 // Mock the API module so we can assert dual-fetch and feed canvas data.
 vi.mock("../api", () => ({
-  fetchGraph: vi.fn().mockResolvedValue({ nodes: [], edges: [], timeline_events: [], stats: { node_types: {}, total_edges: 0 } }),
+  fetchGraph: vi.fn().mockResolvedValue({ nodes: [{ id: "a", type: "person", label: "Jay", metadata: { finding_count: 0, doc_count: 0 } }], edges: [], timeline_events: [], stats: { node_types: { person: 1 }, total_edges: 0 } }),
   fetchCaseMap: vi.fn().mockResolvedValue({
     case_id: "c1",
     nodes: [

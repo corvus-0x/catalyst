@@ -889,7 +889,7 @@ export default function InvestigateTab({
               navigate({ kind: "angle", angleId: newAngle.id, angleTitle: newAngle.title });
               refreshCaseData().catch((err) => {
                 console.error(err);
-                toast.error("The Case Map didn't refresh — reload if the graph looks stale.");
+                toast.error("The Case Map didn't refresh — reload if it looks stale.");
               });
             }}
           />
