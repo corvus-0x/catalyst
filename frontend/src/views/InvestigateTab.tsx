@@ -1,6 +1,7 @@
 import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
 import { toast } from "sonner";
+import { Flag, Maximize, Map as MapIcon, Sparkles, RefreshCw, Link as LinkIcon } from "lucide-react";
 import { fetchGraph, fetchFuzzyMatches, fetchEntityDetail, fetchDashboard, runAiPatternAnalysis, reevaluateSignals } from "../api";
 import type {
   CaseQuality,
@@ -151,20 +152,25 @@ interface ToolbarProps {
   onRerunRules: () => void;
 }
 
-function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPendingClick, onToggleMinimap, leadStatus, onRunLead, rerunPending, onRerunRules }: ToolbarProps) {
+export function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPendingClick, onToggleMinimap, leadStatus, onRunLead, rerunPending, onRerunRules }: ToolbarProps) {
   return (
     <div className="web-toolbar-rail">
-      <button type="button" className="web-tool-btn" title="New angle" onClick={onAddAngle}>⚑</button>
+      <button type="button" className="web-tool-btn" title="New thread" aria-label="New thread" onClick={onAddAngle}>
+        <Flag size={16} />
+      </button>
       <div className="web-toolbar-rail__sep" />
-      <button type="button" className="web-tool-btn" title="Fit graph" onClick={onFit}>⊞</button>
+      <button type="button" className="web-tool-btn" title="Fit map" aria-label="Fit map" onClick={onFit}>
+        <Maximize size={16} />
+      </button>
       <button
         type="button"
         className="web-tool-btn"
         title="Toggle minimap"
+        aria-label="Toggle minimap"
         onClick={onToggleMinimap}
         style={{ opacity: showMinimap ? 1 : 0.5 }}
       >
-        ▣
+        <MapIcon size={16} />
       </button>
       <div className="web-toolbar-rail__sep" />
       <button
@@ -177,6 +183,7 @@ function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPendingCli
             ? "Lead complete — run again"
             : "Run Lead analysis"
         }
+        aria-label="Run Lead analysis"
         onClick={onRunLead}
         disabled={leadStatus === "QUEUED" || leadStatus === "RUNNING"}
         style={{
@@ -184,26 +191,28 @@ function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPendingCli
           color: leadStatus === "SUCCESS" ? "var(--color-success, #3fb950)" : undefined,
         }}
       >
-        ✦
+        <Sparkles size={16} />
       </button>
       <button
         type="button"
         className="web-tool-btn"
         title={rerunPending ? "Re-running rules…" : "Re-run signal rules"}
+        aria-label="Re-run signal rules"
         onClick={onRerunRules}
         disabled={rerunPending}
         style={{ opacity: rerunPending ? 0.5 : 1 }}
       >
-        ↺
+        <RefreshCw size={16} />
       </button>
       <div className="web-toolbar-rail__sep" />
       <button
         type="button"
         className="web-tool-btn"
-        title="Pending connections"
+        title="Pending relationships"
+        aria-label="Pending relationships"
         onClick={onPendingClick}
       >
-        🔗
+        <LinkIcon size={16} />
         {pendingCount > 0 && (
           <span className="web-tool-btn__badge">{pendingCount}</span>
         )}
