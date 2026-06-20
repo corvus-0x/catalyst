@@ -150,15 +150,26 @@ Relationships → Threads → Gaps → Actions, scaled to a 340px rail (summarie
 exhaustive lists — depth lives behind "Open full …").
 
 ### 5.1 SubjectInspector (new — compact, NOT a squeezed ProfilePanel)
-Composes `fetchEntityDetail` (identity, source trail, observations, threads) + `caseMap`
-(relationship count, top related subjects by edge strength). Fields:
+Composes **three existing sources** (no new endpoint): `fetchEntityDetail` (identity, source trail
+docs, related findings/threads), `fetchNotes(caseId)` **filtered by `target_id === subjectId`** for
+observations (the same pattern `ProfilePanel` uses — `fetchEntityDetail` returns only a `notes:
+string`, not the `InvestigatorNote[]` list), and `caseMap` (relationship count + top related
+subjects by edge strength). Fields:
 - **Identity:** name, type, aliases / EIN / status where already available.
-- **Counts:** documents, relationships, developing / substantiated threads.
-- **Top relationships:** 3–5 related subjects (by strength), each click → `selectRelationship`.
-- **Source trail:** compact document list (top few).
-- **Observations:** latest few `InvestigatorNote`s.
-- **Actions:** add observation · start thread · cite into active thread · **Open full profile**
-  (`openProfile` → full-width `ProfilePanel`).
+- **Counts:** documents, relationships (from `caseMap` edges touching this subject), developing /
+  substantiated threads.
+- **Top relationships:** 3–5 related subjects (by edge strength), each click → `selectRelationship`.
+- **Source trail:** compact document list (top few, from `fetchEntityDetail.related_documents`).
+- **Observations:** latest few `InvestigatorNote`s (from `fetchNotes` filtered by `target_id`).
+- **Actions** (all backed by existing endpoints):
+  - **add observation** → `createNote(caseId, { target_id, ... })`.
+  - **start thread** → `useFeederActions.startAngleFrom({ title: subjectName })` (creates a real
+    Angle, sets it active).
+  - **cite into active thread** → `useFeederActions.citeToAngle({ label: subjectName })` —
+    **narrative-only annotation** (no `documentId`); there is no subject→finding link endpoint, so
+    this records context in the active thread's narrative. If no active thread, the existing angle
+    picker opens (feeder behavior).
+  - **Open full profile** → `openProfile` (full-width `ProfilePanel`).
 - **Copy rule (§6):** must not label a person/org as suspicious — describe record presence,
   relationships, thread usage.
 
@@ -169,18 +180,34 @@ underlying relationships + the neutral disclaimer. **Add:**
   resolve `document_id` → open via the documents list).
 - **Threads using this relationship** — from the edge's `thread_refs` (developing / substantiated /
   handoff-included), each click → `selectThread`.
-- **Actions:** start thread from relationship · add to active thread · open source.
+- **Actions** (backed by existing endpoints):
+  - **start thread from relationship** → `useFeederActions.startAngleFrom({ title: "<A> ↔ <B>" })`
+    (creates a real Angle). *(Optional enhancement: seed `ConnectKnotsModal` with both subjects —
+    only if its prefill is extended to two entities; not required for first pass.)*
+  - **add relationship context to active thread** → `citeToAngle({ label: "<A> ↔ <B>" })` —
+    **narrative-only** (no relationship→finding link endpoint exists). Defer a true structured link
+    to a later phase.
+  - **open source** → `openDocument` for a supporting document from `evidence_refs`.
 - Keep the neutral disclaimer: "Relationship strength reflects source support and investigative
   relevance. It does not imply wrongdoing by either subject."
 
 ### 5.3 ThreadInspector (new — the bridge to the Phase 4 Thread Builder, not the builder)
-First pass:
+**Data source:** on `selectThread(id)`, fetch the full finding via the existing
+`fetchAngle(caseId, threadId): FindingItem` (the same call `AngleView`/feeders use). `Selection`
+only stores `{ kind:"thread"; id }`; the inspector owns the fetch + a small loading state. The
+`thread_refs` chip from the selecting surface is enough to *show the selection*, but the inspector's
+fields come from `fetchAngle`. First-pass fields (all on `FindingItem`):
 - title / status (Substantiated / Set Aside / developing), severity.
-- cited source count; related subjects / relationships.
-- gaps / readiness summary for the thread (what's blocking referral-grade).
-- **Actions:** cite source · **Set aside** (reversible `DISMISS` — un-gated) · **Open full Thread**
-  (`openThread` → full-width `AngleView`, where **substantiation/tie-off lives**, since that gate is
-  server-enforced on evidence weight + overreach and must not be reimplemented in the rail).
+- cited source count (`document_links.length`); related subjects / relationships where derivable.
+- gaps / readiness summary for the thread (what's blocking referral-grade — e.g. uncited, weight,
+  overreach-not-reviewed).
+- **Actions** (backed):
+  - **cite source** → existing `CiteDocumentPicker` → `updateAngle(add_document_ids)`.
+  - **Set aside** → `updateAngle(caseId, id, { status: "DISMISSED" })` (reversible, **un-gated** —
+    the tie-off gate only governs transitions *into* CONFIRMED).
+  - **Open full Thread** → `openThread` → full-width `AngleView`, where **substantiation/tie-off
+    lives** (that gate is server-enforced on evidence weight + overreach and must not be
+    reimplemented in the rail).
 
 ### 5.4 Inspector chrome
 Each inspector has a header with a close (×) → `clearSelection()`. Consistent section headings and
@@ -191,8 +218,10 @@ the `data-testid` hooks established in 1B.
 ## 6. WhatsMissingPanel (the idle rail; only genuinely new non-inspector UI)
 
 Replaces the current idle case-stats body. Consumes the **existing** `fetchReferralReadiness`
-(no backend work). Held in `InvestigateTab` state next to `dashboard`; refreshed by
-`refreshCaseData()` (the D5 helper already added in 1B).
+(no backend work). Held in `InvestigateTab` state next to `dashboard`. **Phase 2 extends
+`refreshCaseData()`** to also call `fetchReferralReadiness(caseId)` and set it — the 1B helper
+currently refetches only `/case-map/`, `/graph/`, and `dashboard`, so readiness would otherwise go
+stale after a tie-off / re-run / Lead. (Add it to the mount load `Promise.all` too.)
 - Keep the compact **credibility header** (`N referral-grade · M need work · K agency leads`) at top
   (existing `CredibilityHeader`).
 - Below it, render **only actionable** items (`status ∈ {FAIL, WARN}`), **FAIL first**; FAIL →
@@ -215,7 +244,11 @@ Replaces the current idle case-stats body. Consumes the **existing** `fetchRefer
 - `views/InvestigateTab.tsx` — delete `navStack`/`webSelectedEdge`/`selectedSummaryEdge`/`sameEntry`/
   `navigate`/`navigateTo`/`navigateBack`; drive rendering off `currentFrame` + `selection`; extract
   the render switch into a `components/ContextPanel.tsx` (or inline — implementer's call). Remove the
-  `onAngleActive` / `requestedAngle` / `onAngleConsumed` props.
+  `onAngleActive` / `requestedAngle` / `onAngleConsumed` props. **Pass `activeAngleId` to
+  `DocumentView` directly from `useCaseWorkspace()`** — today it's derived by scanning `navStack` for
+  an `angle` entry; once `navStack` is gone, the context pointer is the source of truth (preserves
+  "a document opened from a thread cites into that thread"). Extend `refreshCaseData()` + the mount
+  load to include `fetchReferralReadiness` (§6).
 - `views/CaseDetailView.tsx` — delete the `onAngleActive` / `requestedAngle` / `onAngleConsumed`
   bridge; active-angle chip reads `activeAngleId/Title` + `clearActiveAngle()`; cross-tab "open
   angle" (FinancialsTab deep-link) dispatches `openThread` + switches tab to `investigate`.
@@ -240,7 +273,26 @@ Replaces the current idle case-stats body. Consumes the **existing** `fetchRefer
 - **RelationshipSummaryPanel:** the new source-docs + threads-using sections; thread click →
   `selectThread`.
 - **Regression:** breadcrumb back + document drill-down behave as before; feeder Cite still targets
-  the active thread; FinancialsTab cross-tab "open angle" still works via `openThread`.
+  the active thread; FinancialsTab cross-tab "open angle" still works via `openThread`;
+  **`DocumentView` receives `activeAngleId` from context** (not a `navStack` scan) so a document
+  opened from a thread still cites into it; `refreshCaseData()` refetches readiness.
+
+## 8a. Implementation sequencing (the plan must follow this order)
+
+Keep the risky state refactor separate from the new UI surfaces:
+
+1. **Reducer + tests** (`CaseWorkspaceContext` → `useReducer`; all transitions, dedup,
+   pointer-recompute, selection-never-pushes-history) — pure unit tests, no UI.
+2. **`CaseDetailView` bridge removal** (delete `onAngleActive`/`requestedAngle`/`onAngleConsumed`;
+   chip reads context; cross-tab open-angle → `openThread`).
+3. **`InvestigateTab` state migration** — swap `navStack`/selection for the reducer with the
+   **existing panels still rendering** (no new inspectors yet); `DocumentView` gets `activeAngleId`
+   from context; `refreshCaseData` + mount load gain readiness.
+4. **Relationship inspector migration** — route `selectRelationship` → `RelationshipSummaryPanel`,
+   extend it (§5.2). Retires the dead `webSelectedEdge`/`ConnectionDetailPanel` branch.
+5. **SubjectInspector** (§5.1).
+6. **WhatsMissingPanel** (§6).
+7. **ThreadInspector last** (§5.3) — after its `fetchAngle` data source is wired.
 
 ---
 
