@@ -14,6 +14,7 @@ import type {
   GraphResponse,
   EntityBrowserResponse,
   EntityDetailResponse,
+  CaseMapResponse,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,17 @@ import type {
  */
 export async function fetchGraph(caseId: string): Promise<GraphResponse> {
   return fetchApi<GraphResponse>(`/api/cases/${caseId}/graph/`);
+}
+
+/**
+ * Fetch the summarized Case Map for a case (Phase 1A contract).
+ *
+ * Returns subject nodes (person/org only) and one summarized edge per subject
+ * pair, each with an explainable `strength` object. Separate from /graph/,
+ * which still powers the Timeline and node drill-down.
+ */
+export async function fetchCaseMap(caseId: string): Promise<CaseMapResponse> {
+  return fetchApi<CaseMapResponse>(`/api/cases/${caseId}/case-map/`);
 }
 
 // ---------------------------------------------------------------------------
