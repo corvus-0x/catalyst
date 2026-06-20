@@ -33,5 +33,13 @@ describe("RelationshipSummaryPanel", () => {
     expect(text).toContain("formal_role");
     expect(text).toContain("Board member");
     expect(text).toContain("does not imply wrongdoing");
+
+    // Verify categories and reasons render in separate sections
+    const categories = container.querySelector('[data-testid="strength-categories"]');
+    const reasons = container.querySelector('[data-testid="strength-reasons"]');
+    expect(categories?.textContent).toContain("formal_role");
+    expect(reasons?.textContent).toContain("Formal role documented");
+    // the category token must NOT leak into the reasons section
+    expect(reasons?.textContent).not.toContain("formal_role");
   });
 });

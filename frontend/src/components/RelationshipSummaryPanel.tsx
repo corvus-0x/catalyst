@@ -34,7 +34,7 @@ export default function RelationshipSummaryPanel({ edge, subjectLabel, onClear }
       <div style={{ color: "var(--text-2)", marginBottom: 8 }}>{LEVEL_TEXT[s.level]}</div>
 
       {s.categories.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
+        <div data-testid="strength-categories" style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)", marginBottom: 4 }}>Evidence categories</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {s.categories.map((c) => (
@@ -45,10 +45,10 @@ export default function RelationshipSummaryPanel({ edge, subjectLabel, onClear }
       )}
 
       {s.reasons.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
+        <div data-testid="strength-reasons" style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)", marginBottom: 4 }}>Why this line exists</div>
           <ul style={{ margin: 0, paddingLeft: 16, color: "var(--text-2)" }}>
-            {s.reasons.map((r, i) => <li key={i}>{r}</li>)}
+            {s.reasons.map((r) => <li key={r}>{r}</li>)}
           </ul>
         </div>
       )}
