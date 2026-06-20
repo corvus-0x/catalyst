@@ -6,7 +6,6 @@ import CytoscapeComponent from "react-cytoscapejs";
 
 cytoscape.use(coseBilkent);
 
-
 /* ─── Stylesheet — abstract markers (shape = type, color = state) ───────────── */
 export const STYLESHEET = [
   /* Person — quiet slate filled circle */
@@ -117,8 +116,8 @@ function positionBadges(cy: cytoscape.Core) {
     const w = main.outerWidth();
     const h = main.outerHeight();
     badge.position({
-      x: pos.x + w * 0.5,
-      y: pos.y - h * 0.5,
+      x: pos.x + w * 0.38,
+      y: pos.y - h * 0.38,
     });
   });
 }
