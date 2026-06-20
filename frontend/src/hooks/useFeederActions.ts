@@ -22,7 +22,7 @@ export interface FeederActions {
 const DEFAULT_SEVERITY = "MEDIUM" as const;
 
 export function useFeederActions(caseId: string): FeederActions {
-  const { activeAngleId, setActiveAngle } = useCaseWorkspace();
+  const { activeAngleId, activateThread } = useCaseWorkspace();
   const [pickerOpen, setPickerOpen] = useState(false);
   const pendingItem = useRef<CiteItem | null>(null);
 
@@ -50,9 +50,9 @@ export function useFeederActions(caseId: string): FeederActions {
         await updateAngle(caseId, angleId, { narrative });
         toast(`Cited into "${angle.title}".`);
       }
-      setActiveAngle({ id: angle.id, title: angle.title });
+      activateThread({ id: angle.id, title: angle.title });
     },
-    [caseId, setActiveAngle]
+    [caseId, activateThread]
   );
 
   const startAngleFrom = useCallback<FeederActions["startAngleFrom"]>(
@@ -70,7 +70,7 @@ export function useFeederActions(caseId: string): FeederActions {
       // The Angle now exists. Make it the active target IMMEDIATELY so a failed
       // follow-on citation can never lead to a duplicate Angle on retry — the
       // retry cites into this active Angle rather than creating a new one.
-      setActiveAngle({ id: angle.id, title: angle.title });
+      activateThread({ id: angle.id, title: angle.title });
       if (seed.item) {
         try {
           await applyCite(angle.id, seed.item);
@@ -82,7 +82,7 @@ export function useFeederActions(caseId: string): FeederActions {
       }
       return { id: angle.id, title: angle.title };
     },
-    [caseId, setActiveAngle, applyCite]
+    [caseId, activateThread, applyCite]
   );
 
   const citeToAngle = useCallback<FeederActions["citeToAngle"]>(

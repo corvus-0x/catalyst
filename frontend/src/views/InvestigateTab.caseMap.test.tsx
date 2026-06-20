@@ -48,6 +48,7 @@ vi.mock("../api", () => ({
     quality: undefined,
   }),
   fetchEntityDetail: vi.fn().mockResolvedValue({}),
+  fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
   runAiPatternAnalysis: vi.fn(),
   reevaluateSignals: vi.fn(),
 }));

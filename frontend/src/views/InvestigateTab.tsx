@@ -8,6 +8,7 @@ import {
   fetchFuzzyMatches,
   fetchEntityDetail,
   fetchDashboard,
+  fetchReferralReadiness,
   runAiPatternAnalysis,
   reevaluateSignals,
 } from "../api";
@@ -19,10 +20,10 @@ import type {
   DocumentItem,
   EntityType,
   GraphEdge,
-  GraphNode,
   GraphResponse,
   OrgDetailResponse,
   PersonDetailResponse,
+  ReferralReadinessResponse,
   SummaryEdge,
 } from "../types";
 import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
@@ -30,7 +31,7 @@ import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCa
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
 import { useAsyncJob } from "../hooks/useAsyncJob";
-import { useCaseWorkspace, type ActiveAngle } from "../context/CaseWorkspaceContext";
+import { useCaseWorkspace } from "../context/CaseWorkspaceContext";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
 const ProfilePanel = lazy(() => import("./ProfilePanel"));
@@ -39,23 +40,6 @@ const AngleView = lazy(() => import("./AngleView"));
 const DocumentView = lazy(() => import("./DocumentView"));
 const ConnectKnotsModal = lazy(() => import("../components/ConnectKnotsModal"));
 const RelationshipSummaryPanel = lazy(() => import("../components/RelationshipSummaryPanel"));
-
-/* ─── Navigation state ───────────────────────────────────────────────────────── */
-
-export type NavEntry =
-  | { kind: "web" }
-  | { kind: "profile"; entityId: string; entityType: EntityType; entityName: string }
-  | { kind: "angle"; angleId: string; angleTitle: string }
-  | { kind: "document"; documentId: string; docName: string };
-
-function entryLabel(e: NavEntry): string {
-  switch (e.kind) {
-    case "web":      return "Case Map";
-    case "profile":  return e.entityName;
-    case "angle":    return e.angleTitle || "Angle";
-    case "document": return e.docName;
-  }
-}
 
 /* ─── WebStatsBar ─────────────────────────────────────────────────────────────── */
 
@@ -176,7 +160,22 @@ export function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPen
 
 /* ─── Breadcrumb ──────────────────────────────────────────────────────────────── */
 
-function Breadcrumb({ stack, onNavigateTo }: { stack: NavEntry[]; onNavigateTo: (i: number) => void }) {
+type BreadcrumbFrame =
+  | { kind: "web" }
+  | { kind: "profile"; id: string; entityType: EntityType; name: string }
+  | { kind: "angle"; id: string; title: string }
+  | { kind: "document"; id: string; name: string };
+
+function frameLabel(f: BreadcrumbFrame): string {
+  switch (f.kind) {
+    case "web":      return "Case Map";
+    case "profile":  return f.name;
+    case "angle":    return f.title || "Thread";
+    case "document": return f.name;
+  }
+}
+
+function Breadcrumb({ stack, onNavigateTo }: { stack: BreadcrumbFrame[]; onNavigateTo: (i: number) => void }) {
   if (stack.length <= 1) return null;
   return (
     <nav className="breadcrumb" aria-label="Investigation navigation">
@@ -191,7 +190,7 @@ function Breadcrumb({ stack, onNavigateTo }: { stack: NavEntry[]; onNavigateTo: 
               onClick={() => !isCurrent && onNavigateTo(i)}
               disabled={isCurrent}
             >
-              {entryLabel(entry)}
+              {frameLabel(entry)}
             </button>
           </Fragment>
         );
@@ -453,23 +452,16 @@ function EmptyWeb({ onAddAngle }: { onAddAngle: () => void }) {
 interface InvestigateTabProps {
   caseId: string;
   documents: DocumentItem[];
-  onAngleActive?: (angle: ActiveAngle | undefined) => void;
-  /** Set by parent to request navigating to a specific angle from outside */
-  requestedAngle?: { id: string; title: string } | null;
-  /** Called after this component pushes the requested angle onto the nav stack */
-  onAngleConsumed?: () => void;
 }
 
 export default function InvestigateTab({
   caseId,
   documents,
-  onAngleActive,
-  requestedAngle,
-  onAngleConsumed,
 }: InvestigateTabProps) {
   const [graph, setGraph]           = useState<GraphResponse | null>(null);
   const [caseMap, setCaseMap]       = useState<CaseMapResponse | null>(null);
   const [dashboard, setDashboard]   = useState<DashboardResponse | null>(null);
+  const [readiness, setReadiness]   = useState<ReferralReadinessResponse | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -477,15 +469,8 @@ export default function InvestigateTab({
   /* ── Entity cache for Profile panel ── */
   const [entityData, setEntityData] = useState<PersonDetailResponse | OrgDetailResponse | null>(null);
 
-  /* ── Selected summary edge from /case-map/ (drives RelationshipSummaryPanel) ── */
+  /* ── Selected summary edge from /case-map/ (drives RelationshipSummaryPanel) — kept for Task 5 ── */
   const [selectedSummaryEdge, setSelectedSummaryEdge] = useState<SummaryEdge | null>(null);
-
-  /* ── Selected raw graph edge — kept for ConnectionDetailPanel on legacy use ── */
-  const [webSelectedEdge, setWebSelectedEdge] = useState<GraphEdge | null>(null);
-
-  /* ── Navigation stack ── */
-  const [navStack, setNavStack] = useState<NavEntry[]>([{ kind: "web" }]);
-  const current = navStack[navStack.length - 1];
 
   /* ── Modals ── */
   const [showConnectionReview, setShowConnectionReview] = useState(false);
@@ -500,9 +485,21 @@ export default function InvestigateTab({
   const [rerunPending, setRerunPending] = useState(false);
 
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const { setActiveEntity } = useCaseWorkspace();
 
-  /* ── Load graph + case-map + dashboard + fuzzy counts ── */
+  /* ── Reducer-driven workspace state ── */
+  const {
+    currentFrame,
+    history,
+    selection,
+    selectSubject,
+    openThread,
+    openDocument,
+    goBack,
+    goTo,
+    activeAngleId,
+  } = useCaseWorkspace();
+
+  /* ── Load graph + case-map + dashboard + fuzzy counts + readiness ── */
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -511,12 +508,14 @@ export default function InvestigateTab({
       fetchCaseMap(caseId),
       fetchFuzzyMatches(caseId, { status: "pending" }),
       fetchDashboard(caseId),
+      fetchReferralReadiness(caseId),
     ])
-      .then(([g, cm, fuzzy, dash]) => {
+      .then(([g, cm, fuzzy, dash, ready]) => {
         setGraph(g);
         setCaseMap(cm);
         setPendingCount(fuzzy.count);
         setDashboard(dash);
+        setReadiness(ready);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Failed to load investigation data — reload to try again."),
@@ -524,30 +523,24 @@ export default function InvestigateTab({
       .finally(() => setLoading(false));
   }, [caseId]);
 
-  /* ── External angle navigation (from Investigation tab deep link) ── */
-  useEffect(() => {
-    if (!requestedAngle) return;
-    navigate({ kind: "angle", angleId: requestedAngle.id, angleTitle: requestedAngle.title });
-    onAngleConsumed?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedAngle]);
-
-  /* ── Unified refresh helper: refetches /case-map/, /graph/, and dashboard ──
+  /* ── Unified refresh helper: refetches /case-map/, /graph/, dashboard, and readiness ──
      Every state-changing action (tie-off, creation, re-run rules, Lead) routes
-     through here so the three datasets stay coherent (D5). The selected
+     through here so the datasets stay coherent (D5). The selected
      relationship is cleared up front — a state change can remove or restrengthen
      the edge, so the panel must not stay pinned to a stale snapshot even if the
      refetch then fails. */
   async function refreshCaseData() {
     setSelectedSummaryEdge(null);
-    const [cm, g, dash] = await Promise.all([
+    const [cm, g, dash, ready] = await Promise.all([
       fetchCaseMap(caseId),
       fetchGraph(caseId),
       fetchDashboard(caseId),
+      fetchReferralReadiness(caseId),
     ]);
     setCaseMap(cm);
     setGraph(g);
     setDashboard(dash);
+    setReadiness(ready);
   }
 
   /* ── Lead handler ── */
@@ -579,83 +572,19 @@ export default function InvestigateTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadJob.status]);
 
-  /* ── Navigation ── */
-  function sameEntry(a: NavEntry, b: NavEntry): boolean {
-    if (a.kind !== b.kind) return false;
-    switch (a.kind) {
-      case "web":      return true;
-      case "profile":  return a.entityId === (b as typeof a).entityId;
-      case "angle":    return a.angleId === (b as typeof a).angleId;
-      case "document": return a.documentId === (b as typeof a).documentId;
-    }
-  }
-
-  function navigate(entry: NavEntry) {
-    // Re-clicking the current level (e.g. a double-fired canvas tap) must not
-    // stack a duplicate breadcrumb crumb.
-    setNavStack((s) => (sameEntry(s[s.length - 1], entry) ? s : [...s, entry]));
-    setWebSelectedEdge(null);
-    setSelectedSummaryEdge(null);
-    if (entry.kind === "angle") {
-      onAngleActive?.({ id: entry.angleId, title: entry.angleTitle });
-    } else {
-      onAngleActive?.(undefined);
-    }
-  }
-
-  function navigateTo(index: number) {
-    const newStack = navStack.slice(0, index + 1);
-    setNavStack(newStack);
-    const top = newStack[newStack.length - 1];
-    if (top.kind === "web") {
-      cyRef.current?.elements().removeClass("dimmed");
-      setWebSelectedEdge(null);
-      setSelectedSummaryEdge(null);
-    }
-    if (top.kind === "angle") {
-      onAngleActive?.({ id: top.angleId, title: top.angleTitle });
-    } else {
-      onAngleActive?.(undefined);
-    }
-  }
-
-  function navigateBack() { navigateTo(navStack.length - 2); }
-
-  /* ── Node tap on canvas → navigate directly to Profile (Level 2) ─────────── */
+  /* ── Node tap on canvas → selectSubject (THE RULE: map stays visible) ── */
   function handleNodeClick(nodeId: string) {
-    if (current.kind !== "web") return;
+    if (currentFrame.kind !== "web") return;
     // Clear any selected relationship panel immediately — the user clicked away.
     setSelectedSummaryEdge(null);
     // Node detail resolves against /graph/ (not /case-map/); property/financial
     // instrument nodes are not subjects and are excluded from the canvas.
     const node = graph?.nodes.find((n) => n.id === nodeId);
     if (!node || (node.type !== "person" && node.type !== "organization")) return;
-    handleOpenKnotView(node);
-  }
-
-  /* ── Edge tap on canvas → select the matching SummaryEdge from /case-map/ ── */
-  function handleEdgeClick(edgeId: string) {
-    if (current.kind !== "web") return;
-    // Ignore taps that arrive before the Case Map has loaded — the canvas is
-    // built from caseMap, so a click can't predate it in practice, but guarding
-    // avoids silently clearing the panel on a null-caseMap miss.
-    if (!caseMap) return;
-    // edgeId format for case-map edges: "subjectMin__subjectMax" (set by summaryEdgeToElement)
-    const edge = caseMap.edges.find((e) => e.id === edgeId) ?? null;
-    if (!edge) {
-      // A tap resolved to an edge id not in the current case-map (e.g. canvas
-      // rendering elements from a prior refresh). Surface it rather than no-op.
-      console.warn("handleEdgeClick: no SummaryEdge for id", edgeId);
-      return;
-    }
-    setSelectedSummaryEdge(edge);
-    setWebSelectedEdge(null);
-  }
-
-  /* ── Navigate to Level 2: Profile ── */
-  function handleOpenKnotView(node: GraphNode) {
-    setActiveEntity(node.id);
-    navigate({ kind: "profile", entityId: node.id, entityType: node.type, entityName: node.label });
+    // Per THE RULE: node click is transient selection — map stays visible.
+    // Full-width profile frame is reached only via "Open full profile" (Task 6).
+    selectSubject(node.id);
+    // Prefetch entity data for the subject rail placeholder (Task 6 will use it).
     setEntityData(null);
     if (node.type === "person" || node.type === "organization") {
       fetchEntityDetail(node.type, node.id)
@@ -665,6 +594,25 @@ export default function InvestigateTab({
           toast.error("Couldn't load profile details.");
         });
     }
+  }
+
+  /* ── Edge tap on canvas → select the matching SummaryEdge from /case-map/ ── */
+  function handleEdgeClick(edgeId: string) {
+    if (currentFrame.kind !== "web") return;
+    if (!caseMap) return;
+    const edge = caseMap.edges.find((e) => e.id === edgeId) ?? null;
+    if (!edge) {
+      console.warn("handleEdgeClick: no SummaryEdge for id", edgeId);
+      return;
+    }
+    setSelectedSummaryEdge(edge);
+  }
+
+  /* ── Resolve the subject label for a selected subject ── */
+  function selectedSubjectLabel(): string {
+    if (selection.kind !== "subject") return "";
+    const node = graph?.nodes.find((n) => n.id === selection.id);
+    return node?.label ?? selection.id.slice(0, 8) + "…";
   }
 
   /* ── Build Cytoscape elements from /case-map/ (not /graph/) ──────────────────
@@ -682,7 +630,6 @@ export default function InvestigateTab({
   const badges: BadgeDescriptor[] = caseMap ? subjectBadges(caseMap.nodes) : [];
 
   const isEmpty = !caseMap || caseMap.nodes.length === 0;
-  const showDocument = current.kind === "document";
 
   const daysOpen = (() => {
     if (!dashboard?.case.created_at) return null;
@@ -694,6 +641,10 @@ export default function InvestigateTab({
   const fallback = (msg: string) => (
     <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>
   );
+
+  // Suppress unused variable warning — readiness is stored and passed to refreshCaseData,
+  // but not yet rendered in Task 4 (renders in Tasks 5+). The reference below satisfies tsc.
+  void readiness;
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
@@ -709,20 +660,101 @@ export default function InvestigateTab({
     </div>
   );
 
+  /* ── Frame-keyed render ── */
+
+  /* Level 4 — Document view (full-width) */
+  if (currentFrame.kind === "document") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
+        <Breadcrumb stack={history} onNavigateTo={goTo} />
+        <Suspense fallback={fallback("Loading document…")}>
+          <DocumentView
+            caseId={caseId}
+            documentId={currentFrame.id}
+            activeAngleId={activeAngleId}
+            onBack={goBack}
+            onDocumentNavigate={(docId) => {
+              const node = graph?.nodes.find((n) => n.id === docId);
+              openDocument({
+                id: docId,
+                name: node?.label ?? docId.slice(0, 8) + "…",
+              });
+            }}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
+  /* Level 3 — Angle/Thread view (full-width) */
+  if (currentFrame.kind === "angle") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
+        <Breadcrumb stack={history} onNavigateTo={goTo} />
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <Suspense fallback={fallback("Loading…")}>
+            <AngleView
+              caseId={caseId}
+              angleId={currentFrame.id}
+              documents={documents}
+              onDocumentClick={(docId, docName) => openDocument({ id: docId, name: docName })}
+              onBack={goBack}
+              onAngleTiedOff={() =>
+                refreshCaseData().catch((err) => {
+                  console.error(err);
+                  toast.error("The Case Map didn't refresh — reload if it looks stale.");
+                })
+              }
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
+  /* Level 2 — Profile panel (full-width, reached via "Open full profile" in Task 6) */
+  if (currentFrame.kind === "profile") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
+        <Breadcrumb stack={history} onNavigateTo={goTo} />
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+          <Suspense fallback={fallback("Loading…")}>
+            <ProfilePanel
+              caseId={caseId}
+              entityId={currentFrame.id}
+              entityType={currentFrame.entityType}
+              entityData={entityData}
+              graph={graph}
+              onAngleClick={(angleId, angleTitle) => {
+                if (angleId === "") {
+                  setConnectPrefill({ entityId: currentFrame.id, entityName: currentFrame.name });
+                  setShowConnectModal(true);
+                } else {
+                  openThread({ id: angleId, title: angleTitle });
+                }
+              }}
+              onDocumentClick={(docId, docName) => openDocument({ id: docId, name: docName })}
+              onBack={goBack}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
+  /* Level 1 — Web (Case Map canvas + right rail) */
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
       {/* Breadcrumb */}
-      <Breadcrumb stack={navStack} onNavigateTo={navigateTo} />
+      <Breadcrumb stack={history} onNavigateTo={goTo} />
 
       {/* KPI stats bar — Web Level 1 only; Subjects count from caseMap.stats */}
-      {current.kind === "web" && (
-        <WebStatsBar
-          findings={dashboard?.findings.total ?? null}
-          documents={dashboard?.documents.total ?? null}
-          entities={caseMap?.stats.subject_count ?? null}
-          daysOpen={daysOpen}
-        />
-      )}
+      <WebStatsBar
+        findings={dashboard?.findings.total ?? null}
+        documents={dashboard?.documents.total ?? null}
+        entities={caseMap?.stats.subject_count ?? null}
+        daysOpen={daysOpen}
+      />
 
       {/* Main row: toolbar + canvas + panels */}
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
@@ -739,131 +771,67 @@ export default function InvestigateTab({
           onRerunRules={handleRerunRules}
         />
 
-        {/* Level 4 — Document view */}
-        {showDocument && current.kind === "document" && (
-          <Suspense fallback={fallback("Loading document…")}>
-            <DocumentView
-              caseId={caseId}
-              documentId={current.documentId}
-              activeAngleId={(() => {
-                const angleEntry = navStack.find(
-                  (e): e is Extract<NavEntry, { kind: "angle" }> => e.kind === "angle"
-                );
-                return angleEntry?.angleId;
-              })()}
-              onBack={navigateBack}
-              onDocumentNavigate={(docId) => {
-                const node = graph?.nodes.find((n) => n.id === docId);
-                navigate({
-                  kind: "document",
-                  documentId: docId,
-                  docName: node?.label ?? docId.slice(0, 8) + "…",
-                });
-              }}
-            />
-          </Suspense>
-        )}
+        {/* Canvas */}
+        <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
+          {isEmpty ? (
+            <EmptyWeb onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
+          ) : (
+            <>
+              <CytoscapeCanvas
+                elements={elements}
+                badges={badges}
+                onCyInit={(cy) => { cyRef.current = cy; }}
+                onNodeClick={handleNodeClick}
+                onEdgeClick={handleEdgeClick}
+              />
+              <CaseMapLegend />
+            </>
+          )}
 
-        {/* Levels 1–3 — Graph canvas */}
-        {!showDocument && current.kind !== "profile" && current.kind !== "angle" && (
-          <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
-            {isEmpty ? (
-              <EmptyWeb onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
-            ) : (
-              <>
-                <CytoscapeCanvas
-                  elements={elements}
-                  badges={badges}
-                  onCyInit={(cy) => { cyRef.current = cy; }}
-                  onNodeClick={handleNodeClick}
-                  onEdgeClick={handleEdgeClick}
-                />
-                <CaseMapLegend />
-              </>
-            )}
+          {/* Minimap */}
+          {showMinimap && !isEmpty && (
+            <div className="minimap-container" aria-hidden>
+              <CytoscapeCanvas elements={elements} interactionDisabled />
+            </div>
+          )}
+        </div>
 
-            {/* Minimap */}
-            {showMinimap && !isEmpty && (
-              <div className="minimap-container" aria-hidden>
-                <CytoscapeCanvas elements={elements} interactionDisabled />
+        {/* Right rail — switches on selection.kind */}
+        <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
+          {selection.kind === "subject" ? (
+            /* Temporary subject rail — Task 6 replaces with SubjectInspector */
+            <div data-testid="subject-rail" style={{ padding: 12, fontSize: 11 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
+                Subject
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Level 1 — Always-visible 320px web right panel */}
-        {current.kind === "web" && !showDocument && (
-          <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
-            {selectedSummaryEdge ? (
-              <Suspense fallback={fallback("Loading…")}>
-                <RelationshipSummaryPanel
-                  edge={selectedSummaryEdge}
-                  subjectLabel={(id) => caseMap?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"}
-                  onClear={() => setSelectedSummaryEdge(null)}
-                />
-              </Suspense>
-            ) : (
-              <WebRightPanel
-                graph={graph}
-                caseMap={caseMap}
-                dashboard={dashboard}
-                documents={documents}
-                selectedEdge={webSelectedEdge}
-                onOpenAngle={(angleId, angleTitle) => navigate({ kind: "angle", angleId, angleTitle })}
-                onOpenDocument={(documentId, docName) => navigate({ kind: "document", documentId, docName })}
-                onClearEdge={() => setWebSelectedEdge(null)}
-                leadStatus={leadJob.status}
-                leadResult={leadJob.result}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Level 2 — Profile panel (full-width, no canvas behind it) */}
-        {current.kind === "profile" && (
-          <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", marginBottom: 8 }}>
+                {selectedSubjectLabel()}
+              </div>
+              <div style={{ color: "var(--text-3)", fontSize: 11 }}>Inspector loading…</div>
+            </div>
+          ) : selectedSummaryEdge ? (
             <Suspense fallback={fallback("Loading…")}>
-              <ProfilePanel
-                caseId={caseId}
-                entityId={current.entityId}
-                entityType={current.entityType}
-                entityData={entityData}
-                graph={graph}
-                onAngleClick={(angleId, angleTitle) => {
-                  if (angleId === "") {
-                    setConnectPrefill({ entityId: current.entityId, entityName: current.entityName });
-                    setShowConnectModal(true);
-                  } else {
-                    navigate({ kind: "angle", angleId, angleTitle });
-                  }
-                }}
-                onDocumentClick={(docId, docName) => navigate({ kind: "document", documentId: docId, docName })}
-                onBack={navigateBack}
+              <RelationshipSummaryPanel
+                edge={selectedSummaryEdge}
+                subjectLabel={(id) => caseMap?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"}
+                onClear={() => setSelectedSummaryEdge(null)}
               />
             </Suspense>
-          </div>
-        )}
-
-        {/* Level 3 — Angle view (full-width, canvas hidden) */}
-        {current.kind === "angle" && (
-          <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <Suspense fallback={fallback("Loading…")}>
-              <AngleView
-                caseId={caseId}
-                angleId={current.angleId}
-                documents={documents}
-                onDocumentClick={(docId, docName) => navigate({ kind: "document", documentId: docId, docName })}
-                onBack={navigateBack}
-                onAngleTiedOff={() =>
-                  refreshCaseData().catch((err) => {
-                    console.error(err);
-                    toast.error("The Case Map didn't refresh — reload if it looks stale.");
-                  })
-                }
-              />
-            </Suspense>
-          </div>
-        )}
+          ) : (
+            <WebRightPanel
+              graph={graph}
+              caseMap={caseMap}
+              dashboard={dashboard}
+              documents={documents}
+              selectedEdge={null}
+              onOpenAngle={(angleId, angleTitle) => openThread({ id: angleId, title: angleTitle })}
+              onOpenDocument={(documentId, docName) => openDocument({ id: documentId, name: docName })}
+              onClearEdge={() => {}}
+              leadStatus={leadJob.status}
+              leadResult={leadJob.result}
+            />
+          )}
+        </div>
       </div>
 
       {/* Connection review drawer */}
@@ -888,7 +856,7 @@ export default function InvestigateTab({
             onClose={() => setShowConnectModal(false)}
             onCreated={(newAngle) => {
               setShowConnectModal(false);
-              navigate({ kind: "angle", angleId: newAngle.id, angleTitle: newAngle.title });
+              openThread({ id: newAngle.id, title: newAngle.title });
               refreshCaseData().catch((err) => {
                 console.error(err);
                 toast.error("The Case Map didn't refresh — reload if it looks stale.");
