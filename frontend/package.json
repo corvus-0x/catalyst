@@ -7,7 +7,8 @@
         "dev": "vite",
         "build": "tsc --noEmit && vite build",
         "preview": "vite preview",
-        "test": "vitest run"
+        "test": "vitest run",
+        "check:strings": "node scripts/check-banned-strings.mjs"
     },
     "dependencies": {
         "@radix-ui/react-context-menu": "^2.2.16",

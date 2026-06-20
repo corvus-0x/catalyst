@@ -14,3 +14,14 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # Local hook (no external repo): the fast feedback layer for the banned-UI-strings
+  # rule. CI (.github/workflows/ci.yml) is the authoritative gate; this just catches
+  # leaks before they leave your machine. Runs only on staged frontend .ts/.tsx files.
+  - repo: local
+    hooks:
+      - id: banned-ui-strings
+        name: Banned UI strings (CLAUDE.md)
+        entry: node frontend/scripts/check-banned-strings.mjs
+        language: system
+        files: ^frontend/src/.*\.tsx?$

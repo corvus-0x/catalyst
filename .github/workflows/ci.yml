@@ -95,6 +95,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Banned-strings gate: fails the build if any user-visible source string
+      # exposes a model/vendor name (CLAUDE.md "Banned strings"). Cheapest check,
+      # so it runs first and fails fast. See frontend/scripts/check-banned-strings.mjs.
+      - name: Banned UI strings
+        run: npm run check:strings
+
       - name: TypeScript check
         run: npx tsc --noEmit
 
