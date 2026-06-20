@@ -1,6 +1,6 @@
 # Case Map Phase 1B — Visual Foundation — Build Design
 
-**Date:** 2026-06-19
+**Date:** 2026-06-19 (rev. 2026-06-19 — incorporates design-review findings 1–5)
 **Status:** Ready to plan
 **Depends on:** Phase 1A (`/api/cases/:id/case-map/`, merged PR #13)
 **Controlling spec:** `docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md`
@@ -22,46 +22,85 @@ Phase 1B is the controlling spec's §11 "Case Map visual foundation":
 4. Edge thickness from `strength.level`; quiet neutral base, strong color reserved.
 5. Map legend + ethical explanatory copy (§10).
 
-**Explicitly out of scope** (later phases): right-inspector workspace / focus reducer (Phase 2),
-Thread Path Mode (Phase 3), Thread Builder (Phase 4), and any change to `/graph/`.
+**Explicitly out of scope** (later phases): the full right-inspector workspace / focus reducer
+(Phase 2), Thread Path Mode (Phase 3), Thread Builder (Phase 4), and any change to `/graph/`.
 
 ---
 
 ## Locked decisions (this revision)
 
-### D1 — Endpoint handling: dual-fetch, keep panels
-The canvas renders from `/case-map/`. `InvestigateTab` *also* keeps fetching `/graph/` in
-parallel so the existing drill-down panels (`ProfilePanel`, `ConnectionDetailPanel`) keep working
-unchanged. Those panels are `/graph/`-shaped and move to inspectors in Phase 2. Subject ids are
-identical across both endpoints (Person/Org UUIDs), so a click on a case-map marker resolves
-against the `/graph/` dataset by id with no translation.
+### D1 — Endpoint handling: dual-fetch; node drill-down kept, edge panel adapted
+The canvas renders from `/case-map/`. `InvestigateTab` *also* keeps fetching `/graph/` in parallel
+because the node drill-down (`ProfilePanel`) still consumes it. Subject ids are identical across
+both endpoints (Person/Org UUIDs), so:
+
+- **Node click → unchanged.** Resolve the subject id against the `/graph/` dataset and open
+  `ProfilePanel` exactly as today. This is the clean part of the migration.
+- **Edge click → CANNOT stay unchanged** (review finding 1). A `/case-map/` `SummaryEdge` has id
+  `subjectMin__subjectMax` (no relationship segment) and collapses many raw relationships into one;
+  the current handler parses `source__target__relationship` and rebuilds a single `GraphEdge`, and
+  `ConnectionDetailPanel` is built entirely around one raw `GraphEdge`
+  (`relationship`, `metadata.document_ids`, `weight`). That path is structurally incompatible.
+  **1B introduces a minimal `RelationshipSummaryPanel`** in the right panel, driven by the
+  `SummaryEdge` itself (`strength.level` + `strength.reasons` + `evidence_refs` +
+  `underlying_relationships` + `thread_refs`). Subject A/B labels come from the case-map nodes. The
+  old `ConnectionDetailPanel` is left in place (still used elsewhere / Phase 2 baseline) but the
+  Case Map no longer routes edge clicks to it. This panel is deliberately a thin precursor to the
+  Phase 2 Relationship Inspector, not the full inspector.
 
 ### D2 — Node marker system (resolves controlling-spec Q1): "Filled shape + state badge"
-Shape encodes subject **type**; color is reserved for **state** only.
+Shape encodes subject **type**; color is reserved for **state** only. State is layered so the three
+treatments never collide (border vs. `outline` vs. badge):
 
-| Element | Treatment |
-|---|---|
-| Person | filled circle, quiet slate fill, thin neutral ring |
-| Organization | filled rounded square, quiet slate fill, thin neutral ring |
-| Unknown status (`flags.status_unknown`) | **dashed** border — neutral "status not established", **not** an accusation (spec §10). Not red. |
-| Active thread (`flags.has_active_thread`) | small amber dot badge, top-right (reuses existing post-`layoutstop` badge injection) |
-| Substantiated thread (`flags.has_substantiated_thread`) | green ring accent |
-| Selected | bright amber focus ring |
+| Element | Treatment | Cytoscape mechanism |
+|---|---|---|
+| Person | filled circle, quiet slate fill, thin neutral ring | `shape: ellipse` + base border |
+| Organization | filled rounded square, quiet slate fill, thin neutral ring | `shape: round-rectangle` + base border |
+| Unknown status (`flags.status_unknown`) | **dashed** border — neutral "status not established", **not** an accusation, **not** red (spec §10) | `border-style: dashed` |
+| Substantiated thread (`flags.has_substantiated_thread`) | green border color | `border-color` (green) |
+| Active thread (`flags.has_active_thread`) | small amber dot badge, top-right | injected badge node |
+| Selected | bright amber focus ring, drawn *outside* the border so it stacks with the above | `outline-width` / `outline-color` |
 
-Node size is **fixed** in 1B (no longer driven by `finding_count`). Degree/strength-based sizing
-is a possible later refinement, not part of 1B.
+Node size is **fixed** in 1B (no longer driven by `finding_count`). Degree/strength-based sizing is
+a possible later refinement, not part of 1B.
 
 ### D3 — Edge thickness from `strength.level`
 `observed` (thin) → `documented` → `repeated` → `material` (strongest). Base edges stay neutral
 grey. `material` edges get subtle emphasis. **No severity coloring in 1B** — colored thread paths
-are Phase 3 (Thread Path Mode). Thickness may be driven by `strength.score` via Cytoscape
-`mapData`, with per-`level` overrides for the discrete steps.
+are Phase 3 (Thread Path Mode). Thickness is driven by `strength.level` (discrete per-level widths
+in the stylesheet); `strength.score` may additionally inform sort/emphasis.
 
-### D4 — Vocabulary: new surfaces only
-Use Subject / Thread / Case Map / Relationship in the **new or rebuilt** surfaces (legend,
-toolbar tooltips, widgets we touch). Do **not** do the broad copy/identifier sweep in 1B (e.g.
-`WebStatsBar` labels, `NavEntry "web"`, function names) — that is a dedicated later pass. This
-honors CLAUDE.md's "do not partially rename" guard while keeping 1B visual-focused.
+### D4 — Vocabulary: new + rebuilt surfaces (visible copy), identifiers unchanged
+Per the chosen "new surfaces only" scope. Findings 1–4 mean we are **rebuilding** the stats bar,
+the Level-1 right panel, and the toolbar — so updating the *visible copy* on those rebuilt widgets
+to Subject / Thread / Case Map / Relationship is in-scope and required to avoid a half-migrated
+demo surface (review finding 5). Concretely, rename visible strings in:
+
+- the toolbar tooltips/`aria-label`s,
+- the legend,
+- the stats bar labels (e.g. "Angles" → "Threads"),
+- the Level-1 panel headings/copy (e.g. "X knots · Y connections" → "X subjects · Y relationships",
+  "Case web" → "Case Map"),
+- the empty-state copy.
+
+**Out of scope for 1B (the dedicated later pass):** internal identifiers and types
+(`NavEntry "web"`, `toCyType`, component/prop names), the breadcrumb's structural labels beyond the
+touched surfaces, and any component we are not otherwise rebuilding. This honors CLAUDE.md's "do not
+partially rename" guard by keeping the *code-identifier* migration whole and separate, while the
+visible copy on this one rebuilt surface is made consistent.
+
+### D5 — Refresh `/case-map/` after every state-changing action (review finding 2)
+The canvas data must be refetched from `/case-map/` (not just `/graph/`) after **all** flows that
+can change `flags.has_active_thread`, `flags.has_substantiated_thread`, `handoff_included`, or
+`strength.level`:
+
+- Lead (AI pattern analysis) completion,
+- Re-run signal rules,
+- **Angle tie-off** (`onAngleTiedOff`),
+- **New angle/thread creation** (`onCreated`).
+
+Today the last two refetch `/graph/` only (`InvestigateTab.tsx:872`, `:906`); 1B adds the
+`/case-map/` refetch (and the `/graph/` refetch stays for the node-drill-down dataset).
 
 ---
 
@@ -69,24 +108,38 @@ honors CLAUDE.md's "do not partially rename" guard while keeping 1B visual-focus
 
 ### Data layer
 - **`frontend/src/types/index.ts`** — add `CaseMapResponse`, `SubjectNode`, `SummaryEdge`,
-  `EdgeStrength` matching the §4 locked contract (fields: `level`, `score`, `categories`,
-  `reasons`, `source_count`, `transaction_count`, `role_count`, `thread_count`,
+  `EdgeStrength`, `CaseMapStats` matching the §4 locked contract (fields: `level`, `score`,
+  `categories`, `reasons`, `source_count`, `transaction_count`, `role_count`, `thread_count`,
   `substantiated_thread_count`, `handoff_included`, `relationship_types`; node `flags` +
-  `metadata.thread_count`/`document_count`; stats `by_level`, `edge_count`, etc.).
+  `metadata.thread_count`/`document_count`; stats `subject_count`, `edge_count`, `by_level`,
+  `material_edge_count`, `handoff_edge_count`, `generated_at`).
 - **`frontend/src/api/graph.ts`** — add `fetchCaseMap(caseId): Promise<CaseMapResponse>` hitting
   `/api/cases/:id/case-map/`. Leave `fetchGraph` and entity functions untouched.
 
 ### Canvas — `CytoscapeCanvas.tsx`
 - Remove `PERSON_ICON` / `ORG_ICON` pictogram data-URIs.
-- New stylesheet implementing D2 markers and D3 edge thickness. Keep the `cose-bilkent` layout and
-  the badge-injection mechanism (now driven by `flags`, not `finding_count`).
+- New stylesheet implementing D2 markers (border / `outline` / badge layering) and D3 edge
+  thickness.
+- **`BadgeDescriptor` contract changes** (review finding 3): from `{nodeId, count, active}` to a
+  state descriptor for the amber active-thread dot (e.g. `{nodeId, kind: "active_thread"}`). The
+  dashed-border and green-border states are **node data attributes**, not badges, so they are read
+  from node `data` in the stylesheet, not injected. Keep the post-`layoutstop` injection mechanism
+  and `cose-bilkent` layout; only the descriptor shape and the injected visual change.
 
 ### Wiring — `InvestigateTab.tsx`
-- Add `fetchCaseMap` to the load `Promise.all`. Hold `caseMap` in state alongside `graph`.
-- Build canvas `elements`/`badges` from `caseMap` nodes/edges + flags.
+- Add `fetchCaseMap` to the load `Promise.all`; hold `caseMap` in state alongside `graph`.
+- Build canvas `elements`/`badges` from `caseMap` nodes/edges + `flags`.
 - Node click → resolve subject id against `graph` nodes → existing `ProfilePanel` path (unchanged).
-- Edge click → existing `ConnectionDetailPanel` path via the matching `/graph/` edge (unchanged).
-- Re-run-rules / Lead refresh handlers also refetch `/case-map/`.
+- Edge click → look up the `SummaryEdge` by id in `caseMap.edges` → `RelationshipSummaryPanel`.
+- **Level-1 right-panel counts come from `caseMap.stats`** (review finding 4): subject_count /
+  edge_count, so the panel and the visible map agree. Findings-by-status / document counts may
+  continue to come from `dashboard`.
+- All four refresh handlers (Lead, re-run rules, tie-off, creation) refetch `/case-map/` per D5.
+
+### New component — `RelationshipSummaryPanel.tsx`
+Minimal right-panel view for a selected `SummaryEdge`: subject A/B labels, `strength.level` badge,
+the §10 neutral explanatory line, `strength.reasons` grouped by `categories`, and a list of
+`underlying_relationships` / `thread_refs`. Read-only in 1B (no actions yet — those are Phase 2).
 
 ### Toolbar — Lucide icons
 Replace emoji with Lucide (existing dep), icon-first, 32px, tooltips + `aria-label`:
@@ -104,11 +157,17 @@ Small collapsible legend on the canvas: marker key + edge-strength key + the loc
 
 - Edge element thickness/class maps correctly for each `strength.level`
   (`observed|documented|repeated|material`).
-- Subject markers render with the correct shape/class per `type` (person vs organization) and the
-  `status_unknown` / `has_active_thread` / `has_substantiated_thread` flag treatments.
+- Subject markers render with the correct shape per `type` (person vs organization) and the
+  `status_unknown` (dashed) / `has_substantiated_thread` (green border) / `has_active_thread`
+  (amber badge) flag treatments.
 - Toolbar renders Lucide icons with accessible labels (tooltip/`aria-label` present).
-- `InvestigateTab` calls `fetchCaseMap` and still issues the `/graph/` fetch the panels depend on
-  (dual-fetch); does not touch the Timeline's `/graph/` usage.
+- `InvestigateTab` calls `fetchCaseMap` **and** still issues the `/graph/` fetch the node
+  drill-down depends on (dual-fetch); does not touch the Timeline's `/graph/` usage.
+- **Edge click opens `RelationshipSummaryPanel` from the `SummaryEdge`** (not
+  `ConnectionDetailPanel`); panel shows `level` + `reasons`.
+- **Level-1 panel counts come from `caseMap.stats`** and match the rendered edge count.
+- `RelationshipSummaryPanel` renders `level`, `reasons`, and underlying-relationship rows from a
+  given `SummaryEdge`.
 
 Backend is unchanged, so no backend tests are added.
 
@@ -116,9 +175,12 @@ Backend is unchanged, so no backend tests are added.
 
 ## Risks / notes
 
-- **Dual-fetch coupling:** the canvas and the drill-down panels read different datasets during
-  1B. This is intentional and temporary — Phase 2 collapses the panels onto `/case-map/`. The
-  join is by subject id, which is stable across both endpoints.
-- **Badge mechanism:** the post-`layoutstop` badge injection is reused; only its data source
-  changes (flags instead of `finding_count`), keeping layout behavior identical.
-- **No new dependency:** Lucide is already used elsewhere in the frontend.
+- **Dual-fetch coupling:** the canvas reads `/case-map/` while node drill-down still reads
+  `/graph/` during 1B. Intentional and temporary — Phase 2 collapses `ProfilePanel` onto
+  `/case-map/`. The join is by subject id, stable across both endpoints.
+- **Edge-panel divergence:** the Case Map edge panel moves to the summary shape now; the old
+  `ConnectionDetailPanel` remains until Phase 2 retires it. Two relationship panels coexist briefly
+  — acceptable, and the new one is the Phase 2 seed.
+- **State staleness:** D5 is the guard against the canvas showing stale `flags`/`level` after
+  tie-off or creation — the highest-value correctness item in 1B.
+- **No new dependency:** Lucide is already used in 10+ frontend components.
