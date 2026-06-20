@@ -27,6 +27,7 @@ import type {
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
+import SubjectInspector from "../components/SubjectInspector";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 import { useCaseWorkspace } from "../context/CaseWorkspaceContext";
 
@@ -460,6 +461,7 @@ export default function InvestigateTab({
     selectRelationship,
     selectThread,
     clearSelection,
+    openProfile,
     openThread,
     openDocument,
     goBack,
@@ -493,12 +495,15 @@ export default function InvestigateTab({
 
   /* ── Unified refresh helper: refetches /case-map/, /graph/, dashboard, and readiness ──
      Every state-changing action (tie-off, creation, re-run rules, Lead) routes
-     through here so the datasets stay coherent (D5). The selected
-     relationship is cleared up front — a state change can remove or restrengthen
-     the edge, so the panel must not stay pinned to a stale snapshot even if the
-     refetch then fails. */
+     through here so the datasets stay coherent (D5).
+     Only relationship selections are cleared on refresh — edge identity can change
+     (restrengthen / collapse) so a stale panel must not stay pinned. Subject and thread
+     selections use stable UUIDs and should survive a background refresh (e.g. Lead/rerun)
+     so the SubjectInspector / RelationshipSummaryPanel stays open. */
   async function refreshCaseData() {
-    clearSelection();
+    if (selection.kind === "relationship") {
+      clearSelection();
+    }
     const [cm, g, dash, ready] = await Promise.all([
       fetchCaseMap(caseId),
       fetchGraph(caseId),
@@ -772,17 +777,30 @@ export default function InvestigateTab({
 
         {/* Right rail — switches on selection.kind */}
         <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
-          {selection.kind === "subject" ? (
-            /* Temporary subject rail — Task 6 replaces with SubjectInspector */
-            <div data-testid="subject-rail" style={{ padding: 12, fontSize: 11 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
-                Subject
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", marginBottom: 8 }}>
-                {selectedSubjectLabel()}
-              </div>
-              <div style={{ color: "var(--text-3)", fontSize: 11 }}>Inspector loading…</div>
-            </div>
+          {selection.kind === "subject" && caseMap ? (
+            <SubjectInspector
+              caseId={caseId}
+              subjectId={selection.id}
+              entityType={
+                (graph?.nodes.find((n) => n.id === selection.id)?.type ?? "person") as "person" | "organization"
+              }
+              caseMap={caseMap}
+              subjectLabel={(id) =>
+                caseMap.nodes.find((n) => n.id === id)?.label ?? graph?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"
+              }
+              onSelectRelationship={(edgeId) => selectRelationship(edgeId)}
+              onStartThread={() => { setConnectPrefill({}); setShowConnectModal(true); }}
+              onCite={() => { /* cite-into-active-thread: no-op until thread is open */ }}
+              onOpenProfile={() => {
+                const node = graph?.nodes.find((n) => n.id === selection.id);
+                openProfile({
+                  id: selection.id,
+                  entityType: node?.type ?? "person",
+                  name: node?.label ?? selectedSubjectLabel(),
+                });
+              }}
+              onClear={clearSelection}
+            />
           ) : selectedSummaryEdge ? (
             <Suspense fallback={fallback("Loading…")}>
               <RelationshipSummaryPanel

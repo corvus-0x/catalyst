@@ -14,6 +14,8 @@ vi.mock("../api", () => ({
   fetchDashboard: vi.fn().mockResolvedValue({ case: { id: "c1", name: "C", status: "ACTIVE", created_at: "2026-06-01T00:00:00Z", referral_ref: "" }, documents: { total: 0, by_type: {}, by_extraction_status: {}, renamed_count: 0 }, entities: { persons: 1, organizations: 0, properties: 0, financial_instruments: 0, total: 1 }, findings: { total: 0, by_status: {} }, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 }, quality: undefined }),
   fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
   fetchEntityDetail: vi.fn().mockResolvedValue({ id: "a", entity_type: "person", name: "Jay", related_documents: [], related_findings: [] }),
+  fetchNotes: vi.fn().mockResolvedValue({ results: [] }),
+  createNote: vi.fn().mockResolvedValue({}),
   runAiPatternAnalysis: vi.fn(), reevaluateSignals: vi.fn(),
 }));
 
@@ -35,12 +37,12 @@ describe("InvestigateTab reducer migration", () => {
   });
 
   it("node click SELECTS the subject and keeps the map visible (selection != frame)", async () => {
-    const { getByTestId } = renderTab();
+    const { getByTestId, findByText } = renderTab();
     await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
     fireEvent.click(getByTestId("cy-node"));
     // THE RULE: selecting a subject is inspector state — the map (canvas stub) stays mounted,
-    // we do NOT push a profile frame. The temporary subject rail shows the selected subject.
+    // we do NOT push a profile frame. SubjectInspector renders beside the map with the subject name.
     expect(getByTestId("cy-node")).toBeTruthy();           // canvas still rendered
-    expect(getByTestId("subject-rail")).toBeTruthy();      // temporary rail (replaced by SubjectInspector in Task 6)
+    expect(await findByText("Jay")).toBeTruthy();          // SubjectInspector shows identity
   });
 });

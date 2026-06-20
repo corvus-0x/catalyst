@@ -47,7 +47,9 @@ vi.mock("../api", () => ({
     credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 },
     quality: undefined,
   }),
-  fetchEntityDetail: vi.fn().mockResolvedValue({}),
+  fetchEntityDetail: vi.fn().mockResolvedValue({ id: "a", entity_type: "person", name: "Jay", related_documents: [], related_findings: [] }),
+  fetchNotes: vi.fn().mockResolvedValue({ results: [] }),
+  createNote: vi.fn().mockResolvedValue({}),
   fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
   runAiPatternAnalysis: vi.fn(),
   reevaluateSignals: vi.fn(),
@@ -122,5 +124,21 @@ describe("InvestigateTab Case Map wiring", () => {
     // hiding the relationship panel
     fireEvent.click(getByTestId("cy-node"));
     await waitFor(() => expect(queryByText("Formal role documented")).toBeNull());
+  });
+
+  it("background refresh (re-run rules) keeps a subject selection open", async () => {
+    // Verifies the narrowed refreshCaseData: only relationship selections are cleared;
+    // subject selections survive a background refresh so SubjectInspector stays open.
+    const { getByTestId, getByLabelText, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(1));
+    // Select a subject node
+    fireEvent.click(getByTestId("cy-node"));
+    await findByText("Jay"); // SubjectInspector shows the subject name
+    // Trigger a background re-run (which calls refreshCaseData)
+    fireEvent.click(getByLabelText("Re-run signal rules"));
+    await waitFor(() => expect(api.reevaluateSignals).toHaveBeenCalledWith("c1"));
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(2));
+    // Subject inspector must still be visible — subject UUIDs are stable across refresh
+    expect(await findByText("Jay")).toBeTruthy();
   });
 });
