@@ -4,7 +4,7 @@
 
 **Goal:** Make the Investigate Case Map render from the Phase 1A `/case-map/` contract with abstract markers, strength-based edge thickness, Lucide toolbar icons, a relationship-summary panel, and an ethical legend — without touching `/graph/` (Timeline keeps it).
 
-**Architecture:** A new typed API client (`fetchCaseMap`) feeds pure element-mapping functions (`caseMapElements.ts`) that emit Cytoscape element `data`/`classes`; `CytoscapeCanvas` only *selects* on those (keeps visual logic unit-testable without rendering Cytoscape in jsdom). `InvestigateTab` dual-fetches `/case-map/` (canvas) + `/graph/` (node drill-down) + `dashboard`, routes edge clicks to a new `RelationshipSummaryPanel`, and refetches all three datasets after every state-changing action.
+**Architecture:** A new typed API client (`fetchCaseMap`) feeds pure element-mapping functions (`caseMapElements.ts`) that emit Cytoscape element `data`/`classes`; `CytoscapeCanvas` only *selects* on those (keeps visual logic unit-testable without rendering Cytoscape in jsdom). `InvestigateTab` dual-fetches `/case-map/` (canvas) + `/graph/` (node drill-down) + `dashboard`, routes edge clicks to a new `RelationshipSummaryPanel`, and refetches `/case-map/` after every state-changing action — with `/graph/` and `dashboard` *also* refreshed on tie-off and creation (Lead and re-run already refresh those two and now add `/case-map/`), exactly per D5.
 
 **Tech Stack:** React + TypeScript, Vite, Cytoscape.js (`react-cytoscapejs` + `cytoscape-cose-bilkent`), `lucide-react` (already a dep), Vitest + `@testing-library/react`.
 
@@ -977,7 +977,22 @@ The integration task. Canvas renders from `/case-map/`; node drill-down still us
 ```tsx
 // frontend/src/views/InvestigateTab.caseMap.test.tsx
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor, fireEvent } from "@testing-library/react";
+
+// Mock CytoscapeCanvas — do NOT render real Cytoscape in jsdom (flaky, and the
+// visual mapping is already unit-tested in caseMapElements.test.ts). The stub
+// exposes buttons that fire onNodeClick / onEdgeClick so we can drive selection.
+vi.mock("../components/CytoscapeCanvas", () => ({
+  default: ({ onNodeClick, onEdgeClick }: {
+    onNodeClick?: (id: string) => void;
+    onEdgeClick?: (id: string) => void;
+  }) => (
+    <div>
+      <button data-testid="cy-node" onClick={() => onNodeClick?.("a")}>node</button>
+      <button data-testid="cy-edge" onClick={() => onEdgeClick?.("a__b")}>edge</button>
+    </div>
+  ),
+}));
 
 // Mock the API module so we can assert dual-fetch and feed canvas data.
 vi.mock("../api", () => ({
@@ -988,8 +1003,12 @@ vi.mock("../api", () => ({
       { id: "a", type: "person", label: "Jay", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } },
       { id: "b", type: "organization", label: "Acme", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } },
     ],
-    edges: [],
-    stats: { subject_count: 2, edge_count: 0, by_level: { observed: 0, documented: 0, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
+    edges: [
+      { id: "a__b", source: "a", target: "b", relationship: "SUMMARY", label: "Documented relationship", state: "documented",
+        strength: { score: 30, level: "documented", categories: ["formal_role"], source_count: 0, transaction_count: 0, role_count: 1, thread_count: 0, substantiated_thread_count: 0, handoff_included: false, relationship_types: ["OFFICER_OF"], reasons: ["Formal role documented"] },
+        evidence_refs: [], thread_refs: [], underlying_relationships: [] },
+    ],
+    stats: { subject_count: 2, edge_count: 1, by_level: { observed: 0, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
   }),
   fetchFuzzyMatches: vi.fn().mockResolvedValue({ count: 0, results: [] }),
   fetchDashboard: vi.fn().mockResolvedValue({
@@ -1000,7 +1019,7 @@ vi.mock("../api", () => ({
     credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 },
     quality: undefined,
   }),
-  fetchEntityDetail: vi.fn(),
+  fetchEntityDetail: vi.fn().mockResolvedValue({}),
   runAiPatternAnalysis: vi.fn(),
   reevaluateSignals: vi.fn(),
 }));
@@ -1034,6 +1053,25 @@ describe("InvestigateTab Case Map wiring", () => {
     expect(text).not.toContain("Entities"); // relabeled
     // subject_count is 2; entities.total (10) must NOT be the source
     expect(text).not.toContain("10 Subjects");
+  });
+
+  it("edge click opens RelationshipSummaryPanel from the SummaryEdge", async () => {
+    const { getByTestId, container, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    fireEvent.click(getByTestId("cy-edge"));
+    // panel shows the summary edge's level + reason (not ConnectionDetailPanel)
+    expect(await findByText("Formal role documented")).toBeTruthy();
+    expect(container.textContent ?? "").toContain("does not imply wrongdoing");
+  });
+
+  it("clears the selected relationship when navigating to a subject profile", async () => {
+    const { getByTestId, queryByText, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    fireEvent.click(getByTestId("cy-edge"));
+    await findByText("Formal role documented");
+    // node click navigates away (and must clear selectedSummaryEdge)
+    fireEvent.click(getByTestId("cy-node"));
+    await waitFor(() => expect(queryByText("Formal role documented")).toBeNull());
   });
 });
 ```
@@ -1107,7 +1145,24 @@ import CaseMapLegend from "../components/CaseMapLegend";
   }
 ```
 
-(e) Node click stays via `/graph/` for `ProfilePanel` — but resolve label from `caseMap` if the `/graph/` node is missing. Keep `handleNodeClick` using `graph?.nodes`; it already resolves by id. No change required beyond leaving it intact.
+(e) Node click stays via `/graph/` for `ProfilePanel`. Keep `handleNodeClick` using `graph?.nodes`; it already resolves by id.
+
+(f) **Clear `selectedSummaryEdge` on every navigation/reset path** (review finding 2 — otherwise the relationship panel stays pinned to a stale edge after the user moves on). Add `setSelectedSummaryEdge(null)` alongside the existing `setWebSelectedEdge(null)` calls in `navigate()` (InvestigateTab.tsx:613) and in `navigateTo()`'s return-to-web branch (InvestigateTab.tsx:627). Example for `navigate()`:
+
+```ts
+  function navigate(entry: NavEntry) {
+    setNavStack((s) => (sameEntry(s[s.length - 1], entry) ? s : [...s, entry]));
+    setWebSelectedEdge(null);
+    setSelectedSummaryEdge(null);
+    if (entry.kind === "angle") {
+      onAngleActive?.({ id: entry.angleId, title: entry.angleTitle });
+    } else {
+      onAngleActive?.(undefined);
+    }
+  }
+```
+
+And in `navigateTo()`'s `if (top.kind === "web")` branch, add `setSelectedSummaryEdge(null);` next to the existing `setWebSelectedEdge(null);`.
 
 - [ ] **Step 4: Render the summary panel, legend, and stats from caseMap**
 
@@ -1193,6 +1248,9 @@ Create one refresh helper and use it in tie-off and creation:
       fetchCaseMap(caseId), fetchGraph(caseId), fetchDashboard(caseId),
     ]);
     setCaseMap(cm); setGraph(g); setDashboard(dash);
+    // The selected relationship may no longer exist after a refresh — clear it
+    // rather than leaving the panel pinned to a stale edge (review finding 2).
+    setSelectedSummaryEdge(null);
   }
 ```
 
@@ -1263,6 +1321,9 @@ Push the branch and open the PR (confirm with Tyler first — outward-facing). V
 - `/graph/` + Timeline untouched — no task modifies `fetchGraph`/Timeline ✓
 - `fetchCaseMap` typed client + contract types — Task 1 ✓
 - Tests per §11A frontend plan — Tasks 1–7 ✓
+- `selectedSummaryEdge` cleared on navigate/navigateTo/refresh (plan-review finding 2) — Task 7 Step 3(f), Step 5 ✓
+- InvestigateTab integration test mocks `CytoscapeCanvas` (no real Cytoscape in jsdom; plan-review finding 3) — Task 7 Step 1 ✓
+- Architecture paragraph matches D5's asymmetric refresh exactly (plan-review finding 1) — header ✓
 
 **Placeholder scan:** none — every step has runnable code/commands. Two verification notes are flagged (CaseWorkspace provider export name in Task 7 Step 1; `npm run lint` existence in Task 8) — these are "confirm the exact local name," not deferred work.
 
