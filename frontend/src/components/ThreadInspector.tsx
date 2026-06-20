@@ -7,9 +7,11 @@
  * (where substantiation, tie-off, and narrative editing live).
  *
  * Actions:
- *   - Cite source  → opens CiteDocumentPicker → updateAngle(add_document_ids:[docId])
+ *   - Cite source  → DEFERRED (citing lives in the full AngleView via Open full Thread;
+ *                    CiteDocumentPicker is not wired in this rail surface)
  *   - Set aside    → updateAngle(status:"DISMISSED"), un-gated (tie-off gate only
- *                    governs transitions INTO CONFIRMED, not OUT via DISMISSED)
+ *                    governs transitions INTO CONFIRMED, not OUT via DISMISSED);
+ *                    re-fetches the thread so the status badge updates immediately.
  *   - Open full Thread → onOpenThread() — parent dispatches openThread → AngleView
  *
  * Props: { caseId, threadId, onOpenThread, onClear, onChanged }
@@ -104,12 +106,17 @@ export default function ThreadInspector({
       .finally(() => setLoading(false));
   }, [caseId, threadId]);
 
-  // Set aside handler — un-gated (DISMISSED transition has no gate)
+  // Set aside handler — un-gated (DISMISSED transition has no gate).
+  // Re-fetches the thread so the status badge updates to "Set Aside" immediately.
   async function handleSetAside() {
     if (!thread || setAside) return;
     setSetAside(true);
     try {
       await updateAngle(caseId, threadId, { status: "DISMISSED" });
+      // Re-fetch so the status badge reflects the new DISMISSED state without waiting
+      // for the parent's refreshCaseData to propagate (which doesn't re-set local state).
+      const updated = await fetchAngle(caseId, threadId);
+      setThread(updated);
       onChanged();
     } catch (err) {
       console.error("ThreadInspector: set-aside failed", err);

@@ -2,6 +2,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
 
+// Feeder mock — hoisted so onStartThread / onCite assertions can introspect calls.
+const mockStartAngleFrom = vi.fn().mockResolvedValue({ id: "new-angle", title: "Jay" });
+const mockCiteToAngle = vi.fn().mockResolvedValue(undefined);
+vi.mock("../hooks/useFeederActions", () => ({
+  useFeederActions: () => ({
+    startAngleFrom: mockStartAngleFrom,
+    citeToAngle: mockCiteToAngle,
+    pickerOpen: false,
+    closePicker: vi.fn(),
+    onPickerPick: vi.fn(),
+  }),
+}));
+
 // Mock CytoscapeCanvas — do NOT render real Cytoscape in jsdom (flaky, and the
 // visual mapping is already unit-tested in caseMapElements.test.ts). The stub
 // exposes buttons that fire onNodeClick / onEdgeClick so we can drive selection.
@@ -124,6 +137,30 @@ describe("InvestigateTab Case Map wiring", () => {
     // hiding the relationship panel
     fireEvent.click(getByTestId("cy-node"));
     await waitFor(() => expect(queryByText("Formal role documented")).toBeNull());
+  });
+
+  it("onStartThread invokes feeder.startAngleFrom with the subject's display name (not a no-op)", async () => {
+    const { getByTestId, findByText, getByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    // Select node "a" (Jay) — triggers SubjectInspector
+    fireEvent.click(getByTestId("cy-node"));
+    await findByText("Jay"); // SubjectInspector rendered
+    // Click "Start thread" action button in SubjectInspector
+    fireEvent.click(getByText("Start thread"));
+    await waitFor(() =>
+      expect(mockStartAngleFrom).toHaveBeenCalledWith({ title: "Jay" }),
+    );
+  });
+
+  it("onCite invokes feeder.citeToAngle with the subject's label (not a no-op)", async () => {
+    const { getByTestId, findByText, getByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    fireEvent.click(getByTestId("cy-node")); // select Jay
+    await findByText("Jay");
+    fireEvent.click(getByText("Cite into active thread"));
+    await waitFor(() =>
+      expect(mockCiteToAngle).toHaveBeenCalledWith({ label: "Jay" }),
+    );
   });
 
   it("background refresh (re-run rules) keeps a subject selection open", async () => {

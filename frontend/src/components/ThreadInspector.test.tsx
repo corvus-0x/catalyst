@@ -72,6 +72,31 @@ describe("ThreadInspector", () => {
     );
   });
 
+  it("status badge updates to Set Aside after successful set-aside", async () => {
+    // After set-aside, the inspector re-fetches the thread. The second fetchAngle call
+    // (triggered inside handleSetAside) should return a DISMISSED thread so the badge
+    // shows "Set Aside" without needing a parent-driven remount.
+    (vi.mocked(api.fetchAngle) as MockInstance)
+      .mockResolvedValueOnce({ ...BASE_THREAD, status: "NEEDS_EVIDENCE" })  // initial load
+      .mockResolvedValueOnce({ ...BASE_THREAD, status: "DISMISSED" });      // re-fetch after set-aside
+
+    const onChanged = vi.fn();
+    const { findByText, getByText } = render(
+      <ThreadInspector
+        caseId="c1"
+        threadId="t1"
+        onOpenThread={() => {}}
+        onClear={() => {}}
+        onChanged={onChanged}
+      />,
+    );
+    await findByText("Insider swap");
+    fireEvent.click(getByText("Set aside"));
+    // After the re-fetch resolves, the badge must show the DISMISSED label
+    await waitFor(() => expect(findByText("Set Aside")).resolves.toBeTruthy());
+    expect(onChanged).toHaveBeenCalled();
+  });
+
   it("Open full Thread calls onOpenThread", async () => {
     const onOpenThread = vi.fn();
     const { findByText, getByText } = render(

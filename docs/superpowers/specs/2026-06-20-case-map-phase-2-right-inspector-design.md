@@ -228,7 +228,10 @@ fields come from `fetchAngle`. First-pass fields (all on `FindingItem`):
 - gaps / readiness summary for the thread (what's blocking referral-grade — e.g. uncited, weight,
   overreach-not-reviewed).
 - **Actions** (backed):
-  - **cite source** → existing `CiteDocumentPicker` → `updateAngle(add_document_ids)`.
+  - **cite source** → **DEFERRED** — citing lives in the full AngleView (Open full Thread →
+    `AngleView`'s existing `CiteDocumentPicker`). The rail surface does not wire `CiteDocumentPicker`
+    because the 320px rail cannot accommodate the picker UX and the full-frame path is always
+    one tap away. Wiring the picker into this rail is a follow-up to a later phase.
   - **Set aside** → `updateAngle(caseId, id, { status: "DISMISSED" })` (reversible, **un-gated** —
     the tie-off gate only governs transitions *into* CONFIRMED).
   - **Open full Thread** → `openThread` → full-width `AngleView`, where **substantiation/tie-off

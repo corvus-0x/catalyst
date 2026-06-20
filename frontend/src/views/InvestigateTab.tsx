@@ -31,6 +31,8 @@ import SubjectInspector from "../components/SubjectInspector";
 import ThreadInspector from "../components/ThreadInspector";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 import { useCaseWorkspace } from "../context/CaseWorkspaceContext";
+import { useFeederActions } from "../hooks/useFeederActions";
+import AnglePickerModal from "../components/AnglePickerModal";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
 const ProfilePanel = lazy(() => import("./ProfilePanel"));
@@ -273,6 +275,9 @@ export default function InvestigateTab({
     activeAngleId,
     activeAngleTitle,
   } = useCaseWorkspace();
+
+  /* ── Feeder actions for SubjectInspector start-thread / cite ── */
+  const feeder = useFeederActions(caseId);
 
   /* ── Load graph + case-map + dashboard + fuzzy counts + readiness ── */
   useEffect(() => {
@@ -590,8 +595,14 @@ export default function InvestigateTab({
                 caseMap.nodes.find((n) => n.id === id)?.label ?? graph?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"
               }
               onSelectRelationship={(edgeId) => selectRelationship(edgeId)}
-              onStartThread={() => { setConnectPrefill({}); setShowConnectModal(true); }}
-              onCite={() => { /* cite-into-active-thread: no-op until thread is open */ }}
+              onStartThread={() => {
+                const name = selectedSubjectLabel();
+                void feeder.startAngleFrom({ title: name });
+              }}
+              onCite={() => {
+                const name = selectedSubjectLabel();
+                void feeder.citeToAngle({ label: name });
+              }}
               onOpenProfile={() => {
                 const node = graph?.nodes.find((n) => n.id === selection.id);
                 openProfile({
@@ -679,6 +690,14 @@ export default function InvestigateTab({
           />
         </Suspense>
       )}
+
+      {/* Angle picker — opened by feeder when no active thread on cite */}
+      <AnglePickerModal
+        caseId={caseId}
+        open={feeder.pickerOpen}
+        onClose={feeder.closePicker}
+        onPick={feeder.onPickerPick}
+      />
     </div>
   );
 }
