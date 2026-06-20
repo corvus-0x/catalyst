@@ -71,11 +71,37 @@ jobs:
         run: pip install -r requirements.txt
       - name: Migrate
         run: python manage.py migrate
+      # Fail if a model changed without a matching migration. --check exits
+      # non-zero when makemigrations *would* create something; --dry-run keeps
+      # it from actually writing files. Catches the classic "forgot to make the
+      # migration" mistake before it breaks the Railway deploy.
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
       - name: Run backend tests
         # Exclude the @tag("eval") suite (investigations/tests/evals): it makes
         # live Claude API calls and is meant to be run on demand with a real
         # ANTHROPIC_API_KEY, never in CI.
         run: python manage.py test investigations --exclude-tag=eval
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 pulls the FULL history so gitleaks scans every commit,
+      # not just the tip — a key leaked three commits ago still gets caught.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # Pinned binary instead of the gitleaks-action so there's no org-license
+      # surprise and the exact version is reproducible. `detect` scans git
+      # history; --redact keeps any hit out of the public CI log.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan for secrets
+        run: gitleaks detect --no-banner --redact --source .
 
   frontend-check:
     name: Frontend Lint, Test & Build

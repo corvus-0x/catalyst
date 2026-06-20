@@ -1,4 +1,11 @@
 repos:
+  # Secret scanning — fast local layer (gitleaks protect --staged scans only the
+  # changes you're committing). CI runs the full-history scan as the hard gate.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
