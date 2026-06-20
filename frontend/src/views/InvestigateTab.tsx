@@ -2,22 +2,33 @@ import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
 import { toast } from "sonner";
 import { Flag, Maximize, Map as MapIcon, Sparkles, RefreshCw, Link as LinkIcon } from "lucide-react";
-import { fetchGraph, fetchFuzzyMatches, fetchEntityDetail, fetchDashboard, runAiPatternAnalysis, reevaluateSignals } from "../api";
+import {
+  fetchGraph,
+  fetchCaseMap,
+  fetchFuzzyMatches,
+  fetchEntityDetail,
+  fetchDashboard,
+  runAiPatternAnalysis,
+  reevaluateSignals,
+} from "../api";
 import type {
+  CaseMapResponse,
   CaseQuality,
   CredibilityCounts,
   DashboardResponse,
   DocumentItem,
-  EdgeFindingLink,
   EntityType,
   GraphEdge,
   GraphNode,
   GraphResponse,
   OrgDetailResponse,
   PersonDetailResponse,
+  SummaryEdge,
 } from "../types";
-import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import ConnectionDetailPanel from "../components/ConnectionDetailPanel";
+import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
+import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
+import CaseMapLegend from "../components/CaseMapLegend";
 import { useAsyncJob } from "../hooks/useAsyncJob";
 import { useCaseWorkspace, type ActiveAngle } from "../context/CaseWorkspaceContext";
 
@@ -27,6 +38,7 @@ const ConnectionReviewPanel = lazy(() => import("./ConnectionReviewPanel"));
 const AngleView = lazy(() => import("./AngleView"));
 const DocumentView = lazy(() => import("./DocumentView"));
 const ConnectKnotsModal = lazy(() => import("../components/ConnectKnotsModal"));
+const RelationshipSummaryPanel = lazy(() => import("../components/RelationshipSummaryPanel"));
 
 /* ─── Navigation state ───────────────────────────────────────────────────────── */
 
@@ -45,65 +57,6 @@ function entryLabel(e: NavEntry): string {
   }
 }
 
-/* ─── Node mapping ────────────────────────────────────────────────────────────
-   API "organization" → Cytoscape type "org" (stylesheet selector).
-   org_type drives the wireframe colour variant (teal, amber, purple, coral).
-─────────────────────────────────────────────────────────────────────────── */
-
-function toCyType(t: GraphNode["type"]): string {
-  return t === "organization" ? "org" : t;
-}
-
-function nodeToElement(node: GraphNode): cytoscape.ElementDefinition {
-  return {
-    data: {
-      id: node.id,
-      label: node.label,
-      type: toCyType(node.type),
-      org_type: node.metadata.org_type ?? "",
-      finding_count: node.metadata.finding_count,
-      doc_count: node.metadata.doc_count,
-    },
-  };
-}
-
-/* ─── Edge mapping ────────────────────────────────────────────────────────────── */
-
-const SEVERITY_ORDER: Record<string, number> = {
-  CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFORMATIONAL: 0,
-};
-
-function highestSeverity(links: EdgeFindingLink[]): string | undefined {
-  if (!links?.length) return undefined;
-  return [...links].sort(
-    (a, b) => (SEVERITY_ORDER[b.severity] ?? 0) - (SEVERITY_ORDER[a.severity] ?? 0)
-  )[0].severity;
-}
-
-function edgeToElement(edge: GraphEdge): cytoscape.ElementDefinition {
-  const meta = edge.metadata as Record<string, unknown>;
-  const isProposed = edge.relationship === "CO_APPEARS_IN";
-  const isManual =
-    !isProposed &&
-    ["FAMILY", "BUSINESS", "SOCIAL"].includes(edge.relationship) &&
-    meta.source_type === "MANUAL";
-  const severity = isProposed ? undefined : highestSeverity(edge.finding_links ?? []);
-  return {
-    data: {
-      id: `${edge.source}__${edge.target}__${edge.relationship}`,
-      source: edge.source,
-      target: edge.target,
-      label: edge.label,
-      relationship: edge.relationship,
-      weight: edge.weight,
-      ...(isProposed && { status: "proposed" }),
-      ...(isManual && { source_type: "manual" }),
-      ...(severity && { severity }),
-      finding_links: edge.finding_links ?? [],
-    },
-  };
-}
-
 /* ─── WebStatsBar ─────────────────────────────────────────────────────────────── */
 
 interface WebStatsBarProps {
@@ -119,7 +72,7 @@ function WebStatsBar({ findings, documents, entities, daysOpen }: WebStatsBarPro
     <div className="web-stats-bar">
       <span className="web-stats-chip">
         <span className="web-stats-chip__value">{fmt(findings)}</span>
-        <span className="web-stats-chip__label">Angles</span>
+        <span className="web-stats-chip__label">Threads</span>
       </span>
       <span className="web-stats-chip">
         <span className="web-stats-chip__value">{fmt(documents)}</span>
@@ -127,7 +80,7 @@ function WebStatsBar({ findings, documents, entities, daysOpen }: WebStatsBarPro
       </span>
       <span className="web-stats-chip">
         <span className="web-stats-chip__value">{fmt(entities)}</span>
-        <span className="web-stats-chip__label">Entities</span>
+        <span className="web-stats-chip__label">Subjects</span>
       </span>
       <span className="web-stats-chip">
         <span className="web-stats-chip__value">{fmt(daysOpen)}</span>
@@ -370,6 +323,7 @@ function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
 
 interface WebPanelProps {
   graph: GraphResponse | null;
+  caseMap: CaseMapResponse | null;
   dashboard: DashboardResponse | null;
   documents: DocumentItem[];
   selectedEdge: GraphEdge | null;
@@ -382,6 +336,7 @@ interface WebPanelProps {
 
 function WebRightPanel({
   graph,
+  caseMap,
   dashboard,
   documents,
   selectedEdge,
@@ -391,12 +346,13 @@ function WebRightPanel({
   leadStatus,
   leadResult,
 }: WebPanelProps) {
-  const knotCount = graph
-    ? (graph.stats.node_types.person ?? 0) + (graph.stats.node_types.organization ?? 0)
-    : 0;
-  const edgeCount = graph?.stats.total_edges ?? 0;
+  // Keep graph available for ConnectionDetailPanel on legacy edges if ever needed,
+  // but counts now come from caseMap.
+  const subjectCount = caseMap?.stats.subject_count ?? 0;
+  const relationshipCount = caseMap?.stats.edge_count ?? 0;
 
   if (selectedEdge) {
+    // Legacy path: ConnectionDetailPanel for raw graph edges (kept for future drill-down use).
     return (
       <ConnectionDetailPanel
         edge={selectedEdge}
@@ -413,10 +369,10 @@ function WebRightPanel({
   return (
     <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
-        Case web
+        Case Map
       </div>
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
-        {graph?.stats ? `${knotCount} knots · ${edgeCount} connections` : "Loading…"}
+        {caseMap?.stats ? `${subjectCount} subjects · ${relationshipCount} relationships` : "Loading…"}
       </div>
 
       <CredibilityHeader credibility={dashboard?.credibility} />
@@ -425,9 +381,9 @@ function WebRightPanel({
       {dashboard && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "10px 0" }}>
           {[
-            { label: "Confirmed angles", value: dashboard.findings.by_status.CONFIRMED ?? 0, badge: "badge-success" },
-            { label: "Active angles",    value: dashboard.findings.by_status.NEEDS_EVIDENCE ?? 0, badge: "badge-info" },
-            { label: "Documents",        value: dashboard.documents.total, badge: null },
+            { label: "Substantiated threads", value: dashboard.findings.by_status.CONFIRMED ?? 0, badge: "badge-success" },
+            { label: "Active threads",         value: dashboard.findings.by_status.NEEDS_EVIDENCE ?? 0, badge: "badge-info" },
+            { label: "Documents",              value: dashboard.documents.total, badge: null },
           ].map(({ label, value, badge }) => (
             <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ color: "var(--text-3)" }}>{label}</span>
@@ -441,7 +397,7 @@ function WebRightPanel({
 
       <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
       <div style={{ fontSize: 10, color: "var(--text-3)" }}>
-        Click a knot to open its profile. Click a connection to see detail.
+        Click a subject to open its profile. Click a relationship to see detail.
       </div>
       {(leadStatus === "QUEUED" || leadStatus === "RUNNING") && (
         <>
@@ -485,9 +441,9 @@ function EmptyWeb({ onAddAngle }: { onAddAngle: () => void }) {
         <line x1="24" y1="28" x2="30" y2="44" stroke="#6b7280" strokeWidth="1.5" />
         <line x1="48" y1="28" x2="42" y2="44" stroke="#6b7280" strokeWidth="1.5" />
       </svg>
-      <p className="empty-state__title">Your investigation web is empty.</p>
-      <p className="empty-state__body">Add a person or organization to start building the web.</p>
-      <button type="button" className="toolbar-btn" onClick={onAddAngle}>+ New angle</button>
+      <p className="empty-state__title">Your Case Map is empty.</p>
+      <p className="empty-state__body">Add a subject to start building the map.</p>
+      <button type="button" className="toolbar-btn" onClick={onAddAngle}>+ New thread</button>
     </div>
   );
 }
@@ -512,6 +468,7 @@ export default function InvestigateTab({
   onAngleConsumed,
 }: InvestigateTabProps) {
   const [graph, setGraph]           = useState<GraphResponse | null>(null);
+  const [caseMap, setCaseMap]       = useState<CaseMapResponse | null>(null);
   const [dashboard, setDashboard]   = useState<DashboardResponse | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading]       = useState(true);
@@ -520,7 +477,10 @@ export default function InvestigateTab({
   /* ── Entity cache for Profile panel ── */
   const [entityData, setEntityData] = useState<PersonDetailResponse | OrgDetailResponse | null>(null);
 
-  /* ── Selected edge on the web canvas (updates right panel) ── */
+  /* ── Selected summary edge from /case-map/ (drives RelationshipSummaryPanel) ── */
+  const [selectedSummaryEdge, setSelectedSummaryEdge] = useState<SummaryEdge | null>(null);
+
+  /* ── Selected raw graph edge — kept for ConnectionDetailPanel on legacy use ── */
   const [webSelectedEdge, setWebSelectedEdge] = useState<GraphEdge | null>(null);
 
   /* ── Navigation stack ── */
@@ -542,17 +502,19 @@ export default function InvestigateTab({
   const cyRef = useRef<cytoscape.Core | null>(null);
   const { setActiveEntity } = useCaseWorkspace();
 
-  /* ── Load graph + dashboard + fuzzy counts ── */
+  /* ── Load graph + case-map + dashboard + fuzzy counts ── */
   useEffect(() => {
     setLoading(true);
     setError(null);
     Promise.all([
       fetchGraph(caseId),
+      fetchCaseMap(caseId),
       fetchFuzzyMatches(caseId, { status: "pending" }),
       fetchDashboard(caseId),
     ])
-      .then(([g, fuzzy, dash]) => {
+      .then(([g, cm, fuzzy, dash]) => {
         setGraph(g);
+        setCaseMap(cm);
         setPendingCount(fuzzy.count);
         setDashboard(dash);
       })
@@ -568,6 +530,21 @@ export default function InvestigateTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedAngle]);
 
+  /* ── Unified refresh helper: refetches /case-map/, /graph/, and dashboard ── */
+  async function refreshCaseData() {
+    const [cm, g, dash] = await Promise.all([
+      fetchCaseMap(caseId),
+      fetchGraph(caseId),
+      fetchDashboard(caseId),
+    ]);
+    setCaseMap(cm);
+    setGraph(g);
+    setDashboard(dash);
+    // The selected relationship may no longer exist after a refresh — clear it
+    // rather than leaving the panel pinned to a stale edge.
+    setSelectedSummaryEdge(null);
+  }
+
   /* ── Lead handler ── */
   async function handleRunLead() {
     await leadJob.run(() => runAiPatternAnalysis(caseId));
@@ -578,7 +555,12 @@ export default function InvestigateTab({
     setRerunPending(true);
     try {
       await reevaluateSignals(caseId);
-      const [g, dash] = await Promise.all([fetchGraph(caseId), fetchDashboard(caseId)]);
+      const [cm, g, dash] = await Promise.all([
+        fetchCaseMap(caseId),
+        fetchGraph(caseId),
+        fetchDashboard(caseId),
+      ]);
+      setCaseMap(cm);
       setGraph(g);
       setDashboard(dash);
     } catch (err) {
@@ -589,11 +571,12 @@ export default function InvestigateTab({
     }
   }
 
-  /* ── Refresh graph + dashboard after Lead job completes ── */
+  /* ── Refresh graph + case-map + dashboard after Lead job completes (D5) ── */
   useEffect(() => {
     if (leadJob.status !== "SUCCESS") return;
-    Promise.all([fetchGraph(caseId), fetchDashboard(caseId)])
-      .then(([g, dash]) => {
+    Promise.all([fetchCaseMap(caseId), fetchGraph(caseId), fetchDashboard(caseId)])
+      .then(([cm, g, dash]) => {
+        setCaseMap(cm);
         setGraph(g);
         setDashboard(dash);
       })
@@ -620,6 +603,7 @@ export default function InvestigateTab({
     // stack a duplicate breadcrumb crumb.
     setNavStack((s) => (sameEntry(s[s.length - 1], entry) ? s : [...s, entry]));
     setWebSelectedEdge(null);
+    setSelectedSummaryEdge(null);
     if (entry.kind === "angle") {
       onAngleActive?.({ id: entry.angleId, title: entry.angleTitle });
     } else {
@@ -634,6 +618,7 @@ export default function InvestigateTab({
     if (top.kind === "web") {
       cyRef.current?.elements().removeClass("dimmed");
       setWebSelectedEdge(null);
+      setSelectedSummaryEdge(null);
     }
     if (top.kind === "angle") {
       onAngleActive?.({ id: top.angleId, title: top.angleTitle });
@@ -647,28 +632,22 @@ export default function InvestigateTab({
   /* ── Node tap on canvas → navigate directly to Profile (Level 2) ─────────── */
   function handleNodeClick(nodeId: string) {
     if (current.kind !== "web") return;
+    // Clear any selected relationship panel immediately — the user clicked away.
+    setSelectedSummaryEdge(null);
+    // Node detail resolves against /graph/ (not /case-map/); property/financial
+    // instrument nodes are not subjects and are excluded from the canvas.
     const node = graph?.nodes.find((n) => n.id === nodeId);
     if (!node || (node.type !== "person" && node.type !== "organization")) return;
     handleOpenKnotView(node);
   }
 
-  /* ── Edge tap on canvas → show detail in right panel ── */
+  /* ── Edge tap on canvas → select the matching SummaryEdge from /case-map/ ── */
   function handleEdgeClick(edgeId: string) {
     if (current.kind !== "web") return;
-    // edgeId format: "source__target__relationship" (see edgeToElement)
-    // relationship names may contain underscores (OFFICER_OF, CO_APPEARS_IN, SOLD_BY)
-    // so reconstruct relationship from everything after the second "__"
-    const firstSep = edgeId.indexOf("__");
-    const secondSep = edgeId.indexOf("__", firstSep + 2);
-    if (firstSep === -1 || secondSep === -1) return;
-    const source = edgeId.slice(0, firstSep);
-    const target = edgeId.slice(firstSep + 2, secondSep);
-    const relationship = edgeId.slice(secondSep + 2);
-    const edge = graph?.edges.find(
-      (e) => e.source === source && e.target === target && e.relationship === relationship
-    );
-    if (!edge) return;
-    setWebSelectedEdge(edge);
+    // edgeId format for case-map edges: "subjectMin__subjectMax" (set by summaryEdgeToElement)
+    const edge = caseMap?.edges.find((e) => e.id === edgeId) ?? null;
+    setSelectedSummaryEdge(edge);
+    setWebSelectedEdge(null);
   }
 
   /* ── Navigate to Level 2: Profile ── */
@@ -681,45 +660,26 @@ export default function InvestigateTab({
         .then((d) => setEntityData(d as PersonDetailResponse | OrgDetailResponse))
         .catch((err) => {
           console.error(err);
-          toast.error("Couldn't load knot details.");
+          toast.error("Couldn't load profile details.");
         });
     }
   }
 
-  /* ── Build Cytoscape elements: knots only (person + org) + edges ──────────────
-     Property and financial_instrument nodes are excluded from the graph canvas.
-     The spec says only Person and Org can be knots.
+  /* ── Build Cytoscape elements from /case-map/ (not /graph/) ──────────────────
+     Canvas elements come from the Case Map contract (SubjectNode + SummaryEdge).
+     Node drill-down (handleNodeClick) still resolves against /graph/ nodes.
   ─────────────────────────────────────────────────────────────────────────── */
-  const elements: cytoscape.ElementDefinition[] = graph ? [
-    ...graph.nodes
-      .filter((n) => n.type === "person" || n.type === "organization")
-      .map(nodeToElement),
-    // Only include edges between visible knot nodes
-    ...graph.edges
-      .filter((e) => {
-        const sourceIsKnot = graph.nodes.some(
-          (n) => n.id === e.source && (n.type === "person" || n.type === "organization")
-        );
-        const targetIsKnot = graph.nodes.some(
-          (n) => n.id === e.target && (n.type === "person" || n.type === "organization")
-        );
-        return sourceIsKnot && targetIsKnot;
-      })
-      .map(edgeToElement),
-  ] : [];
-
-  /* ── Badge descriptors — injected by CytoscapeCanvas after layoutstop ── */
-  const badges: BadgeDescriptor[] = graph
-    ? graph.nodes
-        .filter((n) => n.metadata.finding_count > 0 && (n.type === "person" || n.type === "organization"))
-        .map((n) => ({
-          nodeId: n.id,
-          count: n.metadata.finding_count,
-          active: (dashboard?.findings.by_status.NEEDS_EVIDENCE ?? 0) > 0,
-        }))
+  const elements: cytoscape.ElementDefinition[] = caseMap
+    ? [
+        ...caseMap.nodes.map(subjectNodeToElement),
+        ...caseMap.edges.map(summaryEdgeToElement),
+      ]
     : [];
 
-  const isEmpty = !graph || graph.nodes.filter(n => n.type === "person" || n.type === "organization").length === 0;
+  /* ── Badge descriptors — subjects with active threads get an amber dot ── */
+  const badges: BadgeDescriptor[] = caseMap ? subjectBadges(caseMap.nodes) : [];
+
+  const isEmpty = !caseMap || caseMap.nodes.length === 0;
   const showDocument = current.kind === "document";
 
   const daysOpen = (() => {
@@ -736,7 +696,7 @@ export default function InvestigateTab({
   if (loading) return (
     <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
       <WebToolbar pendingCount={0} showMinimap={false} onFit={() => {}} onAddAngle={() => {}} onPendingClick={() => {}} onToggleMinimap={() => {}} leadStatus="idle" onRunLead={() => {}} rerunPending={false} onRerunRules={() => {}} />
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)" }}>Loading web…</div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)" }}>Loading map…</div>
     </div>
   );
 
@@ -752,12 +712,12 @@ export default function InvestigateTab({
       {/* Breadcrumb */}
       <Breadcrumb stack={navStack} onNavigateTo={navigateTo} />
 
-      {/* KPI stats bar — Web Level 1 only */}
+      {/* KPI stats bar — Web Level 1 only; Subjects count from caseMap.stats */}
       {current.kind === "web" && (
         <WebStatsBar
           findings={dashboard?.findings.total ?? null}
           documents={dashboard?.documents.total ?? null}
-          entities={dashboard?.entities.total ?? null}
+          entities={caseMap?.stats.subject_count ?? null}
           daysOpen={daysOpen}
         />
       )}
@@ -808,13 +768,16 @@ export default function InvestigateTab({
             {isEmpty ? (
               <EmptyWeb onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
             ) : (
-              <CytoscapeCanvas
-                elements={elements}
-                badges={badges}
-                onCyInit={(cy) => { cyRef.current = cy; }}
-                onNodeClick={handleNodeClick}
-                onEdgeClick={handleEdgeClick}
-              />
+              <>
+                <CytoscapeCanvas
+                  elements={elements}
+                  badges={badges}
+                  onCyInit={(cy) => { cyRef.current = cy; }}
+                  onNodeClick={handleNodeClick}
+                  onEdgeClick={handleEdgeClick}
+                />
+                <CaseMapLegend />
+              </>
             )}
 
             {/* Minimap */}
@@ -826,20 +789,31 @@ export default function InvestigateTab({
           </div>
         )}
 
-        {/* Level 1 — Always-visible 215px web right panel (wireframe design) */}
+        {/* Level 1 — Always-visible 320px web right panel */}
         {current.kind === "web" && !showDocument && (
-          <div style={{ width: 215, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
-            <WebRightPanel
-              graph={graph}
-              dashboard={dashboard}
-              documents={documents}
-              selectedEdge={webSelectedEdge}
-              onOpenAngle={(angleId, angleTitle) => navigate({ kind: "angle", angleId, angleTitle })}
-              onOpenDocument={(documentId, docName) => navigate({ kind: "document", documentId, docName })}
-              onClearEdge={() => setWebSelectedEdge(null)}
-              leadStatus={leadJob.status}
-              leadResult={leadJob.result}
-            />
+          <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid var(--border-1)", background: "var(--bg-1)", overflow: "hidden" }}>
+            {selectedSummaryEdge ? (
+              <Suspense fallback={fallback("Loading…")}>
+                <RelationshipSummaryPanel
+                  edge={selectedSummaryEdge}
+                  subjectLabel={(id) => caseMap?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"}
+                  onClear={() => setSelectedSummaryEdge(null)}
+                />
+              </Suspense>
+            ) : (
+              <WebRightPanel
+                graph={graph}
+                caseMap={caseMap}
+                dashboard={dashboard}
+                documents={documents}
+                selectedEdge={webSelectedEdge}
+                onOpenAngle={(angleId, angleTitle) => navigate({ kind: "angle", angleId, angleTitle })}
+                onOpenDocument={(documentId, docName) => navigate({ kind: "document", documentId, docName })}
+                onClearEdge={() => setWebSelectedEdge(null)}
+                leadStatus={leadJob.status}
+                leadResult={leadJob.result}
+              />
+            )}
           </div>
         )}
 
@@ -879,12 +853,10 @@ export default function InvestigateTab({
                 onDocumentClick={(docId, docName) => navigate({ kind: "document", documentId: docId, docName })}
                 onBack={navigateBack}
                 onAngleTiedOff={() =>
-                  fetchGraph(caseId)
-                    .then(setGraph)
-                    .catch((err) => {
-                      console.error(err);
-                      toast.error("The Web didn't refresh — reload if the graph looks stale.");
-                    })
+                  refreshCaseData().catch((err) => {
+                    console.error(err);
+                    toast.error("The Case Map didn't refresh — reload if it looks stale.");
+                  })
                 }
               />
             </Suspense>
@@ -915,12 +887,10 @@ export default function InvestigateTab({
             onCreated={(newAngle) => {
               setShowConnectModal(false);
               navigate({ kind: "angle", angleId: newAngle.id, angleTitle: newAngle.title });
-              fetchGraph(caseId)
-                .then(setGraph)
-                .catch((err) => {
-                  console.error(err);
-                  toast.error("The Web didn't refresh — reload if the graph looks stale.");
-                });
+              refreshCaseData().catch((err) => {
+                console.error(err);
+                toast.error("The Case Map didn't refresh — reload if the graph looks stale.");
+              });
             }}
           />
         </Suspense>

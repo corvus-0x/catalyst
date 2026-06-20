@@ -80,6 +80,6 @@ export {
 // AsyncJobEnvelope re-export (convenience alias matching the JSDoc in research.ts)
 export type { AsyncJobEnvelope } from "./research";
 
-// Entity-relationship graph (the "Web") + entity detail (Profile drill-down)
-export { fetchGraph, fetchEntities, fetchEntityDetail } from "./graph";
+// Entity-relationship graph (the "Web") + Case Map + entity detail (Profile drill-down)
+export { fetchGraph, fetchCaseMap, fetchEntities, fetchEntityDetail } from "./graph";
 export type { EntityListParams } from "./graph";
