@@ -4,7 +4,8 @@
  * These functions turn the /case-map/ contract (SubjectNode / SummaryEdge) into
  * Cytoscape element `data`/`classes`. The stylesheet in CytoscapeCanvas only
  * *selects* on the attributes set here, so the visual rules are unit-testable
- * without rendering Cytoscape. Shape = type; color = state (spec §10).
+ * without rendering Cytoscape. Shape = type; color = state
+ * (see docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md §10).
  */
 import type { SubjectNode, SummaryEdge, EdgeStrengthLevel } from "../types";
 

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, fireEvent } from "@testing-library/react";
 import RelationshipSummaryPanel from "./RelationshipSummaryPanel";
 import type { SummaryEdge } from "../types";
 
@@ -41,5 +41,14 @@ describe("RelationshipSummaryPanel", () => {
     expect(reasons?.textContent).toContain("Formal role documented");
     // the category token must NOT leak into the reasons section
     expect(reasons?.textContent).not.toContain("formal_role");
+  });
+
+  it("invokes onClear when the close button is clicked", () => {
+    const onClear = vi.fn();
+    const { getByLabelText } = render(
+      <RelationshipSummaryPanel edge={edge} subjectLabel={(id) => id} onClear={onClear} />,
+    );
+    fireEvent.click(getByLabelText("Close relationship detail"));
+    expect(onClear).toHaveBeenCalledTimes(1);
   });
 });

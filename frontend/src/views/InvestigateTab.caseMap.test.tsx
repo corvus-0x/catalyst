@@ -30,8 +30,13 @@ vi.mock("../api", () => ({
       { id: "a__b", source: "a", target: "b", relationship: "SUMMARY", label: "Documented relationship", state: "documented",
         strength: { score: 30, level: "documented", categories: ["formal_role"], source_count: 0, transaction_count: 0, role_count: 1, thread_count: 0, substantiated_thread_count: 0, handoff_included: false, relationship_types: ["OFFICER_OF"], reasons: ["Formal role documented"] },
         evidence_refs: [], thread_refs: [], underlying_relationships: [] },
+      // Second edge with a DISTINCT reason — proves handleEdgeClick resolves by id,
+      // not by source/target or first-match.
+      { id: "a__c", source: "a", target: "c", relationship: "SUMMARY", label: "Observed relationship", state: "observed",
+        strength: { score: 15, level: "observed", categories: ["shared_address"], source_count: 0, transaction_count: 0, role_count: 0, thread_count: 0, substantiated_thread_count: 0, handoff_included: false, relationship_types: [], reasons: ["Shared address appears in records"] },
+        evidence_refs: [], thread_refs: [], underlying_relationships: [] },
     ],
-    stats: { subject_count: 2, edge_count: 1, by_level: { observed: 0, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
+    stats: { subject_count: 2, edge_count: 2, by_level: { observed: 1, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
   }),
   fetchFuzzyMatches: vi.fn().mockResolvedValue({ count: 0, results: [] }),
   fetchDashboard: vi.fn().mockResolvedValue({
@@ -74,17 +79,37 @@ describe("InvestigateTab Case Map wiring", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Subjects");
     expect(text).not.toContain("Entities"); // relabeled
-    // subject_count is 2; entities.total (10) must NOT be the source
-    expect(text).not.toContain("10 Subjects");
+    // subject_count is 2; entities.total (10) must NOT be the source. WebStatsBar
+    // renders the value in its own span, so assert the rendered value is 2 (not 10).
+    const statValues = Array.from(container.querySelectorAll(".web-stats-chip__value")).map(
+      (el) => el.textContent,
+    );
+    expect(statValues).toContain("2");
+    expect(statValues).not.toContain("10");
   });
 
-  it("edge click opens RelationshipSummaryPanel from the SummaryEdge", async () => {
+  it("edge click opens RelationshipSummaryPanel for the edge matching the clicked id", async () => {
     const { getByTestId, container, findByText } = renderTab();
     await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
-    fireEvent.click(getByTestId("cy-edge"));
-    // panel shows the summary edge's level + reason (not ConnectionDetailPanel)
+    fireEvent.click(getByTestId("cy-edge")); // fires onEdgeClick("a__b")
+    // panel shows a__b's reason (not ConnectionDetailPanel, not the other edge a__c)
     expect(await findByText("Formal role documented")).toBeTruthy();
-    expect(container.textContent ?? "").toContain("does not imply wrongdoing");
+    const text = container.textContent ?? "";
+    expect(text).toContain("does not imply wrongdoing");
+    expect(text).not.toContain("Shared address appears in records"); // a__c, not selected
+  });
+
+  it("re-run rules refetches /case-map/ and clears the open relationship (D5)", async () => {
+    const { getByTestId, getByLabelText, queryByText, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(1));
+    fireEvent.click(getByTestId("cy-edge"));
+    await findByText("Formal role documented");
+    fireEvent.click(getByLabelText("Re-run signal rules"));
+    await waitFor(() => expect(api.reevaluateSignals).toHaveBeenCalledWith("c1"));
+    // D5: the re-run refresh refetches the Case Map (2nd call) ...
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(2));
+    // ... and clears the now-possibly-stale relationship panel.
+    await waitFor(() => expect(queryByText("Formal role documented")).toBeNull());
   });
 
   it("clears the selected relationship when navigating to a subject profile", async () => {

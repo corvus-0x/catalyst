@@ -50,7 +50,7 @@ export type NavEntry =
 
 function entryLabel(e: NavEntry): string {
   switch (e.kind) {
-    case "web":      return "Investigation web";
+    case "web":      return "Case Map";
     case "profile":  return e.entityName;
     case "angle":    return e.angleTitle || "Angle";
     case "document": return e.docName;
@@ -518,7 +518,9 @@ export default function InvestigateTab({
         setPendingCount(fuzzy.count);
         setDashboard(dash);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load graph"))
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Failed to load investigation data — reload to try again."),
+      )
       .finally(() => setLoading(false));
   }, [caseId]);
 
@@ -530,8 +532,14 @@ export default function InvestigateTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedAngle]);
 
-  /* ── Unified refresh helper: refetches /case-map/, /graph/, and dashboard ── */
+  /* ── Unified refresh helper: refetches /case-map/, /graph/, and dashboard ──
+     Every state-changing action (tie-off, creation, re-run rules, Lead) routes
+     through here so the three datasets stay coherent (D5). The selected
+     relationship is cleared up front — a state change can remove or restrengthen
+     the edge, so the panel must not stay pinned to a stale snapshot even if the
+     refetch then fails. */
   async function refreshCaseData() {
+    setSelectedSummaryEdge(null);
     const [cm, g, dash] = await Promise.all([
       fetchCaseMap(caseId),
       fetchGraph(caseId),
@@ -540,9 +548,6 @@ export default function InvestigateTab({
     setCaseMap(cm);
     setGraph(g);
     setDashboard(dash);
-    // The selected relationship may no longer exist after a refresh — clear it
-    // rather than leaving the panel pinned to a stale edge.
-    setSelectedSummaryEdge(null);
   }
 
   /* ── Lead handler ── */
@@ -555,14 +560,7 @@ export default function InvestigateTab({
     setRerunPending(true);
     try {
       await reevaluateSignals(caseId);
-      const [cm, g, dash] = await Promise.all([
-        fetchCaseMap(caseId),
-        fetchGraph(caseId),
-        fetchDashboard(caseId),
-      ]);
-      setCaseMap(cm);
-      setGraph(g);
-      setDashboard(dash);
+      await refreshCaseData();
     } catch (err) {
       console.error("Re-run rules failed:", err);
       toast.error("Signal re-run failed — try again.");
@@ -574,16 +572,10 @@ export default function InvestigateTab({
   /* ── Refresh graph + case-map + dashboard after Lead job completes (D5) ── */
   useEffect(() => {
     if (leadJob.status !== "SUCCESS") return;
-    Promise.all([fetchCaseMap(caseId), fetchGraph(caseId), fetchDashboard(caseId)])
-      .then(([cm, g, dash]) => {
-        setCaseMap(cm);
-        setGraph(g);
-        setDashboard(dash);
-      })
-      .catch((err) => {
-        console.error(err);
-        toast.error("Couldn't refresh the dashboard — reload if counts look stale.");
-      });
+    refreshCaseData().catch((err) => {
+      console.error(err);
+      toast.error("Couldn't refresh the Case Map — reload if it looks stale.");
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadJob.status]);
 
@@ -644,8 +636,18 @@ export default function InvestigateTab({
   /* ── Edge tap on canvas → select the matching SummaryEdge from /case-map/ ── */
   function handleEdgeClick(edgeId: string) {
     if (current.kind !== "web") return;
+    // Ignore taps that arrive before the Case Map has loaded — the canvas is
+    // built from caseMap, so a click can't predate it in practice, but guarding
+    // avoids silently clearing the panel on a null-caseMap miss.
+    if (!caseMap) return;
     // edgeId format for case-map edges: "subjectMin__subjectMax" (set by summaryEdgeToElement)
-    const edge = caseMap?.edges.find((e) => e.id === edgeId) ?? null;
+    const edge = caseMap.edges.find((e) => e.id === edgeId) ?? null;
+    if (!edge) {
+      // A tap resolved to an edge id not in the current case-map (e.g. canvas
+      // rendering elements from a prior refresh). Surface it rather than no-op.
+      console.warn("handleEdgeClick: no SummaryEdge for id", edgeId);
+      return;
+    }
     setSelectedSummaryEdge(edge);
     setWebSelectedEdge(null);
   }
