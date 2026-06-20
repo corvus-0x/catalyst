@@ -1,11 +1,13 @@
 /**
- * graph.ts — API functions for the entity-relationship Web (graph) and entity profiles.
+ * graph.ts — API functions for the entity-relationship graph, the Case Map, and entity profiles.
  *
- * The graph endpoint powers the Cytoscape.js "Web" canvas on the Investigate tab.
- * It also returns `timeline_events` used by the D3 Timeline brush.
+ * `fetchGraph` returns the raw graph; it powers node drill-down and the
+ * `timeline_events` used by the D3 Timeline brush. `fetchCaseMap` returns the
+ * summarized subject-pair contract that drives the Cytoscape Case Map canvas on
+ * the Investigate tab.
  *
- * Entity detail (GET /api/entities/:type/:id/) powers the Level 2 Profile drill-down
- * inside the Web. Per the API contract, ignore `related_signals` — use `related_findings`
+ * Entity detail (GET /api/entities/:type/:id/) powers the Level 2 Profile drill-down.
+ * Per the API contract, ignore `related_signals` — use `related_findings`
  * (summary shape) for the compact profile sidebar list.
  */
 
@@ -14,6 +16,7 @@ import type {
   GraphResponse,
   EntityBrowserResponse,
   EntityDetailResponse,
+  CaseMapResponse,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +40,17 @@ import type {
  */
 export async function fetchGraph(caseId: string): Promise<GraphResponse> {
   return fetchApi<GraphResponse>(`/api/cases/${caseId}/graph/`);
+}
+
+/**
+ * Fetch the summarized Case Map for a case (Phase 1A contract).
+ *
+ * Returns subject nodes (person/org only) and one summarized edge per subject
+ * pair, each with an explainable `strength` object. Separate from /graph/,
+ * which still powers the Timeline and node drill-down.
+ */
+export async function fetchCaseMap(caseId: string): Promise<CaseMapResponse> {
+  return fetchApi<CaseMapResponse>(`/api/cases/${caseId}/case-map/`);
 }
 
 // ---------------------------------------------------------------------------

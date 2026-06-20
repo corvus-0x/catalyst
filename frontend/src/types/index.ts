@@ -511,6 +511,94 @@ export interface GraphResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Case Map (GET /api/cases/:id/case-map/) — Phase 1A locked contract
+// Separate from the raw /graph/ shape: one summarized edge per subject pair.
+// ---------------------------------------------------------------------------
+
+export type EdgeStrengthLevel = "observed" | "documented" | "repeated" | "material";
+
+export interface SubjectNode {
+  id: UUID;
+  type: "person" | "organization";
+  label: string;
+  subtype: string | null;
+  flags: {
+    /** Neutral data-completeness flag (org status UNKNOWN) — NOT an accusation. */
+    status_unknown: boolean;
+    has_active_thread: boolean;
+    has_substantiated_thread: boolean;
+  };
+  metadata: { thread_count: number; document_count: number };
+}
+
+export interface EdgeStrength {
+  score: number;
+  level: EdgeStrengthLevel;
+  categories: string[];
+  source_count: number;
+  transaction_count: number;
+  role_count: number;
+  thread_count: number;
+  substantiated_thread_count: number;
+  handoff_included: boolean;
+  relationship_types: string[];
+  reasons: string[];
+}
+
+export interface EvidenceRef {
+  kind: string;
+  document_id: UUID | null;
+  label: string;
+  category: string;
+}
+
+export interface ThreadRef {
+  thread_id: UUID;
+  title: string;
+  status: FindingStatus;
+  severity: FindingSeverity;
+  rule_id: string;
+  signal_type: string;
+  handoff_ready: boolean;
+}
+
+export interface UnderlyingRelationship {
+  kind: string;
+  label: string;
+  source: string;
+  source_id: UUID;
+}
+
+export interface SummaryEdge {
+  id: string; // "subjectMin__subjectMax"
+  source: UUID;
+  target: UUID;
+  relationship: "SUMMARY";
+  label: string;
+  state: EdgeStrengthLevel;
+  strength: EdgeStrength;
+  evidence_refs: EvidenceRef[];
+  thread_refs: ThreadRef[];
+  underlying_relationships: UnderlyingRelationship[];
+}
+
+export interface CaseMapStats {
+  subject_count: number;
+  edge_count: number;
+  by_level: Record<EdgeStrengthLevel, number>;
+  material_edge_count: number;
+  handoff_edge_count: number;
+  generated_at: ISO8601;
+}
+
+export interface CaseMapResponse {
+  case_id: UUID;
+  nodes: SubjectNode[];
+  edges: SummaryEdge[];
+  stats: CaseMapStats;
+}
+
+// ---------------------------------------------------------------------------
 // Section 5 — Financials Tab
 // GET /api/cases/:id/financials/
 // ---------------------------------------------------------------------------
