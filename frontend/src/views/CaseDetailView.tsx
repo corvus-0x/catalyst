@@ -192,6 +192,7 @@ function CaseDetailViewInner() {
           <InvestigateTab
             caseId={id}
             documents={caseData?.documents ?? []}
+            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         </Tabs.Content>
 

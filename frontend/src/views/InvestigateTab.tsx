@@ -14,7 +14,6 @@ import {
 } from "../api";
 import type {
   CaseMapResponse,
-  CaseQuality,
   CredibilityCounts,
   DashboardResponse,
   DocumentItem,
@@ -23,7 +22,9 @@ import type {
   OrgDetailResponse,
   PersonDetailResponse,
   ReferralReadinessResponse,
+  ReferralReadinessTargetTab,
 } from "../types";
+import WhatsMissingPanel from "../components/WhatsMissingPanel";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
@@ -213,188 +214,6 @@ export function CredibilityHeader({ credibility }: { credibility?: CredibilityCo
   );
 }
 
-function CaseQualityPanel({ quality }: { quality?: CaseQuality }) {
-  if (!quality) return null;
-
-  const badgeStyle =
-    quality.status === "READY"
-      ? {
-          background: "rgba(16, 185, 129, 0.16)",
-          color: "var(--color-success, #34d399)",
-          borderColor: "rgba(16, 185, 129, 0.32)",
-        }
-      : quality.status === "NEEDS_REVIEW"
-        ? {
-            background: "rgba(245, 158, 11, 0.16)",
-            color: "#fbbf24",
-            borderColor: "rgba(245, 158, 11, 0.32)",
-          }
-        : {
-            background: "rgba(248, 113, 113, 0.14)",
-            color: "var(--color-critical, #f87171)",
-            borderColor: "rgba(248, 113, 113, 0.32)",
-          };
-
-  return (
-    <div
-      style={{
-        border: "1px solid var(--border-1)",
-        borderRadius: 6,
-        padding: 10,
-        margin: "10px 0",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.05em",
-          textTransform: "uppercase",
-          color: "var(--text-3)",
-          marginBottom: 6,
-        }}
-      >
-        Case quality
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          gap: 8,
-        }}
-      >
-        <span
-          style={{
-            ...badgeStyle,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderRadius: 999,
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "2px 7px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {quality.grade}
-        </span>
-      </div>
-      {quality.top_issues.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: "var(--text-3)",
-              marginBottom: 5,
-            }}
-          >
-            Top gaps
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {quality.top_issues.slice(0, 3).map((issue) => (
-              <div
-                key={issue.key}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  color: "var(--text-2)",
-                }}
-                title={issue.summary}
-              >
-                <span>{issue.label}</span>
-                <span style={{ color: "var(--text-3)", fontWeight: 600 }}>
-                  {issue.status === "FAIL" ? "Blocker" : "Review"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Web-view right panel (default stats, shown when nothing is selected) ────── */
-
-interface WebPanelProps {
-  caseMap: CaseMapResponse | null;
-  dashboard: DashboardResponse | null;
-  leadStatus: "idle" | "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
-  leadResult: { findings_created: number; patterns_dropped: number } | null;
-}
-
-function WebRightPanel({
-  caseMap,
-  dashboard,
-  leadStatus,
-  leadResult,
-}: WebPanelProps) {
-  const subjectCount = caseMap?.stats.subject_count ?? 0;
-  const relationshipCount = caseMap?.stats.edge_count ?? 0;
-
-  return (
-    <div style={{ padding: 12, fontSize: 11, overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 5 }}>
-        Case Map
-      </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 2 }}>
-        {caseMap?.stats ? `${subjectCount} subjects · ${relationshipCount} relationships` : "Loading…"}
-      </div>
-
-      <CredibilityHeader credibility={dashboard?.credibility} />
-      <CaseQualityPanel quality={dashboard?.quality} />
-
-      {dashboard && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "10px 0" }}>
-          {[
-            { label: "Substantiated threads", value: dashboard.findings.by_status.CONFIRMED ?? 0, badge: "badge-success" },
-            { label: "Active threads",         value: dashboard.findings.by_status.NEEDS_EVIDENCE ?? 0, badge: "badge-info" },
-            { label: "Documents",              value: dashboard.documents.total, badge: null },
-          ].map(({ label, value, badge }) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ color: "var(--text-3)" }}>{label}</span>
-              <span className={badge ? `badge ${badge}` : ""} style={badge ? {} : { fontWeight: 600 }}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-      <div style={{ fontSize: 10, color: "var(--text-3)" }}>
-        Click a subject to open its profile. Click a relationship to see detail.
-      </div>
-      {(leadStatus === "QUEUED" || leadStatus === "RUNNING") && (
-        <>
-          <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-          <div style={{ fontSize: 10, color: "var(--text-3)" }}>✦ Lead analysis running…</div>
-        </>
-      )}
-      {leadStatus === "SUCCESS" && leadResult != null && (
-        <>
-          <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-          <div style={{ fontSize: 10, color: "var(--color-success, #3fb950)", fontWeight: 600 }}>
-            ✦ {leadResult.findings_created} new Lead{leadResult.findings_created !== 1 ? "s" : ""} found
-          </div>
-          {leadResult.patterns_dropped > 0 && (
-            <div style={{ fontSize: 10, color: "var(--text-3)" }}>
-              {leadResult.patterns_dropped} already captured
-            </div>
-          )}
-        </>
-      )}
-      {leadStatus === "FAILED" && (
-        <>
-          <hr style={{ border: "none", borderTop: "0.5px solid var(--border-1)", margin: "8px 0" }} />
-          <div style={{ fontSize: 10, color: "var(--color-critical, #f85149)" }}>Lead analysis failed</div>
-        </>
-      )}
-    </div>
-  );
-}
 
 /* ─── Empty web state ──────────────────────────────────────────────────────────── */
 
@@ -421,11 +240,13 @@ function EmptyWeb({ onAddAngle }: { onAddAngle: () => void }) {
 interface InvestigateTabProps {
   caseId: string;
   documents: DocumentItem[];
+  onNavigateTab?: (tab: ReferralReadinessTargetTab) => void;
 }
 
 export default function InvestigateTab({
   caseId,
   documents,
+  onNavigateTab,
 }: InvestigateTabProps) {
   const [graph, setGraph]           = useState<GraphResponse | null>(null);
   const [caseMap, setCaseMap]       = useState<CaseMapResponse | null>(null);
@@ -620,10 +441,6 @@ export default function InvestigateTab({
   const fallback = (msg: string) => (
     <div style={{ padding: 24, color: "var(--text-3)", fontSize: 14 }}>{msg}</div>
   );
-
-  // Suppress unused variable warning — readiness is stored and passed to refreshCaseData,
-  // but not yet rendered in Task 4 (renders in Tasks 5+). The reference below satisfies tsc.
-  void readiness;
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
@@ -821,13 +638,14 @@ export default function InvestigateTab({
                 }}
               />
             </Suspense>
-          ) : (
-            <WebRightPanel
-              caseMap={caseMap}
-              dashboard={dashboard}
-              leadStatus={leadJob.status}
-              leadResult={leadJob.result}
+          ) : readiness ? (
+            <WhatsMissingPanel
+              readiness={readiness}
+              onNavigateTab={(tab) => onNavigateTab?.(tab)}
+              onOpenPending={() => setShowConnectionReview(true)}
             />
+          ) : (
+            <div style={{ padding: 12, fontSize: 11, color: "var(--text-3)" }}>Loading…</div>
           )}
         </div>
       </div>
