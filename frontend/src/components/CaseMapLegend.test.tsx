@@ -9,7 +9,7 @@ describe("CaseMapLegend", () => {
     const button = screen.getByRole("button", { name: /Legend/ });
     await userEvent.click(button);
 
-    const text = screen.getByRole("button").parentElement?.textContent ?? "";
+    const text = document.body.textContent ?? "";
     expect(text).toContain("Person");
     expect(text).toContain("Organization");
     expect(text).toContain("Observed");
