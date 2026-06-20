@@ -30,7 +30,9 @@ Inspectors compose data already fetched (`/case-map/`, `fetchEntityDetail`, `fet
 - **Do NOT touch `/graph/`, the Timeline, or the tie-off gate.** Substantiation stays in full AngleView.
 - **Inspectors are read-from-existing-endpoints only.** No new backend.
 - **Commands:** `cd frontend && npx vitest run <path>`; `npx tsc --noEmit`. Branch: `case-map-phase-2`
-  (already created). Commit after each green task. Push/PR is outward — confirm with Tyler.
+  (already created). Commit after each green task — **except Tasks 1–4, which land as one commit when
+  `tsc` is green** (no broken-tsc intermediate commits; see Task 4 Step 5). Push/PR is outward —
+  confirm with Tyler.
 
 ## File Structure
 
@@ -39,7 +41,8 @@ Inspectors compose data already fetched (`/case-map/`, `fetchEntityDetail`, `fet
 - **Modify** `hooks/useFeederActions.ts` (+ `.test.tsx`) — `setActiveAngle` → `activateThread`.
 - **Modify** `views/CaseDetailView.tsx` — delete the bridge; chip → `clearActiveAngle`; deep-links → `openThread`.
 - **Modify** `views/InvestigateTab.tsx` — migrate to reducer; delete legacy; readiness in load/refresh.
-- **Create** `components/ContextPanel.tsx` (+ test) — the map-mode inspector switch.
+  The map-mode inspector switch (`selection.kind` → inspector) is wired **inline** here (no separate
+  `ContextPanel.tsx` — extract later only if this grows unwieldy).
 - **Modify** `components/RelationshipSummaryPanel.tsx` (+ test) — extend (§5.2).
 - **Create** `components/SubjectInspector.tsx` (+ test), `components/ThreadInspector.tsx` (+ test),
   `components/WhatsMissingPanel.tsx` (+ test).
@@ -358,12 +361,11 @@ export function useCaseWorkspace(): CaseWorkspaceState {
   Note: tsc across the project will fail until Tasks 2–4 land. Confirm the reducer's own test file
   passes and the context file has no internal type errors before committing.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add frontend/src/context/CaseWorkspaceContext.tsx frontend/src/context/CaseWorkspaceContext.test.tsx
-git commit -m "feat(case-map): focus reducer (two-tier Selection/Frame); reducer tests"
-```
+- [ ] **Step 5: DO NOT COMMIT YET** — project `tsc --noEmit` is intentionally type-incomplete until
+  Task 4 restores the callers (old setters are gone). Tasks 1–4 are one bisectable unit: the **single
+  commit lands at the end of Task 4** when `tsc` is green project-wide. The focused-Vitest RED/GREEN
+  above IS the TDD evidence for this stage; record it for the Task 4 commit message. (If executing
+  subagent-driven, Tasks 1–4 are one dispatch + one review + one commit.)
 
 ---
 
@@ -423,12 +425,8 @@ describe("useFeederActions migration to activateThread", () => {
 
 - [ ] **Step 4: Run GREEN** — same command → PASS.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add frontend/src/hooks/useFeederActions.ts frontend/src/hooks/useFeederActions.test.tsx
-git commit -m "feat(case-map): feeders set active thread via activateThread (history-free)"
-```
+- [ ] **Step 5: DO NOT COMMIT YET** — still part of the Tasks 1–4 spine unit (commit at Task 4 when
+  `tsc` is green). Focused Vitest GREEN above is this stage's evidence.
 
 ---
 
@@ -458,12 +456,8 @@ verify via `tsc` + the existing/extended view tests.)
   still error until Task 4 — that's expected mid-sequence). Run the existing `CaseDetailView`-touching
   tests if any. Do NOT run the full suite green-gate until Task 4 restores InvestigateTab.
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add frontend/src/views/CaseDetailView.tsx
-git commit -m "feat(case-map): remove CaseDetailView angle bridge; deep-link via openThread"
-```
+- [ ] **Step 3: DO NOT COMMIT YET** — `CaseDetailView` is now clean, but `InvestigateTab` still
+  references removed props, so project `tsc` stays red until Task 4. Commit lands at Task 4.
 
 ---
 
@@ -493,7 +487,7 @@ vi.mock("../api", () => ({
   fetchCaseMap: vi.fn().mockResolvedValue({ case_id: "c1", nodes: [{ id: "a", type: "person", label: "Jay", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } }], edges: [], stats: { subject_count: 1, edge_count: 0, by_level: { observed: 0, documented: 0, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "x" } }),
   fetchFuzzyMatches: vi.fn().mockResolvedValue({ count: 0, results: [] }),
   fetchDashboard: vi.fn().mockResolvedValue({ case: { id: "c1", name: "C", status: "ACTIVE", created_at: "2026-06-01T00:00:00Z", referral_ref: "" }, documents: { total: 0, by_type: {}, by_extraction_status: {}, renamed_count: 0 }, entities: { persons: 1, organizations: 0, properties: 0, financial_instruments: 0, total: 1 }, findings: { total: 0, by_status: {} }, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 }, quality: undefined }),
-  fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "NOT_READY", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
+  fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
   fetchEntityDetail: vi.fn().mockResolvedValue({ id: "a", entity_type: "person", name: "Jay", related_documents: [], related_findings: [] }),
   runAiPatternAnalysis: vi.fn(), reevaluateSignals: vi.fn(),
 }));
@@ -515,12 +509,14 @@ describe("InvestigateTab reducer migration", () => {
     expect(api.fetchReferralReadiness).toHaveBeenCalledWith("c1");
   });
 
-  it("node click opens the profile frame (map replaced by ProfilePanel)", async () => {
-    const { getByTestId, findByText } = renderTab();
+  it("node click SELECTS the subject and keeps the map visible (selection != frame)", async () => {
+    const { getByTestId } = renderTab();
     await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
     fireEvent.click(getByTestId("cy-node"));
-    // ProfilePanel renders; the canvas node stub is gone (full-frame mode)
-    await waitFor(() => expect(api.fetchEntityDetail).toHaveBeenCalledWith("person", "a"));
+    // THE RULE: selecting a subject is inspector state — the map (canvas stub) stays mounted,
+    // we do NOT push a profile frame. The temporary subject rail shows the selected subject.
+    expect(getByTestId("cy-node")).toBeTruthy();           // canvas still rendered
+    expect(getByTestId("subject-rail")).toBeTruthy();      // temporary rail (replaced by SubjectInspector in Task 6)
   });
 });
 ```
@@ -535,12 +531,23 @@ describe("InvestigateTab reducer migration", () => {
     edge path stays for now via `selectedSummaryEdge`).
   - From `useCaseWorkspace()` pull: `currentFrame`, `selection`, `selectSubject`, `openProfile`,
     `openThread`, `openDocument`, `goBack`, `goTo`, `activeAngleId`.
-  - `handleNodeClick(nodeId)`: resolve the graph node; `openProfile({ id, entityType: node.type, name: node.label })` (replaces the old `setActiveEntity` + navigate-to-profile).
+  - `handleNodeClick(nodeId)`: resolve the graph node; **`selectSubject(node.id)`** — NOT
+    `openProfile`. Per THE RULE, a node click is a transient selection that keeps the map visible; the
+    full-width profile frame is reached only via the SubjectInspector's "Open full profile" button
+    (`openProfile`), which arrives in Task 6. (This replaces the old `setActiveEntity` +
+    navigate-to-profile-frame behavior — the old full-swap-on-click is exactly what Phase 2 removes.)
+  - **Temporary subject rail:** while `selection.kind === "subject"`, render a minimal placeholder
+    (`data-testid="subject-rail"`, shows the subject label + "Inspector loading…") in the right rail.
+    Task 6 replaces it with `SubjectInspector`. (The `profile` frame branch is wired now but has no
+    trigger until Task 6 — that's fine; it renders the existing `ProfilePanel` when reached.)
   - Add `readiness` state + `fetchReferralReadiness(caseId)` to the mount `Promise.all` and to
     `refreshCaseData()` (set it alongside caseMap/graph/dashboard).
   - Render modes keyed on `currentFrame.kind`:
-    - `"web"` → toolbar + canvas + right rail (rail = the existing 1B branch: `selectedSummaryEdge`
-      ? `RelationshipSummaryPanel` : `WebRightPanel`; Task 5/6 replace this with `ContextPanel`).
+    - `"web"` → toolbar + canvas + right rail, switched on `selection.kind`:
+      `"subject"` → temporary `subject-rail` placeholder (Task 6 → `SubjectInspector`);
+      otherwise the existing 1B branch (`selectedSummaryEdge` ? `RelationshipSummaryPanel` :
+      `WebRightPanel`). (`selectedSummaryEdge` is the lone surviving local-selection state, deleted in
+      Task 5 when relationship clicks move onto `selectRelationship`.)
     - `"profile"` → `<ProfilePanel ... onBack={goBack} />` (full-width; existing component).
     - `"angle"` → `<AngleView ... onBack={goBack} />`.
     - `"document"` → `<DocumentView ... onBack={goBack} activeAngleId={activeAngleId} />` (pass the
@@ -553,11 +560,20 @@ describe("InvestigateTab reducer migration", () => {
   `InvestigateTab.caseMap.test.tsx` (update its `CaseWorkspaceProvider` usage if selection now flows
   through context). Then `npx tsc --noEmit` clean. Then full suite green.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit the whole spine (Tasks 1–4) — first commit of Phase 2**
+
+Project `tsc --noEmit` is now green again, so this is the first bisectable commit. It covers the
+reducer, feeder migration, bridge removal, and the InvestigateTab migration together.
 
 ```bash
-git add frontend/src/views/InvestigateTab.tsx frontend/src/views/InvestigateTab.frame.test.tsx frontend/src/views/InvestigateTab.caseMap.test.tsx
-git commit -m "feat(case-map): InvestigateTab driven by focus reducer; readiness in load/refresh; DocumentView active angle from context"
+cd frontend && npx tsc --noEmit   # must be clean before committing
+npx vitest run                    # full suite green
+cd .. && git add frontend/src/context frontend/src/hooks/useFeederActions.ts frontend/src/hooks/useFeederActions.test.tsx frontend/src/views/CaseDetailView.tsx frontend/src/views/InvestigateTab.tsx frontend/src/views/InvestigateTab.frame.test.tsx frontend/src/views/InvestigateTab.caseMap.test.tsx
+git commit -m "feat(case-map): Phase 2 spine — focus reducer + feeder/bridge/InvestigateTab migration
+
+Tasks 1-4 land as one commit (tsc green) to keep history bisectable. RED/GREEN per focused Vitest:
+reducer (selection!=history, activateThread pointer-only, goBack recompute), feeder activateThread,
+bridge removal, InvestigateTab reducer-driven (node click -> selectSubject; map stays visible)."
 ```
 
 ---
@@ -638,21 +654,29 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../api", () => ({
   fetchEntityDetail: vi.fn().mockResolvedValue({ id: "p1", entity_type: "person", name: "Jay Example", role_tags: [], aliases: ["J. Example"], related_documents: [{ id: "d1", filename: "Deed.pdf" }], related_findings: [] }),
   fetchNotes: vi.fn().mockResolvedValue({ results: [
-    { id: "n1", target_type: "person", target_id: "p1", content: "Saw him at the deed signing", created_by: "me", created_at: "x", updated_at: "x" },
-    { id: "n2", target_type: "person", target_id: "OTHER", content: "unrelated", created_by: "me", created_at: "x", updated_at: "x" },
+    { id: "n1", case_id: "c1", target_type: "person", target_id: "p1", content: "Saw him at the deed signing", created_by: "me", created_at: "x", updated_at: "x" },
+    { id: "n2", case_id: "c1", target_type: "person", target_id: "OTHER", content: "unrelated", created_by: "me", created_at: "x", updated_at: "x" },
   ] }),
   createNote: vi.fn().mockResolvedValue({}),
 }));
 import * as api from "../api";
+import type { CaseMapResponse } from "../types";
 import SubjectInspector from "./SubjectInspector";
 
-const caseMap = { edges: [{ id: "p1__o1", source: "p1", target: "o1", strength: { level: "documented", score: 30 } }], nodes: [{ id: "o1", label: "Acme" }] };
+// One boundary cast for the partial fixture — do NOT spread `any` into component code;
+// SubjectInspector's prop is typed `caseMap: CaseMapResponse`.
+const caseMap = {
+  case_id: "c1",
+  nodes: [{ id: "o1", type: "organization", label: "Acme", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } }],
+  edges: [{ id: "o1__p1", source: "o1", target: "p1", relationship: "SUMMARY", label: "Documented relationship", state: "documented", strength: { score: 30, level: "documented", categories: ["formal_role"], source_count: 0, transaction_count: 0, role_count: 1, thread_count: 0, substantiated_thread_count: 0, handoff_included: false, relationship_types: [], reasons: [] }, evidence_refs: [], thread_refs: [], underlying_relationships: [] }],
+  stats: { subject_count: 2, edge_count: 1, by_level: { observed: 0, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "x" },
+} as unknown as CaseMapResponse;
 beforeEach(() => vi.clearAllMocks());
 
 describe("SubjectInspector", () => {
   it("shows identity + observations filtered by target_id; not other subjects' notes", async () => {
     const { findByText, queryByText } = render(
-      <SubjectInspector caseId="c1" subjectId="p1" entityType="person" caseMap={caseMap as any}
+      <SubjectInspector caseId="c1" subjectId="p1" entityType="person" caseMap={caseMap}
         subjectLabel={(id) => id} onSelectRelationship={() => {}} onStartThread={() => {}}
         onCite={() => {}} onOpenProfile={() => {}} onClear={() => {}} />,
     );
@@ -664,7 +688,7 @@ describe("SubjectInspector", () => {
 
   it("add observation calls createNote with target_id", async () => {
     const { findByLabelText, getByText } = render(
-      <SubjectInspector caseId="c1" subjectId="p1" entityType="person" caseMap={caseMap as any}
+      <SubjectInspector caseId="c1" subjectId="p1" entityType="person" caseMap={caseMap}
         subjectLabel={(id) => id} onSelectRelationship={() => {}} onStartThread={() => {}}
         onCite={() => {}} onOpenProfile={() => {}} onClear={() => {}} />,
     );
@@ -702,17 +726,30 @@ in `InvestigateTab` for `selection.kind==="none"` on the web frame.
 import { render, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import WhatsMissingPanel from "./WhatsMissingPanel";
+import type { ReferralReadinessItem, ReferralReadinessResponse, ReferralReadinessStatus } from "../types";
 
-const items = [
+const items: ReferralReadinessItem[] = [
   { key: "citation_coverage", label: "Citations", status: "FAIL", summary: "2 uncited", target_tab: "investigate" },
   { key: "financials", label: "Financials", status: "WARN", summary: "stale", target_tab: "financials" },
   { key: "done", label: "Done", status: "PASS", summary: "ok", target_tab: "referrals" },
 ];
 
+// Boundary fixture helper — `quality` isn't exercised by this panel, so cast it once here
+// instead of leaking `any` into the component. Everything else is type-accurate.
+const readiness = (
+  status: ReferralReadinessStatus,
+  its: ReferralReadinessItem[],
+  credibility = { referral_grade: 0, need_work: 0, agency_leads: 0 },
+): ReferralReadinessResponse => ({
+  status, summary: "", items: its,
+  quality: undefined as unknown as ReferralReadinessResponse["quality"],
+  credibility,
+});
+
 describe("WhatsMissingPanel", () => {
   it("renders FAIL/WARN only, FAIL first, omits PASS", () => {
     const { getByText, queryByText, container } = render(
-      <WhatsMissingPanel readiness={{ status: "NOT_READY", summary: "", items, quality: undefined as any, credibility: { referral_grade: 1, need_work: 2, agency_leads: 0 } }} onNavigateTab={() => {}} onOpenPending={() => {}} />,
+      <WhatsMissingPanel readiness={readiness("BLOCKED", items, { referral_grade: 1, need_work: 2, agency_leads: 0 })} onNavigateTab={() => {}} onOpenPending={() => {}} />,
     );
     expect(getByText("Citations")).toBeTruthy();
     expect(getByText("Financials")).toBeTruthy();
@@ -724,7 +761,7 @@ describe("WhatsMissingPanel", () => {
   it("a cross-tab row click calls onNavigateTab", () => {
     const onNavigateTab = vi.fn();
     const { getByText } = render(
-      <WhatsMissingPanel readiness={{ status: "NOT_READY", summary: "", items, quality: undefined as any, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }} onNavigateTab={onNavigateTab} onOpenPending={() => {}} />,
+      <WhatsMissingPanel readiness={readiness("BLOCKED", items)} onNavigateTab={onNavigateTab} onOpenPending={() => {}} />,
     );
     fireEvent.click(getByText("Financials"));
     expect(onNavigateTab).toHaveBeenCalledWith("financials");
@@ -732,7 +769,7 @@ describe("WhatsMissingPanel", () => {
 
   it("READY / no actionable items → quiet empty state", () => {
     const { getByText } = render(
-      <WhatsMissingPanel readiness={{ status: "READY", summary: "", items: [items[2]], quality: undefined as any, credibility: { referral_grade: 3, need_work: 0, agency_leads: 0 } }} onNavigateTab={() => {}} onOpenPending={() => {}} />,
+      <WhatsMissingPanel readiness={readiness("READY", [items[2]], { referral_grade: 3, need_work: 0, agency_leads: 0 })} onNavigateTab={() => {}} onOpenPending={() => {}} />,
     );
     expect(getByText(/Nothing's blocking/)).toBeTruthy();
   });
@@ -757,7 +794,7 @@ describe("WhatsMissingPanel", () => {
 
 ```tsx
 // components/ThreadInspector.test.tsx
-import { render, findByText as _f, fireEvent, waitFor } from "@testing-library/react";
+import { render, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api", () => ({
@@ -852,3 +889,17 @@ names the exact symbol to add/delete.
 
 **Sequencing:** matches spec §8a — reducer → feeder → bridge → tab migration → relationship+delete →
 Subject → WhatsMissing → Thread → sweep. Risky state refactor (T1–T4) precedes all new UI.
+
+**Plan-review fixes applied:**
+1. **Central rule** — Task 4 node click now `selectSubject` (map stays visible, temporary
+   `subject-rail`), NOT `openProfile`; Task 4's test proves the map stays mounted. Full profile is
+   reached only via SubjectInspector's "Open full profile" (Task 6).
+2. **No broken commits** — Tasks 1–3 defer their commit; the spine lands as **one bisectable commit at
+   Task 4** when `tsc` is green (RED/GREEN evidence = the focused Vitest runs).
+3. **Valid readiness status** — fixtures use `BLOCKED`/`READY` (the real `ReferralReadinessStatus`),
+   not the nonexistent `NOT_READY`.
+4. **Type-accurate fixtures** — `InvestigatorNote` carries `case_id`; `caseMap`/`readiness` use a
+   single boundary cast (`as unknown as CaseMapResponse` / typed `readiness()` helper) — no `any` in
+   component code; SubjectInspector's `caseMap` prop is typed `CaseMapResponse`.
+5. **No phantom file** — `ContextPanel.tsx` removed; the inspector switch is wired inline in
+   `InvestigateTab`.
