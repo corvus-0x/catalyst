@@ -257,10 +257,14 @@ dashboard + readiness + **thread list** coherent. It must run after anything tha
 - signal re-run (`handleRerunRules`)
 - citation/source changes that affect the readiness column
 
-Mirror the existing relationship-selection rule: `refreshCaseData` already clears a stale
-*relationship* selection (edge identity can change). A **thread** selection uses a stable finding
-UUID and should survive refresh — but if the selected thread is **gone** from the refreshed list
-(e.g. deleted), clear the selection so Path Mode doesn't pin to a missing thread.
+`refreshCaseData` already clears a stale *relationship* selection (edge identity can change). A
+**thread** selection uses a stable finding UUID and **survives refresh**. Critically, **do not clear a
+thread selection just because it is absent from `fetchAngles(limit: 100).results`** — page-absence ≠
+deletion. A legitimate thread beyond the first 100 (the 101st-thread case, reachable via a
+Relationship-panel `thread_ref`) would otherwise be wrongly cleared on every refresh. For v1 there is
+**no auto-clear**: a genuinely-deleted selected thread is handled by the selected-thread fallback
+fetch (§5) resolving to `null` → Path Mode goes neutral and `ThreadInspector` shows its existing
+"Couldn't load thread" state. (A future enhancement could clear only on a real by-id not-found.)
 
 ## 8. Class / CSS vocabulary (guardrail #5)
 
@@ -315,8 +319,9 @@ neutral regardless — *color the path, not the people* (§10 of the controlling
 - selecting a dock row → `selection.kind === "thread"` → `ThreadInspector` opens → Path Mode classes
   computed (assert `threadPath` result wired to `cy`) → active row highlighted.
 - clearing / selecting elsewhere → all Phase-3 classes removed, dock row de-highlighted.
-- refresh after a thread-changing action updates the dock list (no stale rows); selection of a
-  now-deleted thread is cleared.
+- refresh after a thread-changing action updates the dock list (no stale rows); a selected thread
+  **beyond the first 100** is NOT cleared by refresh (page-absence ≠ deletion); a genuinely-deleted
+  selected thread degrades via the §5 fallback fetch resolving to `null`.
 - **fetch isolation (correction #1):** when `fetchAngles` rejects but the map fetches succeed, the
   Case Map still renders and the dock shows its own error+retry — the map is not blanked.
 - **init ordering (correction #5):** a thread selection that exists *before* `onCyInit` fires still
@@ -349,7 +354,7 @@ shared readiness helper, and the class vocabulary. Nothing more.
 | `frontend/src/components/ThreadInspector.tsx` | consume `threadReadiness`; add `noVisibleMapPath` prop + line; extend `severityColor` for LOW/INFORMATIONAL |
 | `frontend/src/components/ThreadDock.tsx` (new) | the dock surface (rows, full-enum sort, collapse, loading/error/empty/100-cap states) |
 | `frontend/src/components/CytoscapeCanvas.tsx` | add `.thread-path-edge*` + `.thread-path-subject` styles (`onCyInit` already exists) |
-| `frontend/src/views/InvestigateTab.tsx` | isolated `threads`/`threadsLoading`/`threadsError` state (separate effect or `allSettled`); `cyReady` state set in `onCyInit`; dock render + layout; `selectedThread` derive; `threadPath` `useMemo` feeding both the Path Mode effect and `noVisibleMapPath`; `applyThreadPathMode` called from effect + `onCyInit`; extend `refreshCaseData` with `fetchAngles` + stale-selection cleanup |
+| `frontend/src/views/InvestigateTab.tsx` | isolated `threads`/`threadsLoading`/`threadsError` state (separate effect or `allSettled`); `cyReady` state set in `onCyInit`; dock render + layout; `selectedThread` derive + 101st-thread fallback fetch; `threadPath` `useMemo` feeding both the Path Mode effect and `noVisibleMapPath`; `applyThreadPathMode` (`useCallback`) called from effect + `onCyInit`; extend `refreshCaseData` with isolated `fetchAngles` (no page-absence clear) |
 | `*.test.ts(x)` | per §10 |
 
 No backend files change.

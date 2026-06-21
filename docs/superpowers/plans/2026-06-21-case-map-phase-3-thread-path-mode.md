@@ -149,7 +149,10 @@ Expected: FAIL — `threadPath`, `severityEdgeClass`, `compareBySeverity` are no
 
 - [ ] **Step 3: Implement the helpers**
 
-Append to `frontend/src/views/caseMapElements.ts` (add `FindingEntityLink`, `FindingSeverity` to the existing type import from `../types`):
+Append the new functions to `frontend/src/views/caseMapElements.ts`. **Edit the EXISTING type import**
+(currently `import type { SubjectNode, SummaryEdge, EdgeStrengthLevel } from "../types";` at the top of
+the file) to add `FindingEntityLink` + `FindingSeverity` — do NOT add a second `import type … from
+"../types"` line:
 
 ```ts
 import type {
@@ -990,54 +993,172 @@ Pass the prop to the existing `ThreadInspector` (line ~638):
   onChanged={() => { refreshCaseData().catch(/* existing */); }}
 />
 ```
-Extend `refreshCaseData` to refresh the dock list and clear a now-missing thread selection. **Keep the
-thread fetch isolated here too (correction #3)** — a dock-refresh failure must not reject the whole
-refresh and must not blank the map. After the existing `setCaseMap/setGraph/...` block, in its own
-`try/catch`:
+Extend `refreshCaseData` to refresh the dock list. **Keep the thread fetch isolated here too
+(correction #3)** — a dock-refresh failure must not reject the whole refresh and must not blank the map.
+
+> **Do NOT clear the selection on page-absence.** A selected thread missing from
+> `fetchAngles(limit: 100).results` only proves it is **not on the current page** — not that it was
+> deleted (the 101st-thread case). Auto-clearing here would silently break Path Mode for any thread
+> beyond the first 100 on every refresh. For v1 we do not auto-clear: if the selected thread was truly
+> deleted, the §Step-2 fallback `fetchAngle` rejects → `selectedThread` becomes `null` → Path Mode goes
+> neutral and `ThreadInspector` shows its existing "Couldn't load thread" state. Graceful, no guess.
+
+After the existing `setCaseMap/setGraph/...` block, in its own `try/catch`:
 ```ts
 try {
   const ang = await fetchAngles(caseId, { limit: 100 });
   setThreads(ang.results);
   setThreadsTotal(ang.count);
   setThreadsError(false);
-  if (selection.kind === "thread" && !ang.results.some((t) => t.id === selection.id)) {
-    clearSelection();   // selected thread is gone (e.g. deleted) — don't pin Path Mode to it
-  }
+  // No selection cleanup here — page-absence ≠ deletion. The Step-2 fallback fetch
+  // handles a genuinely-deleted selected thread by resolving selectedThread to null.
 } catch {
   setThreadsError(true);
   toast.error("Couldn't refresh threads — retry from the dock.");
 }
 ```
 
-- [ ] **Step 5: Write the integration tests**
+- [ ] **Step 5a: Update the EXISTING InvestigateTab test mocks for the new `fetchAngles` call**
 
-Create `frontend/src/views/InvestigateTab.threadpath.test.tsx`. Mock `../api` so `fetchAngles` returns two threads, `fetchCaseMap` returns an edge whose `thread_refs` reference one of them, and the other fetches resolve minimally. Assert the §6 invariant + fetch isolation + no-path. (Follow the mock pattern in the existing `InvestigateTab.caseMap.test.tsx`; read it first for the exact mock shape and `CaseWorkspaceProvider` wrapper.)
+Adding `fetchAngles` to `InvestigateTab` on mount means every test file that mocks `../api` for this
+component must include it, or the tests throw `fetchAngles is not a function`. In **each** of
+`InvestigateTab.caseMap.test.tsx`, `InvestigateTab.frame.test.tsx`, `InvestigateTab.test.tsx`, add this
+line to the `vi.mock("../api", () => ({ ... }))` block (alongside the existing `fetchAngle`):
 
 ```ts
-// Skeleton — fill mocks from InvestigateTab.caseMap.test.tsx
-it("selecting a dock row enters Thread Path Mode and opens ThreadInspector", async () => {
-  // render InvestigateTab inside CaseWorkspaceProvider with mocked api
-  // click the dock row for the edge-backed thread
-  // assert: ThreadInspector header "Thread" visible; the dock row has data-active="true"
-});
+fetchAngles: vi.fn().mockResolvedValue({ count: 0, results: [], limit: 100, offset: 0, next_offset: null, previous_offset: null }),
+```
+Run those three suites after the change to confirm no regression:
+`cd frontend && npx vitest run src/views/InvestigateTab.caseMap.test.tsx src/views/InvestigateTab.frame.test.tsx src/views/InvestigateTab.test.tsx`
 
-it("a thread with no map presence shows the no-visible-path note and does not blank the map", async () => {
-  // select the subject-only thread (no matching edge, empty entity_links)
-  // assert: "no visible Case Map path yet" text; canvas still rendered
-});
+- [ ] **Step 5b: Write the new Thread Path integration tests**
 
-it("the Case Map still renders when fetchAngles rejects", async () => {
-  // make fetchAngles reject; assert canvas present and dock shows Retry
-});
+Create `frontend/src/views/InvestigateTab.threadpath.test.tsx`. The mock block below is lifted from
+`InvestigateTab.caseMap.test.tsx` (the canonical template) with `fetchAngles` added and the Case Map
+seeded with one edge-backed thread (`t1` on edge `a__b`) and one subject-only thread (`t2`, no edge).
+Assertions use **observable proxies** (dock-row `data-active`, ThreadInspector text, the no-path note),
+not Cytoscape classes — class application is already covered by Task 1 + Task 3 unit tests.
 
-it("paints Path Mode for a thread not in the loaded dock page (101st-thread fallback)", async () => {
-  // fetchAngles returns a page WITHOUT thread "T-far"; an edge's thread_refs references "T-far".
-  // select it via the Relationship panel thread_ref; fetchAngle("T-far") resolves the detail.
-  // assert: ThreadInspector shows it, noVisibleMapPath is false (edge path found), severity honored.
+```tsx
+// frontend/src/views/InvestigateTab.threadpath.test.tsx
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, waitFor, fireEvent } from "@testing-library/react";
+
+vi.mock("../hooks/useFeederActions", () => ({
+  useFeederActions: () => ({
+    startAngleFrom: vi.fn().mockResolvedValue({ id: "x", title: "x" }),
+    citeToAngle: vi.fn().mockResolvedValue(undefined),
+    pickerOpen: false, closePicker: vi.fn(), onPickerPick: vi.fn(),
+  }),
+}));
+
+// Cytoscape stub: never render real Cytoscape in jsdom. Expose an edge button so we can
+// drive the Relationship-panel → thread_ref path. onCyInit is intentionally not called.
+vi.mock("../components/CytoscapeCanvas", () => ({
+  default: ({ onEdgeClick }: { onEdgeClick?: (id: string) => void }) => (
+    <div>
+      <button data-testid="cy-canvas">canvas</button>
+      <button data-testid="cy-edge" onClick={() => onEdgeClick?.("a__b")}>edge</button>
+    </div>
+  ),
+}));
+
+const NODES = [
+  { id: "a", type: "person", label: "Jay", subtype: null, flags: { status_unknown: false, has_active_thread: true, has_substantiated_thread: false }, metadata: { thread_count: 1, document_count: 0 } },
+  { id: "b", type: "organization", label: "Acme", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } },
+];
+const EDGE_AB = {
+  id: "a__b", source: "a", target: "b", relationship: "SUMMARY", label: "Documented relationship", state: "documented",
+  strength: { score: 30, level: "documented", categories: ["formal_role"], source_count: 0, transaction_count: 0, role_count: 1, thread_count: 1, substantiated_thread_count: 0, handoff_included: false, relationship_types: ["OFFICER_OF"], reasons: ["Formal role documented"] },
+  evidence_refs: [],
+  thread_refs: [{ thread_id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH", rule_id: "SR-015", signal_type: "INSIDER_SWAP", handoff_ready: false }],
+  underlying_relationships: [],
+};
+const CASE_MAP = {
+  case_id: "c1", nodes: NODES, edges: [EDGE_AB],
+  stats: { subject_count: 2, edge_count: 1, by_level: { observed: 0, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
+};
+// t1 = edge-backed (on a__b); t2 = subject-only (no edge, no entity_links → no map path)
+const THREAD_PAGE = {
+  count: 2, limit: 100, offset: 0, next_offset: null, previous_offset: null,
+  results: [
+    { id: "t1", rule_id: "SR-015", title: "Insider swap", description: "", narrative: "", severity: "HIGH", status: "NEEDS_EVIDENCE", evidence_weight: "SPECULATIVE", overreach_reviewed: false, source: "AUTO", investigator_note: "", legal_refs: [], evidence_snapshot: {}, trigger_doc_id: null, trigger_doc_filename: null, trigger_entity_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", entity_links: [], document_links: [] },
+    { id: "t2", rule_id: "SR-029", title: "Low program ratio", description: "", narrative: "", severity: "MEDIUM", status: "NEEDS_EVIDENCE", evidence_weight: "SPECULATIVE", overreach_reviewed: false, source: "AUTO", investigator_note: "", legal_refs: [], evidence_snapshot: {}, trigger_doc_id: null, trigger_doc_filename: null, trigger_entity_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", entity_links: [], document_links: [] },
+  ],
+};
+
+vi.mock("../api", () => ({
+  fetchGraph: vi.fn().mockResolvedValue({ nodes: [{ id: "a", type: "person", label: "Jay", metadata: { finding_count: 0, doc_count: 0 } }, { id: "b", type: "organization", label: "Acme", metadata: { finding_count: 0, doc_count: 0 } }], edges: [], timeline_events: [], stats: { node_types: { person: 1, organization: 1 }, total_edges: 0 } }),
+  fetchCaseMap: vi.fn().mockResolvedValue(CASE_MAP),
+  fetchAngles: vi.fn().mockResolvedValue(THREAD_PAGE),
+  fetchFuzzyMatches: vi.fn().mockResolvedValue({ count: 0, results: [] }),
+  fetchDashboard: vi.fn().mockResolvedValue({ case: { id: "c1", name: "C", status: "ACTIVE", created_at: "2026-06-01T00:00:00Z", referral_ref: "" }, documents: { total: 0, by_type: {}, by_extraction_status: {}, renamed_count: 0 }, entities: { persons: 1, organizations: 1, properties: 0, financial_instruments: 0, total: 2 }, findings: { total: 2, by_status: {} }, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 }, quality: undefined }),
+  fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
+  fetchEntityDetail: vi.fn().mockResolvedValue({ id: "a", entity_type: "person", name: "Jay", related_documents: [], related_findings: [] }),
+  fetchAngle: vi.fn().mockResolvedValue({ id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH", narrative: "", evidence_weight: "SPECULATIVE", overreach_reviewed: false, document_links: [] }),
+  updateAngle: vi.fn().mockResolvedValue({}),
+  runAiPatternAnalysis: vi.fn(),
+  reevaluateSignals: vi.fn(),
+}));
+
+import * as api from "../api";
+import InvestigateTab from "./InvestigateTab";
+import { CaseWorkspaceProvider } from "../context/CaseWorkspaceContext";
+
+function renderTab() {
+  return render(
+    <CaseWorkspaceProvider>
+      <InvestigateTab caseId="c1" documents={[]} />
+    </CaseWorkspaceProvider>,
+  );
+}
+beforeEach(() => vi.clearAllMocks());
+
+describe("InvestigateTab Thread Path Mode", () => {
+  it("dock lists threads and selecting a row opens ThreadInspector + marks the row active", async () => {
+    const { findByLabelText, findByText, container } = renderTab();
+    const row = await findByLabelText(/thread row Insider swap/i);
+    fireEvent.click(row);
+    // ThreadInspector mounts (fetchAngle resolves the detail) and the dock row is active
+    await waitFor(() => expect(api.fetchAngle).toHaveBeenCalledWith("c1", "t1"));
+    await findByText("Thread"); // ThreadInspector header label
+    const activeRow = container.querySelector('[aria-label="thread row Insider swap"]');
+    expect(activeRow?.getAttribute("data-active")).toBe("true");
+  });
+
+  it("a subject-only thread with no map presence shows the no-visible-path note", async () => {
+    const { findByLabelText, findByText } = renderTab();
+    // t2 has no edge and no entity_links → threadPath empty → noVisibleMapPath
+    // (fetchAngle returns t1 shape, but entity_links default empty in InvestigateTab's pathSet from the t2 dock row)
+    vi.mocked(api.fetchAngle).mockResolvedValueOnce({ id: "t2", title: "Low program ratio", status: "NEEDS_EVIDENCE", severity: "MEDIUM", narrative: "", evidence_weight: "SPECULATIVE", overreach_reviewed: false, document_links: [] } as never);
+    fireEvent.click(await findByLabelText(/thread row Low program ratio/i));
+    expect(await findByText(/no visible Case Map path yet/i)).toBeTruthy();
+  });
+
+  it("the Case Map still renders when fetchAngles rejects (fetch isolation)", async () => {
+    vi.mocked(api.fetchAngles).mockRejectedValueOnce(new Error("boom"));
+    const { findByTestId, findByText } = renderTab();
+    expect(await findByTestId("cy-canvas")).toBeTruthy();      // map not blanked
+    expect(await findByText(/Couldn’t load threads/i)).toBeTruthy(); // dock error
+  });
+
+  it("101st-thread fallback: a thread not in the dock page still opens via the Relationship panel", async () => {
+    // dock page WITHOUT t1; the edge still references t1 via thread_ref
+    vi.mocked(api.fetchAngles).mockResolvedValueOnce({ ...THREAD_PAGE, count: 101, results: THREAD_PAGE.results.filter((t) => t.id !== "t1") } as never);
+    const { getByTestId, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    fireEvent.click(getByTestId("cy-edge"));                   // open RelationshipSummaryPanel
+    fireEvent.click(await findByText("Insider swap"));         // thread_ref row → selectThread("t1")
+    // fallback fetchAngle("c1","t1") resolves the detail even though t1 wasn't in the dock page
+    await waitFor(() => expect(api.fetchAngle).toHaveBeenCalledWith("c1", "t1"));
+    expect(await findByText("Thread")).toBeTruthy();
+  });
 });
 ```
 
-> The integration test wiring (provider, cytoscape mock) is non-trivial — read `InvestigateTab.caseMap.test.tsx` and reuse its `vi.mock` block and any cytoscape stub verbatim. If Cytoscape class assertions are impractical in jsdom, assert the **observable** proxies instead: `data-active` on the dock row, the ThreadInspector text, and `noVisibleMapPath` behavior — the class application itself is covered by Task 1 (`threadPath`) + Task 3 (stylesheet) unit tests.
+> If a rendered-text matcher is brittle (e.g. the apostrophe in "Couldn’t"), match a stable substring
+> (`/load threads/i`). The exact `ThreadInspector` header text is the literal "Thread" label
+> (`ThreadInspector.tsx` header). Keep assertions on observable DOM, never on Cytoscape internals.
 
 - [ ] **Step 6: Run the integration tests + full suite**
 
@@ -1060,7 +1181,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ## Self-Review (completed)
 
-**Spec coverage:** §4 dock → Task 4 + Task 5 render; §5 Path Mode (path helper, severity suffix, imperative apply, cyReady, no-path) → Tasks 1, 3, 5; §6 reducer-binding invariant → Task 5 Step 5; §7 unified refresh (isolated, with stale-selection cleanup) → Task 5 Step 4; §8 class vocabulary → Task 3; readiness reuse (§4) → Task 2; full severity enum → Tasks 1, 2, 4; fetch isolation on mount **and** refresh → Task 5 Steps 1, 4; honest "N of M" page note via `totalCount`/`FindingsResponse.count` → Task 4; no-path prop → Tasks 2, 5; cyReady → Task 5 Step 3. All covered.
+**Spec coverage:** §4 dock → Task 4 + Task 5 render; §5 Path Mode (path helper, severity suffix, imperative apply, cyReady, no-path) → Tasks 1, 3, 5; §6 reducer-binding invariant → Task 5 Step 5; §7 unified refresh (isolated; **no page-absence clear** — see 101st-thread rule) → Task 5 Step 4; §8 class vocabulary → Task 3; readiness reuse (§4) → Task 2; full severity enum → Tasks 1, 2, 4; fetch isolation on mount **and** refresh → Task 5 Steps 1, 4; honest "N of M" page note via `totalCount`/`FindingsResponse.count` → Task 4; no-path prop → Tasks 2, 5; cyReady → Task 5 Step 3. All covered.
 
 **Pre-build corrections applied:** (#1) `threadPath` test uses valid `EntityType` members (`property`/`financial_instrument`), no `"document"`; (#2) honest `totalCount` "N of M" note, never implies sort reveals unloaded rows; (#3) refresh keeps the thread fetch in its own try/catch so a dock failure can't reject the refresh or blank the map; (#4) accurate `FindingItem` fixture, no boundary cast; (#5) tool-agnostic TDD header.
 
