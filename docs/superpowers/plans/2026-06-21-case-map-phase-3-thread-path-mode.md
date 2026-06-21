@@ -1,6 +1,6 @@
 # Case Map Phase 3 — Thread Path Mode + Thread Dock Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For the implementer:** Follow this plan task-by-task using TDD — write the RED test, run it RED, implement the minimal code, run it GREEN, typecheck, commit. Steps use checkbox (`- [ ]`) syntax for tracking. (In Claude Code, `superpowers:subagent-driven-development` or `superpowers:executing-plans` can drive this loop; the steps are tool-agnostic and work without them.)
 
 **Goal:** Selecting a thread makes the Case Map enter Thread Path Mode (emphasize the thread's relationships, neutral-ring its subjects, dim the rest), and add a persistent canvas-width Thread Dock so every thread is reachable from the map.
 
@@ -100,10 +100,11 @@ describe("threadPath", () => {
     expect(r.participatingSubjectIds.sort()).toEqual(["o1", "p1"]);
   });
 
-  it("ignores non-subject entity_links (document/property)", () => {
+  it("ignores non-subject entity_links (property / financial_instrument)", () => {
+    // EntityType = "person" | "organization" | "property" | "financial_instrument"
     const r = threadPath({
       threadId: "T1", edges: [],
-      entityLinks: [link("d1", "document"), link("pr1", "property"), link("p1", "person")],
+      entityLinks: [link("pr1", "property"), link("fi1", "financial_instrument"), link("p1", "person")],
     });
     expect(r.participatingSubjectIds).toEqual(["p1"]);
   });
@@ -507,16 +508,17 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ```ts
 type SortKey = "severity" | "status" | "readiness" | "recency";
 interface ThreadDockProps {
-  threads: FindingItem[];
+  threads: FindingItem[];                  // the loaded page (≤100)
+  totalCount: number;                      // FindingsResponse.count — total on the server
   loading: boolean;
   error: boolean;
-  selectedThreadId: string | undefined;   // from selection.kind==="thread"
+  selectedThreadId: string | undefined;    // from selection.kind==="thread"
   onSelectThread: (id: string) => void;    // row click; clicking the active row clears (parent decides)
   onRetry: () => void;
 }
 export default function ThreadDock(props: ThreadDockProps): JSX.Element
 ```
-The dock is presentational: it owns only **collapse** + **sort** local state. Selection lives in the parent reducer (the §6 invariant). The 100-cap note shows when `threads.length === 100`.
+The dock is presentational: it owns only **collapse** + **sort** local state. Selection lives in the parent reducer (the §6 invariant). When `totalCount > threads.length` the dock shows an honest "Showing N of M threads" note — it does **not** imply client-side sorting can reveal unloaded rows (correction #2).
 
 - [ ] **Step 1: Write the failing component tests**
 
@@ -528,16 +530,18 @@ import { describe, it, expect, vi } from "vitest";
 import ThreadDock from "./ThreadDock";
 import type { FindingItem } from "../types";
 
+// Accurate FindingItem (frontend/src/types/index.ts:835-882) — no cast.
 function thread(over: Partial<FindingItem>): FindingItem {
   return {
-    id: "t1", rule_id: "SR-015", source: "AUTO", title: "Insider swap",
-    description: "", narrative: "", severity: "HIGH", status: "NEEDS_EVIDENCE",
-    evidence_weight: "SPECULATIVE", overreach_reviewed: false,
-    trigger_entity_id: null, narrative_source: "", evidence_snapshot: {},
+    id: "t1", rule_id: "SR-015", title: "Insider swap", description: "",
+    narrative: "", severity: "HIGH", status: "NEEDS_EVIDENCE",
+    evidence_weight: "SPECULATIVE", overreach_reviewed: false, source: "AUTO",
+    investigator_note: "", legal_refs: [], evidence_snapshot: {},
+    trigger_doc_id: null, trigger_doc_filename: null, trigger_entity_id: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
     entity_links: [], document_links: [],
     ...over,
-  } as FindingItem;
+  };
 }
 
 const THREADS = [
@@ -551,7 +555,7 @@ const THREADS = [
 describe("ThreadDock", () => {
   it("renders rows default-sorted by severity (CRITICAL first)", () => {
     const { getAllByRole } = render(
-      <ThreadDock threads={THREADS} loading={false} error={false}
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />,
     );
     const rows = getAllByRole("button", { name: /thread row/i });
@@ -562,7 +566,7 @@ describe("ThreadDock", () => {
   it("calls onSelectThread with the row id on click", () => {
     const onSelect = vi.fn();
     const { getByText } = render(
-      <ThreadDock threads={THREADS} loading={false} error={false}
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
         selectedThreadId={undefined} onSelectThread={onSelect} onRetry={() => {}} />,
     );
     fireEvent.click(getByText("Insider swap"));
@@ -571,7 +575,7 @@ describe("ThreadDock", () => {
 
   it("marks the active row from selectedThreadId", () => {
     const { getByText } = render(
-      <ThreadDock threads={THREADS} loading={false} error={false}
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
         selectedThreadId="high" onSelectThread={() => {}} onRetry={() => {}} />,
     );
     const row = getByText("Insider swap").closest("[data-active]");
@@ -580,27 +584,41 @@ describe("ThreadDock", () => {
 
   it("shows the readiness cell from threadReadiness", () => {
     const { getByText } = render(
-      <ThreadDock threads={THREADS} loading={false} error={false}
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />,
     );
     // the CONFIRMED+cited+documented+overreach thread is referral-grade
     expect(getByText(/referral-grade/i)).toBeTruthy();
   });
 
+  it("shows an honest 'N of M' note when more threads exist than were loaded", () => {
+    const { getByText } = render(
+      <ThreadDock threads={THREADS} totalCount={137} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
+    expect(getByText(/Showing 3 of 137 threads/i)).toBeTruthy();
+  });
+
+  it("shows no count note when all threads are loaded", () => {
+    const { queryByText } = render(
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
+    expect(queryByText(/Showing .* of .* threads/i)).toBeNull();
+  });
+
   it("renders empty / loading / error states", () => {
     const empty = render(
-      <ThreadDock threads={[]} loading={false} error={false}
+      <ThreadDock threads={[]} totalCount={0} loading={false} error={false}
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
     expect(empty.getByText(/No threads yet/i)).toBeTruthy();
 
     const loading = render(
-      <ThreadDock threads={[]} loading error={false}
+      <ThreadDock threads={[]} totalCount={0} loading error={false}
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
     expect(loading.getByText(/Loading threads/i)).toBeTruthy();
 
     const onRetry = vi.fn();
     const err = render(
-      <ThreadDock threads={[]} loading={false} error
+      <ThreadDock threads={[]} totalCount={0} loading={false} error
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={onRetry} />);
     fireEvent.click(err.getByText(/Retry/i));
     expect(onRetry).toHaveBeenCalled();
@@ -608,7 +626,7 @@ describe("ThreadDock", () => {
 
   it("collapses to the header when toggled", () => {
     const { getByLabelText, queryByText } = render(
-      <ThreadDock threads={THREADS} loading={false} error={false}
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
         selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
     fireEvent.click(getByLabelText(/collapse threads/i));
     expect(queryByText("Insider swap")).toBeNull();
@@ -636,6 +654,7 @@ type SortKey = "severity" | "status" | "readiness" | "recency";
 
 export interface ThreadDockProps {
   threads: FindingItem[];
+  totalCount: number;
   loading: boolean;
   error: boolean;
   selectedThreadId: string | undefined;
@@ -691,7 +710,7 @@ function sortThreads(threads: FindingItem[], key: SortKey): FindingItem[] {
 }
 
 export default function ThreadDock({
-  threads, loading, error, selectedThreadId, onSelectThread, onRetry,
+  threads, totalCount, loading, error, selectedThreadId, onSelectThread, onRetry,
 }: ThreadDockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("severity");
@@ -772,9 +791,9 @@ export default function ThreadDock({
                   </button>
                 );
               })}
-              {threads.length === 100 && (
+              {totalCount > threads.length && (
                 <div style={{ padding: "6px 12px", fontSize: 10, color: "var(--text-3)" }}>
-                  Showing first 100 — sort to surface the rest.
+                  Showing {threads.length} of {totalCount} threads.
                 </div>
               )}
             </>
@@ -786,7 +805,7 @@ export default function ThreadDock({
 }
 ```
 
-> **Note on the `thread(...)` test factory:** the exact `FindingItem` field set may differ slightly from the codebase. If `tsc` flags a missing/extra field in the test factory, align it to `frontend/src/types/index.ts` `FindingItem` (lines 835–882) — do NOT change the production type.
+> **Note on the `thread(...)` test factory:** it is built to the exact `FindingItem` shape (`frontend/src/types/index.ts:835-882`) with no boundary cast, so `tsc` validates it. If the type changes upstream, update the fixture to match — never cast it to silence an error.
 
 - [ ] **Step 4: Run it to verify it passes**
 
@@ -829,6 +848,7 @@ import type { FindingItem } from "../types";
 Add state near the other `useState` calls:
 ```ts
 const [threads, setThreads] = useState<FindingItem[]>([]);
+const [threadsTotal, setThreadsTotal] = useState(0);
 const [threadsLoading, setThreadsLoading] = useState(true);
 const [threadsError, setThreadsError] = useState(false);
 const [cyReady, setCyReady] = useState(false);
@@ -839,8 +859,8 @@ const loadThreads = useCallback(() => {
   setThreadsLoading(true);
   setThreadsError(false);
   fetchAngles(caseId, { limit: 100 })
-    .then((res) => setThreads(res.results))
-    .catch(() => { setThreads([]); setThreadsError(true); })
+    .then((res) => { setThreads(res.results); setThreadsTotal(res.count); })
+    .catch(() => { setThreads([]); setThreadsTotal(0); setThreadsError(true); })
     .finally(() => setThreadsLoading(false));
 }, [caseId]);
 useEffect(() => { loadThreads(); }, [loadThreads]);
@@ -902,6 +922,7 @@ Inside the canvas column wrapper (`graph-canvas-dark` div), render `ThreadDock` 
 {!isEmpty && (
   <ThreadDock
     threads={threads}
+    totalCount={threadsTotal}
     loading={threadsLoading}
     error={threadsError}
     selectedThreadId={selection.kind === "thread" ? selection.id : undefined}
@@ -930,12 +951,22 @@ Pass the prop to the existing `ThreadInspector` (line ~638):
   onChanged={() => { refreshCaseData().catch(/* existing */); }}
 />
 ```
-Extend `refreshCaseData` to refresh the dock list and clear a now-missing thread selection. After the existing `setCaseMap/setGraph/...` block:
+Extend `refreshCaseData` to refresh the dock list and clear a now-missing thread selection. **Keep the
+thread fetch isolated here too (correction #3)** — a dock-refresh failure must not reject the whole
+refresh and must not blank the map. After the existing `setCaseMap/setGraph/...` block, in its own
+`try/catch`:
 ```ts
-const ang = await fetchAngles(caseId, { limit: 100 });
-setThreads(ang.results);
-if (selection.kind === "thread" && !ang.results.some((t) => t.id === selection.id)) {
-  clearSelection();
+try {
+  const ang = await fetchAngles(caseId, { limit: 100 });
+  setThreads(ang.results);
+  setThreadsTotal(ang.count);
+  setThreadsError(false);
+  if (selection.kind === "thread" && !ang.results.some((t) => t.id === selection.id)) {
+    clearSelection();   // selected thread is gone (e.g. deleted) — don't pin Path Mode to it
+  }
+} catch {
+  setThreadsError(true);
+  toast.error("Couldn't refresh threads — retry from the dock.");
 }
 ```
 
@@ -984,7 +1015,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ## Self-Review (completed)
 
-**Spec coverage:** §4 dock → Task 4 + Task 5 render; §5 Path Mode (path helper, severity suffix, imperative apply, cyReady, no-path) → Tasks 1, 3, 5; §6 reducer-binding invariant → Task 5 Step 5; §7 unified refresh → Task 5 Step 4; §8 class vocabulary → Task 3; readiness reuse (§4) → Task 2; full severity enum (corrections #2) → Tasks 1, 2, 4; fetch isolation (#1) → Task 5 Step 1; limit-100 cap (#3) → Task 4 (100-row note); no-path prop (#4) → Tasks 2, 5; cyReady (#5) → Task 5 Step 3. All covered.
+**Spec coverage:** §4 dock → Task 4 + Task 5 render; §5 Path Mode (path helper, severity suffix, imperative apply, cyReady, no-path) → Tasks 1, 3, 5; §6 reducer-binding invariant → Task 5 Step 5; §7 unified refresh (isolated, with stale-selection cleanup) → Task 5 Step 4; §8 class vocabulary → Task 3; readiness reuse (§4) → Task 2; full severity enum → Tasks 1, 2, 4; fetch isolation on mount **and** refresh → Task 5 Steps 1, 4; honest "N of M" page note via `totalCount`/`FindingsResponse.count` → Task 4; no-path prop → Tasks 2, 5; cyReady → Task 5 Step 3. All covered.
+
+**Pre-build corrections applied:** (#1) `threadPath` test uses valid `EntityType` members (`property`/`financial_instrument`), no `"document"`; (#2) honest `totalCount` "N of M" note, never implies sort reveals unloaded rows; (#3) refresh keeps the thread fetch in its own try/catch so a dock failure can't reject the refresh or blank the map; (#4) accurate `FindingItem` fixture, no boundary cast; (#5) tool-agnostic TDD header.
 
 **Placeholder scan:** Task 5 Step 5 intentionally leaves the integration-test *mock body* to be filled from the existing `InvestigateTab.caseMap.test.tsx` rather than inventing a divergent mock — the assertions and structure are specified; only the shared mock block is reused. All production code is complete.
 
