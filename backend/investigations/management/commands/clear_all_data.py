@@ -17,11 +17,13 @@ Usage:
 The --confirm flag is required to prevent accidental runs.
 """
 
-from django.core.management.base import BaseCommand
+import os
+
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
 
 from investigations.models import (
     Address,
-    AuditLog,
     Case,
     Document,
     FinancialInstrument,
@@ -67,6 +69,16 @@ class Command(BaseCommand):
                 )
             )
             return
+
+        # Production guard. This command is a LOCAL reset that purges the
+        # append-only AuditLog via raw SQL (see Step 7), so it must never run in
+        # a deployed environment — the audit trail is inviolable in production.
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            raise CommandError(
+                "clear_all_data is disabled in deployed environments "
+                "(RAILWAY_ENVIRONMENT is set). The AuditLog append-only invariant "
+                "is absolute in production; this local-only reset would breach it."
+            )
 
         self.stdout.write(self.style.WARNING("Clearing all investigation data…"))
 
@@ -163,8 +175,15 @@ class Command(BaseCommand):
         count, _ = InvestigatorNote.objects.all().delete()
         self.stdout.write(f"  Deleted {count} InvestigatorNote(s)")
 
-        count, _ = AuditLog.objects.all().delete()
-        self.stdout.write(f"  Deleted {count} AuditLog(s)")
+        # AuditLog is append-only — the ORM guard (AppendOnlyQuerySet) correctly
+        # blocks .delete(). But this is a LOCAL PII-hygiene reset: audit
+        # before/after_state snapshots can contain test PII, so they MUST be
+        # purged before any commit. We deliberately bypass the guard with raw SQL.
+        # Safe because the production guard above makes this unreachable in deploys.
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM audit_log")
+            audit_count = cursor.rowcount
+        self.stdout.write(f"  Deleted {audit_count} AuditLog(s) [raw SQL — local reset]")
 
         # ------------------------------------------------------------------
         # Step 8 — Cases (root table, deleted last)

@@ -1462,6 +1462,11 @@ class AppendOnlyQuerySet(models.QuerySet):
     def delete(self, *args, **kwargs):
         raise AppendOnlyError("AuditLog is append-only; bulk delete is forbidden.")
 
+    def bulk_update(self, *args, **kwargs):
+        # bulk_update() issues raw UPDATE SQL and bypasses save(), so it must be
+        # blocked too — otherwise the per-object guard is a paper wall.
+        raise AppendOnlyError("AuditLog is append-only; bulk update is forbidden.")
+
 
 class AuditLog(UUIDPrimaryKeyModel):
     """

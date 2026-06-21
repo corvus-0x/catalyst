@@ -41,3 +41,9 @@ class AuditLogAppendOnlyTests(TestCase):
         self._entry()
         with self.assertRaises(AppendOnlyError):
             AuditLog.objects.all().delete()
+
+    def test_bulk_queryset_bulk_update_raises(self):
+        entry = self._entry()
+        entry.notes = "tampered"
+        with self.assertRaises(AppendOnlyError):
+            AuditLog.objects.bulk_update([entry], ["notes"])
