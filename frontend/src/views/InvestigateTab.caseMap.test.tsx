@@ -66,6 +66,8 @@ vi.mock("../api", () => ({
   fetchReferralReadiness: vi.fn().mockResolvedValue({ status: "BLOCKED", summary: "", items: [], quality: undefined, credibility: { referral_grade: 0, need_work: 0, agency_leads: 0 } }),
   runAiPatternAnalysis: vi.fn(),
   reevaluateSignals: vi.fn(),
+  fetchAngle: vi.fn().mockResolvedValue({ id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH", narrative: "", evidence_weight: "SPECULATIVE", overreach_reviewed: false, document_links: [] }),
+  updateAngle: vi.fn().mockResolvedValue({}),
 }));
 
 import * as api from "../api";
@@ -177,5 +179,60 @@ describe("InvestigateTab Case Map wiring", () => {
     await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(2));
     // Subject inspector must still be visible — subject UUIDs are stable across refresh
     expect(await findByText("Jay")).toBeTruthy();
+  });
+
+  it("thread selection survives a background refresh", async () => {
+    // Override fetchCaseMap to return an edge with a thread_ref so we can select a thread.
+    vi.mocked(api.fetchCaseMap).mockResolvedValue({
+      case_id: "c1",
+      nodes: [
+        { id: "a", type: "person", label: "Jay", subtype: null, flags: { status_unknown: false, has_active_thread: true, has_substantiated_thread: false }, metadata: { thread_count: 1, document_count: 0 } },
+        { id: "b", type: "organization", label: "Acme", subtype: null, flags: { status_unknown: false, has_active_thread: false, has_substantiated_thread: false }, metadata: { thread_count: 0, document_count: 0 } },
+      ],
+      edges: [
+        { id: "a__b", source: "a", target: "b", relationship: "SUMMARY", label: "Documented relationship", state: "documented",
+          strength: { score: 30, level: "documented", categories: ["formal_role"], source_count: 0, transaction_count: 0, role_count: 1, thread_count: 1, substantiated_thread_count: 0, handoff_included: false, relationship_types: ["OFFICER_OF"], reasons: ["Formal role documented"] },
+          evidence_refs: [],
+          thread_refs: [{ thread_id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH", rule_id: "SR-015", signal_type: "INSIDER_SWAP", handoff_ready: false }],
+          underlying_relationships: [] },
+      ],
+      stats: { subject_count: 2, edge_count: 1, by_level: { observed: 0, documented: 1, repeated: 0, material: 0 }, material_edge_count: 0, handoff_edge_count: 0, generated_at: "2026-06-19T00:00:00Z" },
+    } as unknown as import("../types").CaseMapResponse);
+
+    const { getByTestId, getByLabelText, findByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(1));
+
+    // Click edge to open RelationshipSummaryPanel
+    fireEvent.click(getByTestId("cy-edge")); // edge "a__b"
+    await findByText("Insider swap"); // thread_ref row in RelationshipSummaryPanel
+
+    // Click the thread row → ThreadInspector mounts
+    fireEvent.click(await findByText("Insider swap"));
+    // ThreadInspector fetches the thread — wait for the title to appear
+    await waitFor(() => expect(api.fetchAngle).toHaveBeenCalledWith("c1", "t1"));
+    // ThreadInspector should be mounted (thread title visible from fetchAngle mock)
+    await findByText("Insider swap");
+
+    // Trigger a background re-run (which calls refreshCaseData)
+    fireEvent.click(getByLabelText("Re-run signal rules"));
+    await waitFor(() => expect(api.reevaluateSignals).toHaveBeenCalledWith("c1"));
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalledTimes(2));
+    // ThreadInspector must still be mounted — thread UUID is stable across refresh
+    expect(await findByText("Insider swap")).toBeTruthy();
+  });
+
+  it("profile open: fetchEntityDetail called with opened subject id (not stale data)", async () => {
+    // Select subject "a" (Jay) — opens SubjectInspector in the rail.
+    const { getByTestId, findByText, getByText } = renderTab();
+    await waitFor(() => expect(api.fetchCaseMap).toHaveBeenCalled());
+    fireEvent.click(getByTestId("cy-node")); // selectSubject("a")
+    await findByText("Jay"); // SubjectInspector renders
+
+    // Click "Open full profile" — should trigger fetchEntityDetail with subject id "a"
+    // and NOT pass stale data from a prior subject.
+    fireEvent.click(getByText("Open full profile"));
+    await waitFor(() =>
+      expect(api.fetchEntityDetail).toHaveBeenCalledWith("person", "a"),
+    );
   });
 });

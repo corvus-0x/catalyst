@@ -1,10 +1,13 @@
 // context/CaseWorkspaceContext.tsx
 import { createContext, useContext, useMemo, useReducer, type ReactNode } from "react";
-import type { EntityType } from "../types";
+
+/** Subjects are persons or organizations — the only entity types that appear as
+ * Case Map nodes and can be opened in a full profile frame. */
+export type SubjectEntityType = "person" | "organization";
 
 export type Frame =
   | { kind: "web" }
-  | { kind: "profile"; id: string; entityType: EntityType; name: string }
+  | { kind: "profile"; id: string; entityType: SubjectEntityType; name: string }
   | { kind: "angle"; id: string; title: string }
   | { kind: "document"; id: string; name: string };
 
@@ -28,7 +31,7 @@ type Action =
   | { type: "selectThread"; id: string; title: string }
   | { type: "activateThread"; id: string; title: string }
   | { type: "clearSelection" }
-  | { type: "openProfile"; id: string; entityType: EntityType; name: string }
+  | { type: "openProfile"; id: string; entityType: SubjectEntityType; name: string }
   | { type: "openThread"; id: string; title: string }
   | { type: "openDocument"; id: string; name: string }
   | { type: "goBack" }
@@ -45,7 +48,7 @@ const INITIAL: FocusState = {
 
 const NONE: Selection = { kind: "none" };
 
-/** nearest matching frame scanning top → bottom (the §3.3 invariant). */
+/** nearest matching frame scanning most-recent to oldest (the §3.3 invariant). */
 function recompute(history: Frame[]) {
   let activeEntityId: string | undefined;
   let activeAngleId: string | undefined;
@@ -133,7 +136,7 @@ export interface CaseWorkspaceState {
   selectThread: (id: string, title: string) => void;
   activateThread: (a: { id: string; title: string }) => void;
   clearSelection: () => void;
-  openProfile: (e: { id: string; entityType: EntityType; name: string }) => void;
+  openProfile: (e: { id: string; entityType: SubjectEntityType; name: string }) => void;
   openThread: (a: { id: string; title: string }) => void;
   openDocument: (d: { id: string; name: string }) => void;
   goBack: () => void;

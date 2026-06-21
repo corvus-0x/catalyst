@@ -18,7 +18,9 @@
  */
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { fetchAngle, updateAngle } from "../api";
+import { sectionLabel } from "./inspectorChrome";
 import type { FindingItem, FindingSeverity, FindingStatus } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -63,24 +65,6 @@ function statusColor(status: FindingStatus): string {
   }
 }
 
-function sectionLabel(text: string) {
-  return (
-    <div
-      style={{
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
-        color: "var(--text-3)",
-        marginTop: 12,
-        marginBottom: 4,
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // ThreadInspector
 // ---------------------------------------------------------------------------
@@ -94,32 +78,49 @@ export default function ThreadInspector({
 }: ThreadInspectorProps) {
   const [thread, setThread]   = useState<FindingItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [setAside, setSetAside] = useState(false);
 
   // Fetch the full finding on mount / threadId change
   useEffect(() => {
     setThread(null);
     setLoading(true);
+    setFetchError(false);
     fetchAngle(caseId, threadId)
       .then((t) => setThread(t))
-      .catch((err) => console.error("ThreadInspector: fetchAngle failed", err))
+      .catch((err) => {
+        console.error("ThreadInspector: fetchAngle failed", err);
+        setFetchError(true);
+        toast.error("Couldn't load thread — reload to retry.");
+      })
       .finally(() => setLoading(false));
   }, [caseId, threadId]);
 
   // Set aside handler — un-gated (DISMISSED transition has no gate).
-  // Re-fetches the thread so the status badge updates to "Set Aside" immediately.
+  // Optimistically updates the local status badge and calls onChanged() immediately
+  // after the PATCH succeeds, before the best-effort re-fetch. This ensures the parent
+  // refresh (refreshCaseData) is not blocked by the re-fetch.
   async function handleSetAside() {
     if (!thread || setAside) return;
     setSetAside(true);
     try {
       await updateAngle(caseId, threadId, { status: "DISMISSED" });
-      // Re-fetch so the status badge reflects the new DISMISSED state without waiting
-      // for the parent's refreshCaseData to propagate (which doesn't re-set local state).
-      const updated = await fetchAngle(caseId, threadId);
-      setThread(updated);
+      // Optimistic badge update — no waiting on the re-fetch.
+      setThread((prev) => (prev ? { ...prev, status: "DISMISSED" } : prev));
+      // Notify parent immediately so refreshCaseData runs in parallel with the refetch.
       onChanged();
     } catch (err) {
       console.error("ThreadInspector: set-aside failed", err);
+      toast.error("Couldn't set aside — try again.");
+      setSetAside(false);
+      return;
+    }
+    // Best-effort re-fetch — a failure here must NOT prevent the badge update or onChanged.
+    try {
+      const updated = await fetchAngle(caseId, threadId);
+      setThread(updated);
+    } catch (err) {
+      console.error("ThreadInspector: re-fetch after set-aside failed", err);
     } finally {
       setSetAside(false);
     }
@@ -196,6 +197,10 @@ export default function ThreadInspector({
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 10px 12px" }}>
         {loading ? (
           <div style={{ padding: "12px 0", color: "var(--text-3)" }}>Loading…</div>
+        ) : fetchError ? (
+          <div style={{ padding: "12px 0", color: "var(--color-critical, #f87171)", fontSize: 12 }}>
+            Couldn't load thread.
+          </div>
         ) : thread === null ? (
           <div style={{ padding: "12px 0", color: "var(--text-3)" }}>
             Thread not found.

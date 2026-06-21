@@ -16,13 +16,13 @@ import type {
   CaseMapResponse,
   DashboardResponse,
   DocumentItem,
-  EntityType,
   GraphResponse,
   OrgDetailResponse,
   PersonDetailResponse,
   ReferralReadinessResponse,
   ReferralReadinessTargetTab,
 } from "../types";
+import type { SubjectEntityType } from "../context/CaseWorkspaceContext";
 import WhatsMissingPanel from "../components/WhatsMissingPanel";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
 import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
@@ -163,7 +163,7 @@ export function WebToolbar({ pendingCount, showMinimap, onAddAngle, onFit, onPen
 
 type BreadcrumbFrame =
   | { kind: "web" }
-  | { kind: "profile"; id: string; entityType: EntityType; name: string }
+  | { kind: "profile"; id: string; entityType: SubjectEntityType; name: string }
   | { kind: "angle"; id: string; title: string }
   | { kind: "document"; id: string; name: string };
 
@@ -358,25 +358,16 @@ export default function InvestigateTab({
   /* ── Node tap on canvas → selectSubject (THE RULE: map stays visible) ── */
   function handleNodeClick(nodeId: string) {
     if (currentFrame.kind !== "web") return;
-    // Clear any selected relationship panel immediately — the user clicked away.
-    clearSelection();
     // Node detail resolves against /graph/ (not /case-map/); property/financial
     // instrument nodes are not subjects and are excluded from the canvas.
+    // Guard BEFORE any selection mutation — a non-subject tap must not blank the rail.
     const node = graph?.nodes.find((n) => n.id === nodeId);
     if (!node || (node.type !== "person" && node.type !== "organization")) return;
+    // Clear any selected relationship/thread panel — the user tapped a subject node.
+    clearSelection();
     // Per THE RULE: node click is transient selection — map stays visible.
-    // Full-width profile frame is reached only via "Open full profile" (Task 6).
+    // Full-width profile frame is reached only via SubjectInspector "Open full profile".
     selectSubject(node.id);
-    // Prefetch entity data for the subject rail placeholder (Task 6 will use it).
-    setEntityData(null);
-    if (node.type === "person" || node.type === "organization") {
-      fetchEntityDetail(node.type, node.id)
-        .then((d) => setEntityData(d as PersonDetailResponse | OrgDetailResponse))
-        .catch((err) => {
-          console.error(err);
-          toast.error("Couldn't load profile details.");
-        });
-    }
   }
 
   /* ── Edge tap on canvas → selectRelationship (reducer path) ── */
@@ -497,7 +488,7 @@ export default function InvestigateTab({
     );
   }
 
-  /* Level 2 — Profile panel (full-width, reached via "Open full profile" in Task 6) */
+  /* Level 2 — Profile panel (full-width, reached via SubjectInspector "Open full profile") */
   if (currentFrame.kind === "profile") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
@@ -587,9 +578,10 @@ export default function InvestigateTab({
             <SubjectInspector
               caseId={caseId}
               subjectId={selection.id}
-              entityType={
-                (graph?.nodes.find((n) => n.id === selection.id)?.type ?? "person") as "person" | "organization"
-              }
+              entityType={(() => {
+                const t = graph?.nodes.find((n) => n.id === selection.id)?.type;
+                return (t === "person" || t === "organization") ? t : "person";
+              })()}
               caseMap={caseMap}
               subjectLabel={(id) =>
                 caseMap.nodes.find((n) => n.id === id)?.label ?? graph?.nodes.find((n) => n.id === id)?.label ?? id.slice(0, 8) + "…"
@@ -605,11 +597,20 @@ export default function InvestigateTab({
               }}
               onOpenProfile={() => {
                 const node = graph?.nodes.find((n) => n.id === selection.id);
-                openProfile({
-                  id: selection.id,
-                  entityType: node?.type ?? "person",
-                  name: node?.label ?? selectedSubjectLabel(),
-                });
+                const entityType = (node?.type === "person" || node?.type === "organization")
+                  ? node.type
+                  : "person" as const;
+                const name = node?.label ?? selectedSubjectLabel();
+                // Clear stale data before navigating — ProfilePanel must never show
+                // data from a previously-opened subject.
+                setEntityData(null);
+                openProfile({ id: selection.id, entityType, name });
+                fetchEntityDetail(entityType, selection.id)
+                  .then((d) => setEntityData(d as PersonDetailResponse | OrgDetailResponse))
+                  .catch((err) => {
+                    console.error(err);
+                    toast.error("Couldn't load profile details.");
+                  });
               }}
               onClear={clearSelection}
             />
@@ -644,6 +645,7 @@ export default function InvestigateTab({
               onChanged={() => {
                 refreshCaseData().catch((err) => {
                   console.error(err);
+                  toast.error("Couldn't refresh the Case Map — reload if it looks stale.");
                 });
               }}
             />

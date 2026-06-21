@@ -47,4 +47,20 @@ describe("SubjectInspector", () => {
     fireEvent.click(getByText("Add observation"));
     await waitFor(() => expect(api.createNote).toHaveBeenCalledWith("c1", expect.objectContaining({ target_id: "p1", content: "note text" })));
   });
+
+  it("'Top relationships' row click calls onSelectRelationship with the edge id", async () => {
+    // The caseMap fixture has an edge "o1__p1" where p1 is the subject (target).
+    // Clicking the relationship row should call onSelectRelationship("o1__p1").
+    const onSelectRelationship = vi.fn();
+    const { findByText } = render(
+      <SubjectInspector caseId="c1" subjectId="p1" entityType="person" caseMap={caseMap}
+        subjectLabel={(id) => (id === "o1" ? "Acme" : id)}
+        onSelectRelationship={onSelectRelationship}
+        onStartThread={() => {}} onCite={() => {}} onOpenProfile={() => {}} onClear={() => {}} />,
+    );
+    // Wait for the relationship row to render (after detail load)
+    const row = await findByText("Acme");
+    fireEvent.click(row);
+    expect(onSelectRelationship).toHaveBeenCalledWith("o1__p1");
+  });
 });

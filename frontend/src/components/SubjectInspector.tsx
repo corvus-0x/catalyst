@@ -10,10 +10,11 @@
  */
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { fetchEntityDetail, fetchNotes, createNote } from "../api";
+import { sectionLabel } from "./inspectorChrome";
 import type {
   CaseMapResponse,
-  EntityType,
   InvestigatorNote,
   NoteTargetType,
   PersonDetailResponse,
@@ -21,6 +22,7 @@ import type {
   RelatedDocument,
   RelatedFindingSummary,
 } from "../types";
+import type { SubjectEntityType } from "../context/CaseWorkspaceContext";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -29,7 +31,7 @@ import type {
 export interface SubjectInspectorProps {
   caseId: string;
   subjectId: string;
-  entityType: EntityType;
+  entityType: SubjectEntityType;
   caseMap: CaseMapResponse;
   /** Returns a display label for any subject id in the case map */
   subjectLabel: (id: string) => string;
@@ -49,24 +51,6 @@ type EntityDetail = PersonDetailResponse | OrgDetailResponse;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function sectionLabel(text: string) {
-  return (
-    <div
-      style={{
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
-        color: "var(--text-3)",
-        marginTop: 12,
-        marginBottom: 4,
-      }}
-    >
-      {text}
-    </div>
-  );
-}
 
 function levelColor(level: string): string {
   switch (level) {
@@ -96,6 +80,7 @@ export default function SubjectInspector({
   const [detail, setDetail]       = useState<EntityDetail | null>(null);
   const [notes, setNotes]         = useState<InvestigatorNote[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [obsInput, setObsInput]   = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -104,6 +89,7 @@ export default function SubjectInspector({
     setDetail(null);
     setNotes([]);
     setLoadingDetail(true);
+    setLoadError(false);
 
     Promise.all([
       fetchEntityDetail(entityType, subjectId),
@@ -115,6 +101,8 @@ export default function SubjectInspector({
       })
       .catch((err) => {
         console.error("SubjectInspector fetch error:", err);
+        setLoadError(true);
+        toast.error("Couldn't load subject details.");
       })
       .finally(() => setLoadingDetail(false));
   }, [caseId, subjectId, entityType]);
@@ -144,12 +132,21 @@ export default function SubjectInspector({
         target_id: subjectId,
         content: obsInput.trim(),
       });
+      // Only clear the input after a successful write — a refetch failure must not
+      // make it look like nothing was saved.
       setObsInput("");
-      // Re-fetch notes to show the new one
+    } catch (err) {
+      console.error("createNote failed:", err);
+      toast.error("Couldn't save observation — try again.");
+      setSubmitting(false);
+      return;
+    }
+    // Best-effort refetch — failure here does NOT undo the successful write.
+    try {
       const fresh = await fetchNotes(caseId);
       setNotes(fresh.results.filter((note) => note.target_id === subjectId));
     } catch (err) {
-      console.error("createNote failed:", err);
+      console.error("SubjectInspector: notes refetch failed after createNote", err);
     } finally {
       setSubmitting(false);
     }
@@ -196,6 +193,10 @@ export default function SubjectInspector({
         {/* Identity */}
         {loadingDetail ? (
           <div style={{ padding: "12px 0", color: "var(--text-3)" }}>Loading…</div>
+        ) : loadError ? (
+          <div style={{ padding: "12px 0", color: "var(--color-critical, #f87171)", fontSize: 12 }}>
+            Couldn't load subject.
+          </div>
         ) : (
           <>
             <div style={{ fontWeight: 700, fontSize: 14, marginTop: 8 }}>

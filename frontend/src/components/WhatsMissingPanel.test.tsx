@@ -70,4 +70,28 @@ describe("WhatsMissingPanel", () => {
     expect(onOpenPending).toHaveBeenCalledTimes(1);
     expect(onNavigateTab).not.toHaveBeenCalled();
   });
+
+  it("investigate-tab item that is NOT pending_connections calls neither handler", () => {
+    // citation_coverage has target_tab "investigate" but key !== "pending_connections"
+    // — clicking it must be a no-op (no cross-tab nav, no pending panel).
+    const onOpenPending = vi.fn();
+    const onNavigateTab = vi.fn();
+    const citationItem: ReferralReadinessItem = {
+      key: "citation_coverage",
+      label: "Citations",
+      status: "FAIL",
+      summary: "2 uncited threads",
+      target_tab: "investigate",
+    };
+    const { getByText } = render(
+      <WhatsMissingPanel
+        readiness={readiness("BLOCKED", [citationItem])}
+        onNavigateTab={onNavigateTab}
+        onOpenPending={onOpenPending}
+      />,
+    );
+    fireEvent.click(getByText("Citations"));
+    expect(onNavigateTab).not.toHaveBeenCalled();
+    expect(onOpenPending).not.toHaveBeenCalled();
+  });
 });
