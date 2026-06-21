@@ -451,8 +451,16 @@ export default function InvestigateTab({
     });
   }, [selection, selectedThread, caseMap]);
 
+  // Only assert "no visible path" once the thread is RESOLVED (in the dock page or
+  // via the fallback fetch). For a subject-only thread beyond the loaded 100, selectedThread
+  // is briefly null while the fallback fetch is in flight — without this guard the note would
+  // flash before entity_links arrive. Edge-backed threads are unaffected (pathSet is non-empty
+  // from caseMap.edges regardless of selectedThread).
   const noVisibleMapPath =
-    selection.kind === "thread" && pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0;
+    selection.kind === "thread" &&
+    selectedThread != null &&
+    pathSet.pathEdgeIds.length === 0 &&
+    pathSet.participatingSubjectIds.length === 0;
 
   /* ── Resolve the subject label for a selected subject ── */
   function selectedSubjectLabel(): string {

@@ -32,4 +32,14 @@ describe("threadReadiness", () => {
       ready: false, summary: expect.stringContaining("Not yet substantiated"),
     });
   });
+
+  // Pins the cross-component contract: ThreadDock renders the first gap via
+  // summary.split(" · ")[0], so the separator must stay exactly " · ".
+  it("joins multiple gaps with ' · ' (the separator ThreadDock splits on)", () => {
+    const r = threadReadiness({ ...base, document_links: [], status: "NEEDS_EVIDENCE" });
+    expect(r.ready).toBe(false);
+    expect(r.summary).toContain(" · ");
+    expect(r.summary.split(" · ")[0]).toBe("No cited sources");
+    expect(r.summary.split(" · ")).toContain("Not yet substantiated");
+  });
 });
