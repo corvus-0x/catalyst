@@ -86,7 +86,11 @@ export const STYLESHEET = [
       "z-index": 999,
     },
   },
-  /* ── Phase 3 — Thread Path Mode ─────────────────────────────────────────── */
+  /* ── Phase 3 — Thread Path Mode ───────────────────────────────────────────
+     ORDERING MATTERS (equal-specificity rules: later wins): `.dimmed` must stay BEFORE
+     `.thread-path-edge*` and `.thread-path-subject` so the path rules win on any element
+     that briefly holds both classes. applyThreadPathMode also removes `.dimmed` imperatively
+     before adding a path class, but the stylesheet order is the safety net — do not reorder. */
   /* Dimmed — everything not on the selected thread's path */
   { selector: ".dimmed", style: { opacity: 0.1 } },
   /* Summary edges — neutral grey, width from strength level */

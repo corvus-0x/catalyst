@@ -24,9 +24,7 @@ function statusLabel(s: FindingStatus): string {
   switch (s) {
     case "CONFIRMED": return "Substantiated";
     case "DISMISSED": return "Set aside";
-    case "NEEDS_EVIDENCE":
-    case "NEW": return "Developing";
-    default: return "Developing";
+    default:          return "Developing"; // NEW + NEEDS_EVIDENCE
   }
 }
 
@@ -62,6 +60,7 @@ function sortThreads(threads: FindingItem[], key: SortKey): FindingItem[] {
     case "recency":
       return copy.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     default:
+      key satisfies never; // compile error if a SortKey is added without a case
       return copy;
   }
 }
@@ -267,7 +266,7 @@ export default function ThreadDock({
                         color: r.ready ? "var(--color-success, #34d399)" : "var(--text-3)",
                       }}
                     >
-                      {r.ready ? "✓ referral-grade" : r.summary.split(" · ")[0]}
+                      {r.ready ? "✓ referral-grade" : (r.gaps[0] ?? "")}
                     </span>
                   </button>
                 );

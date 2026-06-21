@@ -36,6 +36,18 @@ describe("ThreadDock", () => {
     expect(within(rows[2]).getByText("Overpayment")).toBeTruthy();
   });
 
+  it("re-sorts by status when the sort key changes (NEEDS_EVIDENCE < CONFIRMED < DISMISSED)", () => {
+    const { getByRole, getAllByRole } = render(
+      <ThreadDock threads={THREADS} totalCount={3} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />,
+    );
+    fireEvent.change(getByRole("combobox"), { target: { value: "status" } });
+    const rows = getAllByRole("button", { name: /thread row/i });
+    expect(within(rows[0]).getByText("Insider swap")).toBeTruthy();      // NEEDS_EVIDENCE (rank 1)
+    expect(within(rows[1]).getByText("990 contradiction")).toBeTruthy(); // CONFIRMED (rank 2)
+    expect(within(rows[2]).getByText("Overpayment")).toBeTruthy();       // DISMISSED (rank 3)
+  });
+
   it("calls onSelectThread with the row id on click", () => {
     const onSelect = vi.fn();
     const { getByText } = render(

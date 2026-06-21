@@ -348,7 +348,9 @@ export default function InvestigateTab({
     setDashboard(dash);
     setReadiness(ready);
     // Isolated thread-dock refresh — keep in its own try/catch so a dock failure cannot
-    // reject the whole refresh or blank the map. Page-absence ≠ deletion (101st-thread rule).
+    // reject the whole refresh or blank the map. We deliberately do NOT clear a thread
+    // selection here on page-absence; the 101st-thread fallback (the selectedThreadFallback
+    // effect below) re-resolves a selected thread that falls outside this 100-row page.
     try {
       const ang = await fetchAngles(caseId, { limit: 100 });
       setThreads(ang.results);
@@ -433,7 +435,14 @@ export default function InvestigateTab({
     let cancelled = false;
     fetchAngle(caseId, selection.id)
       .then((t) => { if (!cancelled) setSelectedThreadFallback(t); })
-      .catch(() => { if (!cancelled) setSelectedThreadFallback(null); });
+      .catch((err) => {
+        if (cancelled) return;
+        // Surface the diagnosis: on failure Path Mode loses this thread's severity color
+        // (falls back to neutral). ThreadInspector independently fetches + toasts, so the
+        // user isn't blind — but the map-color silence must not be invisible to debugging.
+        console.error("InvestigateTab: 101st-thread fallback fetch failed for", selection.id, err);
+        setSelectedThreadFallback(null);
+      });
     return () => { cancelled = true; };
   }, [selection, threads, caseId]);
 
@@ -444,11 +453,20 @@ export default function InvestigateTab({
 
   const pathSet = useMemo(() => {
     if (selection.kind !== "thread") return { pathEdgeIds: [] as string[], participatingSubjectIds: [] as string[] };
-    return threadPath({
+    const raw = threadPath({
       threadId: selection.id,
       edges: caseMap?.edges ?? [],
       entityLinks: selectedThread?.entity_links ?? [],
     });
+    // Keep only subjects that actually exist as Case Map nodes. An entity_link can name a
+    // person/org that isn't on the map; including it would let the dim-guard pass while
+    // cy.getElementById(id) finds nothing — dimming the WHOLE map with no highlighted path.
+    // Filtering here keeps noVisibleMapPath (React) and applyThreadPathMode (canvas) consistent.
+    const nodeIds = new Set((caseMap?.nodes ?? []).map((n) => n.id));
+    return {
+      pathEdgeIds: raw.pathEdgeIds,
+      participatingSubjectIds: raw.participatingSubjectIds.filter((id) => nodeIds.has(id)),
+    };
   }, [selection, selectedThread, caseMap]);
 
   // Only assert "no visible path" once the thread is RESOLVED (in the dock page or

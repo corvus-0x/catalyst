@@ -89,6 +89,34 @@ describe("InvestigateTab Thread Path Mode", () => {
     expect(activeRow?.getAttribute("data-active")).toBe("true");
   });
 
+  it("re-clicking the active dock row exits Thread Path Mode (clearSelection)", async () => {
+    const { findByLabelText, findByText, container } = renderTab();
+    fireEvent.click(await findByLabelText(/thread row Insider swap/i));
+    await findByText("Thread"); // inspector open, row active
+    // second click on the same row toggles the selection off
+    fireEvent.click(container.querySelector('[aria-label="thread row Insider swap"]')!);
+    await waitFor(() =>
+      expect(
+        container.querySelector('[aria-label="thread row Insider swap"]')?.getAttribute("data-active"),
+      ).toBe("false"),
+    );
+  });
+
+  it("a thread whose only subject is NOT a Case Map node shows the no-path note (no whole-map dim)", async () => {
+    // t3's entity_link points at "ghost", which is not in caseMap.nodes (a, b). The pathSet must
+    // filter it out → noVisibleMapPath true. Without the node-filter the map would dim to nothing.
+    vi.mocked(api.fetchAngles).mockResolvedValueOnce({
+      count: 1, limit: 100, offset: 0, next_offset: null, previous_offset: null,
+      results: [{
+        ...THREAD_PAGE.results[0], id: "t3", title: "Ghost-linked thread",
+        entity_links: [{ entity_id: "ghost", entity_type: "person", context_note: "" }],
+      }],
+    } as never);
+    const { findByLabelText, findByText } = renderTab();
+    fireEvent.click(await findByLabelText(/thread row Ghost-linked thread/i));
+    expect(await findByText(/no visible Case Map path yet/i)).toBeTruthy();
+  });
+
   it("a subject-only thread with no map presence shows the no-visible-path note", async () => {
     const { findByLabelText, findByText } = renderTab();
     // t2 has no edge and no entity_links → threadPath empty → noVisibleMapPath
@@ -101,8 +129,8 @@ describe("InvestigateTab Thread Path Mode", () => {
   it("the Case Map still renders when fetchAngles rejects (fetch isolation)", async () => {
     vi.mocked(api.fetchAngles).mockRejectedValueOnce(new Error("boom"));
     const { findByTestId, findByText } = renderTab();
-    expect(await findByTestId("cy-canvas")).toBeTruthy();      // map not blanked
-    expect(await findByText(/load threads/i)).toBeTruthy(); // dock error
+    expect(await findByTestId("cy-canvas")).toBeTruthy();        // map not blanked
+    expect(await findByText(/couldn't load threads/i)).toBeTruthy(); // dock ERROR state (not loading)
   });
 
   it("101st-thread fallback: a thread not in the dock page still opens via the Relationship panel", async () => {

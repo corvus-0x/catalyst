@@ -10,7 +10,10 @@ const base = {
 
 describe("threadReadiness", () => {
   it("is ready when all referral-grade conditions are met", () => {
-    expect(threadReadiness(base)).toEqual({ ready: true, summary: "All referral-grade conditions met." });
+    expect(threadReadiness(base)).toEqual({ ready: true, gaps: [], summary: "All referral-grade conditions met." });
+  });
+  it("accepts TRACED weight as ready (not only DOCUMENTED)", () => {
+    expect(threadReadiness({ ...base, evidence_weight: "TRACED" }).ready).toBe(true);
   });
   it("reports no cited sources", () => {
     expect(threadReadiness({ ...base, document_links: [] })).toMatchObject({
@@ -33,13 +36,13 @@ describe("threadReadiness", () => {
     });
   });
 
-  // Pins the cross-component contract: ThreadDock renders the first gap via
-  // summary.split(" · ")[0], so the separator must stay exactly " · ".
-  it("joins multiple gaps with ' · ' (the separator ThreadDock splits on)", () => {
+  // The dock reads gaps[0]; the inspector reads summary. Pin both: gaps is the structured
+  // contract (no string parsing), summary is exactly the gaps joined by " · ".
+  it("returns structured gaps plus a joined summary", () => {
     const r = threadReadiness({ ...base, document_links: [], status: "NEEDS_EVIDENCE" });
     expect(r.ready).toBe(false);
-    expect(r.summary).toContain(" · ");
-    expect(r.summary.split(" · ")[0]).toBe("No cited sources");
-    expect(r.summary.split(" · ")).toContain("Not yet substantiated");
+    expect(r.gaps[0]).toBe("No cited sources");
+    expect(r.gaps).toContain("Not yet substantiated");
+    expect(r.summary).toBe(r.gaps.join(" · "));
   });
 });
