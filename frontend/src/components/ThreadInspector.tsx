@@ -83,17 +83,26 @@ export default function ThreadInspector({
 
   // Fetch the full finding on mount / threadId change
   useEffect(() => {
+    let cancelled = false;
     setThread(null);
     setLoading(true);
     setFetchError(false);
     fetchAngle(caseId, threadId)
-      .then((t) => setThread(t))
+      .then((t) => {
+        if (!cancelled) setThread(t);
+      })
       .catch((err) => {
+        if (cancelled) return; // a newer thread was selected; ignore stale response
         console.error("ThreadInspector: fetchAngle failed", err);
         setFetchError(true);
         toast.error("Couldn't load thread — reload to retry.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [caseId, threadId]);
 
   // Set aside handler — un-gated (DISMISSED transition has no gate).

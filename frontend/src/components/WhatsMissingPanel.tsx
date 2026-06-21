@@ -55,7 +55,7 @@ export default function WhatsMissingPanel({ readiness, onNavigateTab, onOpenPend
 
       {actionable.length === 0 ? (
         <div style={{ color: "var(--text-3)", fontSize: 12, lineHeight: 1.5 }}>
-          Nothing's blocking a referral — tie off another angle or add a recipient.
+          Nothing's blocking a referral — substantiate another thread or add a recipient.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

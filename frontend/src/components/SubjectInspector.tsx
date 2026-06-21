@@ -86,6 +86,7 @@ export default function SubjectInspector({
 
   // Fetch entity detail + notes on mount / subject change
   useEffect(() => {
+    let cancelled = false;
     setDetail(null);
     setNotes([]);
     setLoadingDetail(true);
@@ -96,15 +97,22 @@ export default function SubjectInspector({
       fetchNotes(caseId),
     ])
       .then(([d, n]) => {
+        if (cancelled) return; // a newer subject was selected; ignore stale response
         setDetail(d as EntityDetail);
         setNotes(n.results.filter((note) => note.target_id === subjectId));
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error("SubjectInspector fetch error:", err);
         setLoadError(true);
         toast.error("Couldn't load subject details.");
       })
-      .finally(() => setLoadingDetail(false));
+      .finally(() => {
+        if (!cancelled) setLoadingDetail(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [caseId, subjectId, entityType]);
 
   // Derive relationships from caseMap edges touching this subject
