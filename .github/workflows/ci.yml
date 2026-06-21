@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - uses: actions/setup-python@v5
         with:
@@ -63,7 +63,7 @@ jobs:
       # investigations/tests/test_steps_1_through_4.py.
       CATALYST_REQUIRE_AUTH: "False"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -86,19 +86,31 @@ jobs:
   secret-scan:
     name: Secret Scan
     runs-on: ubuntu-latest
+    # Least privilege: this job only needs to read the repo to scan it.
+    permissions:
+      contents: read
     steps:
       # fetch-depth: 0 pulls the FULL history so gitleaks scans every commit,
       # not just the tip — a key leaked three commits ago still gets caught.
-      - uses: actions/checkout@v5
+      # Pinned to a full commit SHA: mutable tags (@v5) can be re-pointed at
+      # malicious code, so pin + comment the human-readable version.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       # Pinned binary instead of the gitleaks-action so there's no org-license
-      # surprise and the exact version is reproducible. `detect` scans git
-      # history; --redact keeps any hit out of the public CI log.
-      - name: Install gitleaks
+      # surprise and the exact version is reproducible. The tarball is verified
+      # against the release's published SHA-256 checksums before extraction, so a
+      # tampered download fails the job. `detect` scans git history; --redact
+      # keeps any hit out of the public CI log.
+      - name: Install gitleaks (checksum-verified)
         run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | tar -xz gitleaks
+          VERSION=8.21.2
+          BASE="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}"
+          curl -sSfL "${BASE}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          curl -sSfL "${BASE}/gitleaks_${VERSION}_checksums.txt" -o checksums.txt
+          grep "gitleaks_${VERSION}_linux_x64.tar.gz" checksums.txt | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: Scan for secrets
         run: gitleaks detect --no-banner --redact --source .
@@ -110,7 +122,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - uses: actions/setup-node@v4
         with:
