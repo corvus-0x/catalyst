@@ -75,8 +75,15 @@ rail-contention failure we explicitly rejected). Navigation and detail stay on s
 ### Data
 - `fetchAngles(caseId, { limit: 100 })` → `FindingsResponse` (`{ results: FindingItem[] }`).
   Existing endpoint `/api/cases/:id/findings/`. No new endpoint.
-- Dock owns a `threads: FindingItem[]` state in `InvestigateTab` (loaded alongside the Phase-1 mount
-  fetch, and refreshed per §7).
+- **v1 thread cap (correction #3):** the dock loads **up to 100 threads**, matching the existing
+  `AnglePickerModal` behavior. "Every thread is reachable from the map" is therefore true *up to that
+  cap*; fetch-all/pagination is a Phase 5 concern. If a case exceeds 100 threads in v1, the dock shows
+  a muted "showing first 100 — sort to surface the rest" note rather than silently truncating.
+- **Dock fetch is isolated from the map load (correction #1).** The thread list does **not** share the
+  Phase-1 `Promise.all` with `fetchGraph`/`fetchCaseMap` — a `fetchAngles` failure must not blank the
+  Case Map. The dock owns its own `threads: FindingItem[]` + `threadsLoading` + `threadsError` state
+  in `InvestigateTab`, loaded by a **separate** effect (or, if kept in one batch, via
+  `Promise.allSettled` so the map still renders when only threads fail). Refreshed per §7.
 
 ### Rows
 Four columns: `status pill · title (+ rule id) · severity · readiness`.
@@ -84,7 +91,10 @@ Four columns: `status pill · title (+ rule id) · severity · readiness`.
 - **status pill** — Developing (amber, `NEEDS_EVIDENCE`/`NEW`) · Substantiated (green, `CONFIRMED`) ·
   Set aside (grey, `DISMISSED`). Same `statusLabel`/`statusColor` mapping as `ThreadInspector`.
 - **title** — `finding.title`, ellipsized; rule id (`finding.rule_id`) as a muted suffix when present.
-- **severity** — CRITICAL `#f87171` / HIGH `#fbbf24` / MEDIUM `#60a5fa` (matches `ThreadInspector.severityColor`).
+- **severity** — full enum (correction #2): CRITICAL `#f87171` / HIGH `#fbbf24` / MEDIUM `#60a5fa` /
+  **LOW** `var(--text-3)` / **INFORMATIONAL** `var(--text-3)`. Matches `ThreadInspector.severityColor`,
+  which must be extended to cover LOW/INFORMATIONAL (it currently `default`s them — fine, but make it
+  explicit).
 - **readiness** — reuse the exact gap logic from `ThreadInspector.gapSummary()`: "✓ referral-grade"
   when all conditions met, else the first unmet gap ("needs cited source", "needs overreach review",
   "not yet substantiated", "evidence below Documented"). This is the `referral_grade.py` predicate,
@@ -93,8 +103,9 @@ Four columns: `status pill · title (+ rule id) · severity · readiness`.
   the dock and `ThreadInspector` share one definition rather than copying it.
 
 ### Sort
-- Flat list, **client-side**, default **severity desc** (CRITICAL → HIGH → MEDIUM, then by title for
-  stability). A small sort control re-keys by: severity · status · readiness · recency (`updated_at`).
+- Flat list, **client-side**, default **severity desc**. Full severity order (correction #2):
+  **CRITICAL > HIGH > MEDIUM > LOW > INFORMATIONAL**, tie-broken by title for stable ordering. A small
+  sort control re-keys by: severity · status · readiness · recency (`updated_at`).
 - No grouping headers (status is a column/pill, not a section).
 
 ### States
@@ -149,42 +160,75 @@ threadPath(args: {
 This makes **single-subject threads real, not aspirational**: a thread that references one subject and
 no relationship edge still lights that subject. Edge-backed and subject-only threads share one helper.
 
-### Imperative application (correction #4)
-A `useEffect` in `InvestigateTab` keyed on `[selection, selectedThread, caseMap]` applies classes via
-`cyRef`, never by rebuilding elements:
+### Severity → path-edge class suffix (correction #2)
+A pure helper maps the full enum to an optional severity suffix:
 
 ```ts
-const cy = cyRef.current;
-if (!cy) return;
-cy.elements().removeClass(
-  "dimmed thread-path-edge thread-path-edge--critical thread-path-edge--high " +
-  "thread-path-edge--medium thread-path-subject"
-);
-if (selection.kind !== "thread") return;            // exited Path Mode
-const { pathEdgeIds, participatingSubjectIds } = threadPath({ ... });
-const sev = (selectedThread?.severity ?? "").toLowerCase(); // critical|high|medium|""
-// dim everything, then un-dim + emphasize the path
-cy.elements().addClass("dimmed");
-pathEdgeIds.forEach((id) => cy.getElementById(id)
-  .removeClass("dimmed")
-  .addClass(`thread-path-edge${sev ? " thread-path-edge--" + sev : ""}`));
-participatingSubjectIds.forEach((id) => cy.getElementById(id)
-  .removeClass("dimmed").addClass("thread-path-subject"));
+severityEdgeClass(sev: FindingSeverity): "" | "critical" | "high" | "medium"
+// CRITICAL→"critical", HIGH→"high", MEDIUM→"medium", LOW→"", INFORMATIONAL→"" (neutral path)
 ```
 
-(Exact ordering/implementation finalized in the plan; the contract is: remove all Phase-3 classes
-first, then dim-all + emphasize-path. Cleanup on exit removes every Phase-3 class and the `dimmed`
-class so the map returns to its Phase-1B baseline.)
+LOW / INFORMATIONAL / unknown severity get **no** severity class — the path edges still emphasize
+(via `.thread-path-edge` width) but stay neutral-colored. Strong color is reserved for genuinely
+elevated severity.
+
+### Imperative application (corrections #4, #5)
+The work lives in an `applyThreadPathMode(cy)` function called from **two** places so it is robust to
+Cytoscape init ordering (correction #5 — `cyRef.current` is not reactive, so an effect keyed on
+selection won't re-run just because the instance became available):
+
+1. a `useEffect` keyed on `[selection, selectedThread, caseMap, cyReady]`, and
+2. directly inside `onCyInit` after the ref is set (so a selection that already exists at mount paints).
+
+`cyReady` is a `useState(false)` flag flipped to `true` in `onCyInit`; including it in the effect deps
+guarantees the effect re-runs once the instance exists. The function:
+
+```ts
+function applyThreadPathMode(cy: cytoscape.Core) {
+  cy.elements().removeClass(
+    "dimmed thread-path-edge thread-path-edge--critical thread-path-edge--high " +
+    "thread-path-edge--medium thread-path-subject"
+  );
+  if (selection.kind !== "thread") return;          // exited Path Mode → baseline
+  const { pathEdgeIds, participatingSubjectIds } = threadPath({
+    threadId: selection.id,
+    edges: caseMap?.edges ?? [],
+    entityLinks: selectedThread?.entity_links ?? [],
+  });
+  if (pathEdgeIds.length === 0 && participatingSubjectIds.length === 0) return; // §5 no-path: don't dim to nothing
+  const suffix = severityEdgeClass(selectedThread?.severity ?? "INFORMATIONAL");
+  cy.elements().addClass("dimmed");
+  pathEdgeIds.forEach((id) => cy.getElementById(id)
+    .removeClass("dimmed")
+    .addClass(`thread-path-edge${suffix ? " thread-path-edge--" + suffix : ""}`));
+  participatingSubjectIds.forEach((id) => cy.getElementById(id)
+    .removeClass("dimmed").addClass("thread-path-subject"));
+}
+```
+
+Contract: remove all Phase-3 classes first, then (only if a path exists) dim-all + emphasize-path.
+Cleanup on exit removes every Phase-3 class and `dimmed` so the map returns to its Phase-1B baseline.
 
 ### No-visible-path state (correction #4 / guardrail #4)
 If `pathEdgeIds` **and** `participatingSubjectIds` are both empty, do **not** silently dim the whole
-map to nothing. Skip the dim, and surface an explicit, neutral message in `ThreadInspector`:
+map to nothing. Skip the dim (handled by the early-return in `applyThreadPathMode`), and surface an
+explicit, neutral message in `ThreadInspector`:
 
 > This thread has no visible Case Map path yet.
 
-This is useful information (the thread's subjects aren't on the current map / didn't resolve to a
-subject pair), not an error. This is a real case: STATUS notes SR-003/SR-005 demo threads whose
-transactions don't resolve to case subjects.
+**Concrete prop path (correction #4):** `InvestigateTab` passes the boolean down —
+
+```tsx
+<ThreadInspector
+  noVisibleMapPath={pathEdgeIds.length === 0 && participatingSubjectIds.length === 0}
+  ... />
+```
+
+`InvestigateTab` already computes `threadPath` for the effect; it reuses that result for the prop
+(compute once per render via a `useMemo` on `[selection, selectedThread, caseMap]`, feeding both the
+effect and the prop so they cannot disagree). This is useful information (the thread's subjects aren't
+on the current map / didn't resolve to a subject pair), not an error — a real case: STATUS notes
+SR-003/SR-005 demo threads whose transactions don't resolve to case subjects.
 
 ### Exit
 Path Mode ends when `selection.kind !== "thread"`: clearing selection, Esc, clicking the active dock
@@ -226,22 +270,24 @@ Phase 1B reserved `.dimmed`. Phase 3 completes the vocabulary. Add to the `STYLE
 | Class | Applies to | Style intent |
 |---|---|---|
 | `.dimmed` | non-path nodes + edges | opacity 0.1 (already shipped) |
-| `.thread-path-edge` | path edges | emphasis width; base neutral if severity unknown |
+| `.thread-path-edge` | path edges | emphasis width; **base neutral** — applied alone for LOW / INFORMATIONAL / unknown severity |
 | `.thread-path-edge--critical` | path edges, CRITICAL thread | line-color `#f87171` |
 | `.thread-path-edge--high` | path edges, HIGH thread | line-color `#fbbf24` |
 | `.thread-path-edge--medium` | path edges, MEDIUM thread | line-color `#60a5fa` |
 | `.thread-path-subject` | participating subjects | neutral amber focus ring (generalize the existing `node:selected` outline) |
 
-Severity color lives on the **path edges only**. Subject rings stay neutral — *color the path, not
-the people* (§10 of the controlling plan).
+Severity color lives on the **path edges only**, and **only for CRITICAL/HIGH/MEDIUM** — LOW and
+INFORMATIONAL threads emphasize the path width without color (correction #2). Subject rings stay
+neutral regardless — *color the path, not the people* (§10 of the controlling plan).
 
 ## 9. What does NOT change
 
 - **No backend work.** `entity_links` (with `entity_type`) is already in the `/findings/` list
   serializer and `FindingItem` type. `/case-map/` contract unchanged.
-- **`ThreadInspector` stays** as the right-rail detail (already shows cited sources + gaps). The only
-  addition is the "no visible Case Map path yet" line (§5) and consuming the shared `threadReadiness`
-  helper extracted from its `gapSummary`.
+- **`ThreadInspector` stays** as the right-rail detail (already shows cited sources + gaps). Additions:
+  a `noVisibleMapPath` prop driving the "no visible Case Map path yet" line (§5); consuming the shared
+  `threadReadiness` helper extracted from its `gapSummary`; and an explicit LOW/INFORMATIONAL case in
+  `severityColor` (correction #2).
 - **The focus reducer is unchanged.** Path Mode is a render of existing `selection.kind === "thread"`.
 
 ## 10. Test plan (TDD)
@@ -252,7 +298,8 @@ the people* (§10 of the controlling plan).
   empty `pathEdgeIds`.
 - `threadPath` — thread with no map presence returns both empty (drives the §5 no-path state).
 - `threadPath` — `entity_links` filtered to person/organization (ignores document/property links).
-- severity → class suffix mapping (`critical|high|medium|""`).
+- `severityEdgeClass` — full enum: CRITICAL/HIGH/MEDIUM → suffix; **LOW/INFORMATIONAL → `""`** (neutral).
+- severity **sort comparator** — CRITICAL > HIGH > MEDIUM > LOW > INFORMATIONAL, title tie-break.
 - `threadReadiness` — referral-grade vs each unmet-gap string (parity with old `gapSummary`).
 
 **Dock component (Vitest):**
@@ -270,6 +317,12 @@ the people* (§10 of the controlling plan).
 - clearing / selecting elsewhere → all Phase-3 classes removed, dock row de-highlighted.
 - refresh after a thread-changing action updates the dock list (no stale rows); selection of a
   now-deleted thread is cleared.
+- **fetch isolation (correction #1):** when `fetchAngles` rejects but the map fetches succeed, the
+  Case Map still renders and the dock shows its own error+retry — the map is not blanked.
+- **init ordering (correction #5):** a thread selection that exists *before* `onCyInit` fires still
+  paints Path Mode once the instance is ready (the `cyReady`/`onCyInit` path).
+- **no-path:** a thread with empty `threadPath` leaves the map un-dimmed and passes
+  `noVisibleMapPath` to `ThreadInspector`.
 
 Frontend tests run locally (Vitest); no backend suite impact.
 
@@ -291,12 +344,12 @@ shared readiness helper, and the class vocabulary. Nothing more.
 
 | File | Change |
 |---|---|
-| `frontend/src/views/caseMapElements.ts` | add pure `threadPath(...)` + severity→class-suffix helper |
+| `frontend/src/views/caseMapElements.ts` | add pure `threadPath(...)`, `severityEdgeClass(...)`, severity sort comparator |
 | `frontend/src/components/threadReadiness.ts` (new) | extract `gapSummary` → shared `threadReadiness(finding)` |
-| `frontend/src/components/ThreadInspector.tsx` | consume `threadReadiness`; add "no visible Case Map path yet" line |
-| `frontend/src/components/ThreadDock.tsx` (new) | the dock surface (rows, sort, collapse, states) |
-| `frontend/src/components/CytoscapeCanvas.tsx` | add `.thread-path-edge*` + `.thread-path-subject` styles |
-| `frontend/src/views/InvestigateTab.tsx` | `threads` state; dock render + layout; `selectedThread` derive; Path Mode `useEffect`; extend `refreshCaseData` with `fetchAngles` |
+| `frontend/src/components/ThreadInspector.tsx` | consume `threadReadiness`; add `noVisibleMapPath` prop + line; extend `severityColor` for LOW/INFORMATIONAL |
+| `frontend/src/components/ThreadDock.tsx` (new) | the dock surface (rows, full-enum sort, collapse, loading/error/empty/100-cap states) |
+| `frontend/src/components/CytoscapeCanvas.tsx` | add `.thread-path-edge*` + `.thread-path-subject` styles (`onCyInit` already exists) |
+| `frontend/src/views/InvestigateTab.tsx` | isolated `threads`/`threadsLoading`/`threadsError` state (separate effect or `allSettled`); `cyReady` state set in `onCyInit`; dock render + layout; `selectedThread` derive; `threadPath` `useMemo` feeding both the Path Mode effect and `noVisibleMapPath`; `applyThreadPathMode` called from effect + `onCyInit`; extend `refreshCaseData` with `fetchAngles` + stale-selection cleanup |
 | `*.test.ts(x)` | per §10 |
 
 No backend files change.
