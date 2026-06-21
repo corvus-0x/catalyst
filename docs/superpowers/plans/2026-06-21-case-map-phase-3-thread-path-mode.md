@@ -807,6 +807,13 @@ export default function ThreadDock({
 
 > **Note on the `thread(...)` test factory:** it is built to the exact `FindingItem` shape (`frontend/src/types/index.ts:835-882`) with no boundary cast, so `tsc` validates it. If the type changes upstream, update the fixture to match — never cast it to silence an error.
 
+> **Style note:** `ThreadDock` uses inline styles to match the house pattern (`ThreadInspector`,
+> `WhatsMissingPanel`, `SubjectInspector` are all inline-styled — do NOT introduce CSS Modules here).
+> For readability, hoist the repeated row grid into module-level style consts at the top of the file —
+> e.g. `const ROW_BASE = { display: "grid", gridTemplateColumns: "92px 1fr 70px 150px", gap: 10, ... }`
+> and spread `{ ...ROW_BASE, ...(active ? ROW_ACTIVE : null) }` per row — rather than repeating the
+> object literal inline.
+
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `cd frontend && npx vitest run src/components/ThreadDock.test.tsx`
@@ -867,12 +874,35 @@ useEffect(() => { loadThreads(); }, [loadThreads]);
 ```
 (Add `useCallback` to the React import.)
 
-- [ ] **Step 2: Derive selectedThread + the path set (single source for effect AND prop)**
+- [ ] **Step 2: Derive selectedThread (with 101st-thread fallback) + the path set**
+
+A thread can be selected without being in the loaded 100 — the Relationship panel's `thread_refs` come
+from `caseMap.edges`, which is independent of the thread fetch. If `threads.find` misses, Path Mode
+would lose severity color and (for subject-only threads) `entity_links`, falsely tripping
+`noVisibleMapPath`. Guard with a by-id fallback fetch that only fires when the dock page misses (no
+extra fetch in the common case). Add `fetchAngle` to the `../api` import.
 
 After the existing `selectedSummaryEdge` memo, add:
 ```ts
+// 101st-thread guard: prefer the dock's loaded page; fall back to a by-id fetch for a thread
+// beyond the 100-row cap (e.g. selected via a Relationship-panel thread_ref).
+const [selectedThreadFallback, setSelectedThreadFallback] = useState<FindingItem | null>(null);
+useEffect(() => {
+  if (selection.kind !== "thread" || threads.some((t) => t.id === selection.id)) {
+    setSelectedThreadFallback(null);
+    return;
+  }
+  let cancelled = false;
+  fetchAngle(caseId, selection.id)
+    .then((t) => { if (!cancelled) setSelectedThreadFallback(t); })
+    .catch(() => { if (!cancelled) setSelectedThreadFallback(null); });
+  return () => { cancelled = true; };
+}, [selection, threads, caseId]);
+
 const selectedThread =
-  selection.kind === "thread" ? threads.find((t) => t.id === selection.id) ?? null : null;
+  selection.kind === "thread"
+    ? threads.find((t) => t.id === selection.id) ?? selectedThreadFallback
+    : null;
 
 const pathSet = useMemo(() => {
   if (selection.kind !== "thread") return { pathEdgeIds: [] as string[], participatingSubjectIds: [] as string[] };
@@ -886,11 +916,19 @@ const noVisibleMapPath =
   selection.kind === "thread" && pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0;
 ```
 
+> **Perf note:** `threadPath` is O(|edges|), run in `useMemo` on selection change. The `/case-map/`
+> graph is *summarized* (one edge per subject pair), so `|edges|` is small by construction. If a very
+> large case ever stutters, swap the array scan for Cytoscape's optimized `cy.edges().filter(...)`
+> inside `applyThreadPathMode` — not needed now (YAGNI).
+
 - [ ] **Step 3: Implement applyThreadPathMode + call it from effect and onCyInit**
 
-Add the function (uses `pathSet`/`selectedThread`/`selection` from closure):
+Wrap the function in `useCallback` with **honest** dependencies (no `eslint-disable` — a silenced
+`exhaustive-deps` is a stale-closure timebomb). It's called from two places (the effect and
+`onCyInit`), so a memoized callback is the right tool. Add `useCallback` to the React import.
+
 ```ts
-function applyThreadPathMode(cy: cytoscape.Core) {
+const applyThreadPathMode = useCallback((cy: cytoscape.Core) => {
   cy.elements().removeClass(
     "dimmed thread-path-edge thread-path-edge--critical thread-path-edge--high thread-path-edge--medium thread-path-subject",
   );
@@ -902,15 +940,16 @@ function applyThreadPathMode(cy: cytoscape.Core) {
     cy.getElementById(id).removeClass("dimmed").addClass(`thread-path-edge${suffix ? " thread-path-edge--" + suffix : ""}`));
   pathSet.participatingSubjectIds.forEach((id) =>
     cy.getElementById(id).removeClass("dimmed").addClass("thread-path-subject"));
-}
+}, [selection, pathSet, selectedThread]);
 
 useEffect(() => {
   const cy = cyRef.current;
   if (cy) applyThreadPathMode(cy);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selection, selectedThread, caseMap, cyReady, pathSet]);
+}, [applyThreadPathMode, cyReady]);
 ```
-Update the canvas `onCyInit` to flip `cyReady` and paint immediately (handles selection-before-init):
+The effect's deps are now exhaustive and honest: `applyThreadPathMode` (re-created when selection/path
+change) + `cyReady` (re-runs once the instance exists). Update the canvas `onCyInit` to flip `cyReady`
+and paint immediately (handles selection-before-init):
 ```tsx
 onCyInit={(cy) => { cyRef.current = cy; setCyReady(true); applyThreadPathMode(cy); }}
 ```
@@ -990,6 +1029,12 @@ it("a thread with no map presence shows the no-visible-path note and does not bl
 it("the Case Map still renders when fetchAngles rejects", async () => {
   // make fetchAngles reject; assert canvas present and dock shows Retry
 });
+
+it("paints Path Mode for a thread not in the loaded dock page (101st-thread fallback)", async () => {
+  // fetchAngles returns a page WITHOUT thread "T-far"; an edge's thread_refs references "T-far".
+  // select it via the Relationship panel thread_ref; fetchAngle("T-far") resolves the detail.
+  // assert: ThreadInspector shows it, noVisibleMapPath is false (edge path found), severity honored.
+});
 ```
 
 > The integration test wiring (provider, cytoscape mock) is non-trivial — read `InvestigateTab.caseMap.test.tsx` and reuse its `vi.mock` block and any cytoscape stub verbatim. If Cytoscape class assertions are impractical in jsdom, assert the **observable** proxies instead: `data-active` on the dock row, the ThreadInspector text, and `noVisibleMapPath` behavior — the class application itself is covered by Task 1 (`threadPath`) + Task 3 (stylesheet) unit tests.
@@ -1026,3 +1071,21 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ## Scope guardrails (do NOT build — Phase 5)
 
 No filters, search, saved views, command-palette, resizable dock, or Timeline-brush integration. Sorting only.
+
+## Deferred (tracked, not built here)
+
+- **Investigate remount re-fetch.** `threads` joins the existing pattern where *every* Investigate
+  dataset (`fetchGraph`/`fetchCaseMap`/`fetchDashboard`/`fetchReferralReadiness`, `InvestigateTab.tsx:283`)
+  re-fires on tab return. Adding `threads` is consistent, not a new regression. The fix is a *holistic*
+  Investigate-payload cache across all five fetches (or lifting them together) — a Phase 5 concern, not
+  a piecemeal change to one dataset (and the no-reducer-change constraint forbids lifting `threads`
+  alone into context). Recorded so it's tracked.
+
+## Review dispositions (principal review, 2026-06-21)
+
+- **#1 101st-thread bug** — FIXED (Task 5 Step 2 fallback fetch).
+- **#2 `eslint-disable` exhaustive-deps** — FIXED (Task 5 Step 3 `useCallback`, honest deps).
+- **#3 remount re-fetch** — DEFERRED with rationale (above) — pre-existing whole-tab pattern, out of Phase 3 scope.
+- **#4 O(|E|) in render** — ACCEPTED as non-issue; documented + escape hatch noted (Task 5 Step 2).
+- **#5 inline styles** — KEEP house pattern; extract row style to a const for readability (Task 4 note).
+- **#6 `as FindingItem` cast** — already removed in the prior revision; fixture is a strict builder.
