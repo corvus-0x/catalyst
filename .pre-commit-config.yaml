@@ -1,4 +1,11 @@
 repos:
+  # Secret scanning — fast local layer (gitleaks protect --staged scans only the
+  # changes you're committing). CI runs the full-history scan as the hard gate.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -14,3 +21,14 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # Local hook (no external repo): the fast feedback layer for the banned-UI-strings
+  # rule. CI (.github/workflows/ci.yml) is the authoritative gate; this just catches
+  # leaks before they leave your machine. Runs only on staged frontend .ts/.tsx files.
+  - repo: local
+    hooks:
+      - id: banned-ui-strings
+        name: Banned UI strings (CLAUDE.md)
+        entry: node frontend/scripts/check-banned-strings.mjs
+        language: system
+        files: ^frontend/src/.*\.tsx?$

@@ -70,8 +70,7 @@ function CaseDetailViewInner() {
   const [caseData, setCaseData] = useState<CaseDetailResponse | null>(null);
   const [loadingCase, setLoadingCase] = useState(true);
   const [activeTab, setActiveTab] = useState("investigate");
-  const [requestedAngle, setRequestedAngle] = useState<{ id: string; title: string } | null>(null);
-  const { activeAngleId, activeAngleTitle, setActiveAngle } = useCaseWorkspace();
+  const { activeAngleId, activeAngleTitle, openThread, clearActiveAngle } = useCaseWorkspace();
   const feeder = useFeederActions(id ?? "");
   const [triagedKeys, setTriagedKeys] = useState<Set<string>>(new Set());
   const [triageOutcomes, setTriageOutcomes] = useState<Map<string, string>>(new Map());
@@ -106,7 +105,7 @@ function CaseDetailViewInner() {
   }
 
   function handleOpenAngle(angleId: string, angleTitle: string) {
-    setRequestedAngle({ id: angleId, title: angleTitle });
+    openThread({ id: angleId, title: angleTitle });
     setActiveTab("investigate");
   }
 
@@ -144,7 +143,7 @@ function CaseDetailViewInner() {
                     type="button"
                     className="active-angle-chip__clear"
                     aria-label="Clear active angle"
-                    onClick={() => setActiveAngle(undefined)}
+                    onClick={() => clearActiveAngle()}
                   >
                     ×
                   </button>
@@ -193,9 +192,7 @@ function CaseDetailViewInner() {
           <InvestigateTab
             caseId={id}
             documents={caseData?.documents ?? []}
-            onAngleActive={(angle) => setActiveAngle(angle)}
-            requestedAngle={requestedAngle}
-            onAngleConsumed={() => setRequestedAngle(null)}
+            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         </Tabs.Content>
 

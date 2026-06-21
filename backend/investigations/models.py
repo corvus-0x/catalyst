@@ -1447,6 +1447,27 @@ class AuditAction(models.TextChoices):
     AI_FINDING_REVIEWED = "AI_FINDING_REVIEWED", "Investigator reviewed an AI-flagged finding"
 
 
+class AppendOnlyError(Exception):
+    """Raised when code attempts to UPDATE or DELETE an append-only record."""
+
+
+class AppendOnlyQuerySet(models.QuerySet):
+    """Blocks the bulk SQL paths (`.update()` / `.delete()`) that bypass the
+    model's save()/delete() overrides. Without this, the per-object guard is a
+    paper wall — `AuditLog.objects.filter(...).delete()` would erase evidence."""
+
+    def update(self, *args, **kwargs):
+        raise AppendOnlyError("AuditLog is append-only; bulk update is forbidden.")
+
+    def delete(self, *args, **kwargs):
+        raise AppendOnlyError("AuditLog is append-only; bulk delete is forbidden.")
+
+    def bulk_update(self, *args, **kwargs):
+        # bulk_update() issues raw UPDATE SQL and bypasses save(), so it must be
+        # blocked too — otherwise the per-object guard is a paper wall.
+        raise AppendOnlyError("AuditLog is append-only; bulk update is forbidden.")
+
+
 class AuditLog(UUIDPrimaryKeyModel):
     """
     Append-only forensic audit log.
@@ -1486,6 +1507,20 @@ class AuditLog(UUIDPrimaryKeyModel):
         help_text="False if the operation failed. Failure details go in notes.",
     )
     notes = models.TextField(blank=True, null=True)
+
+    # Manager backed by AppendOnlyQuerySet so bulk update()/delete() are blocked.
+    objects = AppendOnlyQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        # _state.adding is True only until the row is first persisted. UUID PKs
+        # are populated at __init__, so "pk is None?" can't tell insert from
+        # update here — this flag is the correct signal. Inserts pass; re-saves raise.
+        if not self._state.adding:
+            raise AppendOnlyError("AuditLog is append-only; updates are forbidden.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise AppendOnlyError("AuditLog is append-only; deletes are forbidden.")
 
     class Meta:
         db_table = "audit_log"
