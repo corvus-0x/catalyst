@@ -107,10 +107,13 @@ jobs:
         run: |
           VERSION=8.21.2
           BASE="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}"
-          curl -sSfL "${BASE}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          TARBALL="gitleaks_${VERSION}_linux_x64.tar.gz"
+          # Keep the published filename so `sha256sum -c` can find the file named
+          # in the checksums line.
+          curl -sSfL "${BASE}/${TARBALL}" -o "${TARBALL}"
           curl -sSfL "${BASE}/gitleaks_${VERSION}_checksums.txt" -o checksums.txt
-          grep "gitleaks_${VERSION}_linux_x64.tar.gz" checksums.txt | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
+          grep " ${TARBALL}\$" checksums.txt | sha256sum -c -
+          tar -xzf "${TARBALL}" gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: Scan for secrets
         run: gitleaks detect --no-banner --redact --source .
