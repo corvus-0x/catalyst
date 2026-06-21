@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
 import { toast } from "sonner";
 import { Flag, Maximize, Map as MapIcon, Sparkles, RefreshCw, Link as LinkIcon } from "lucide-react";
@@ -11,11 +11,14 @@ import {
   fetchReferralReadiness,
   runAiPatternAnalysis,
   reevaluateSignals,
+  fetchAngles,
+  fetchAngle,
 } from "../api";
 import type {
   CaseMapResponse,
   DashboardResponse,
   DocumentItem,
+  FindingItem,
   GraphResponse,
   OrgDetailResponse,
   PersonDetailResponse,
@@ -25,7 +28,7 @@ import type {
 import type { SubjectEntityType } from "../context/CaseWorkspaceContext";
 import WhatsMissingPanel from "../components/WhatsMissingPanel";
 import CytoscapeCanvas, { type BadgeDescriptor } from "../components/CytoscapeCanvas";
-import { subjectNodeToElement, summaryEdgeToElement, subjectBadges } from "./caseMapElements";
+import { subjectNodeToElement, summaryEdgeToElement, subjectBadges, threadPath, severityEdgeClass } from "./caseMapElements";
 import CaseMapLegend from "../components/CaseMapLegend";
 import SubjectInspector from "../components/SubjectInspector";
 import ThreadInspector from "../components/ThreadInspector";
@@ -33,6 +36,7 @@ import { useAsyncJob } from "../hooks/useAsyncJob";
 import { useCaseWorkspace } from "../context/CaseWorkspaceContext";
 import { useFeederActions } from "../hooks/useFeederActions";
 import AnglePickerModal from "../components/AnglePickerModal";
+import ThreadDock from "../components/ThreadDock";
 
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
 const ProfilePanel = lazy(() => import("./ProfilePanel"));
@@ -256,6 +260,13 @@ export default function InvestigateTab({
   const leadJob = useAsyncJob<{ findings_created: number; patterns_dropped: number }>();
   const [rerunPending, setRerunPending] = useState(false);
 
+  /* ── Thread dock state (isolated from the main mount Promise.all) ── */
+  const [threads, setThreads] = useState<FindingItem[]>([]);
+  const [threadsTotal, setThreadsTotal] = useState(0);
+  const [threadsLoading, setThreadsLoading] = useState(true);
+  const [threadsError, setThreadsError] = useState(false);
+  const [cyReady, setCyReady] = useState(false);
+
   const cyRef = useRef<cytoscape.Core | null>(null);
 
   /* ── Reducer-driven workspace state ── */
@@ -278,6 +289,18 @@ export default function InvestigateTab({
 
   /* ── Feeder actions for SubjectInspector start-thread / cite ── */
   const feeder = useFeederActions(caseId);
+
+  /* ── Isolated thread-dock fetch (separate from the mount Promise.all so a thread-fetch
+     failure can never blank the map or reject the main load) ── */
+  const loadThreads = useCallback(() => {
+    setThreadsLoading(true);
+    setThreadsError(false);
+    fetchAngles(caseId, { limit: 100 })
+      .then((res) => { setThreads(res.results); setThreadsTotal(res.count); })
+      .catch(() => { setThreads([]); setThreadsTotal(0); setThreadsError(true); })
+      .finally(() => setThreadsLoading(false));
+  }, [caseId]);
+  useEffect(() => { loadThreads(); }, [loadThreads]);
 
   /* ── Load graph + case-map + dashboard + fuzzy counts + readiness ── */
   useEffect(() => {
@@ -324,6 +347,17 @@ export default function InvestigateTab({
     setGraph(g);
     setDashboard(dash);
     setReadiness(ready);
+    // Isolated thread-dock refresh — keep in its own try/catch so a dock failure cannot
+    // reject the whole refresh or blank the map. Page-absence ≠ deletion (101st-thread rule).
+    try {
+      const ang = await fetchAngles(caseId, { limit: 100 });
+      setThreads(ang.results);
+      setThreadsTotal(ang.count);
+      setThreadsError(false);
+    } catch {
+      setThreadsError(true);
+      toast.error("Couldn't refresh threads — retry from the dock.");
+    }
   }
 
   /* ── Lead handler ── */
@@ -388,12 +422,64 @@ export default function InvestigateTab({
       ? (caseMap?.edges.find((e) => e.id === selection.edgeId) ?? null)
       : null;
 
+  /* ── 101st-thread guard: prefer the dock's loaded page; fall back to a by-id fetch for a
+     thread beyond the 100-row cap (e.g. selected via a Relationship-panel thread_ref). ── */
+  const [selectedThreadFallback, setSelectedThreadFallback] = useState<FindingItem | null>(null);
+  useEffect(() => {
+    if (selection.kind !== "thread" || threads.some((t) => t.id === selection.id)) {
+      setSelectedThreadFallback(null);
+      return;
+    }
+    let cancelled = false;
+    fetchAngle(caseId, selection.id)
+      .then((t) => { if (!cancelled) setSelectedThreadFallback(t); })
+      .catch(() => { if (!cancelled) setSelectedThreadFallback(null); });
+    return () => { cancelled = true; };
+  }, [selection, threads, caseId]);
+
+  const selectedThread =
+    selection.kind === "thread"
+      ? threads.find((t) => t.id === selection.id) ?? selectedThreadFallback
+      : null;
+
+  const pathSet = useMemo(() => {
+    if (selection.kind !== "thread") return { pathEdgeIds: [] as string[], participatingSubjectIds: [] as string[] };
+    return threadPath({
+      threadId: selection.id,
+      edges: caseMap?.edges ?? [],
+      entityLinks: selectedThread?.entity_links ?? [],
+    });
+  }, [selection, selectedThread, caseMap]);
+
+  const noVisibleMapPath =
+    selection.kind === "thread" && pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0;
+
   /* ── Resolve the subject label for a selected subject ── */
   function selectedSubjectLabel(): string {
     if (selection.kind !== "subject") return "";
     const node = graph?.nodes.find((n) => n.id === selection.id);
     return node?.label ?? selection.id.slice(0, 8) + "…";
   }
+
+  /* ── Thread Path Mode: apply/clear path highlighting on the Cytoscape instance ── */
+  const applyThreadPathMode = useCallback((cy: cytoscape.Core) => {
+    cy.elements().removeClass(
+      "dimmed thread-path-edge thread-path-edge--critical thread-path-edge--high thread-path-edge--medium thread-path-subject",
+    );
+    if (selection.kind !== "thread") return;
+    if (pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0) return; // no-path: don't dim to nothing
+    const suffix = severityEdgeClass(selectedThread?.severity ?? "INFORMATIONAL");
+    cy.elements().addClass("dimmed");
+    pathSet.pathEdgeIds.forEach((id) =>
+      cy.getElementById(id).removeClass("dimmed").addClass(`thread-path-edge${suffix ? " thread-path-edge--" + suffix : ""}`));
+    pathSet.participatingSubjectIds.forEach((id) =>
+      cy.getElementById(id).removeClass("dimmed").addClass("thread-path-subject"));
+  }, [selection, pathSet, selectedThread]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (cy) applyThreadPathMode(cy);
+  }, [applyThreadPathMode, cyReady]);
 
   /* ── Build Cytoscape elements from /case-map/ (not /graph/) ──────────────────
      Canvas elements come from the Case Map contract (SubjectNode + SummaryEdge).
@@ -547,28 +633,50 @@ export default function InvestigateTab({
           onRerunRules={handleRerunRules}
         />
 
-        {/* Canvas */}
-        <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
-          {isEmpty ? (
-            <EmptyWeb onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
-          ) : (
-            <>
-              <CytoscapeCanvas
-                elements={elements}
-                badges={badges}
-                onCyInit={(cy) => { cyRef.current = cy; }}
-                onNodeClick={handleNodeClick}
-                onEdgeClick={handleEdgeClick}
-              />
-              <CaseMapLegend />
-            </>
-          )}
+        {/* Canvas column: map + thread dock beneath it (spans canvas width, NOT in right rail) */}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+          <div className="graph-canvas-dark" style={{ flex: 1, minWidth: 0, position: "relative" }}>
+            {isEmpty ? (
+              <EmptyWeb onAddAngle={() => { setConnectPrefill({}); setShowConnectModal(true); }} />
+            ) : (
+              <>
+                <CytoscapeCanvas
+                  elements={elements}
+                  badges={badges}
+                  onCyInit={(cy) => { cyRef.current = cy; setCyReady(true); applyThreadPathMode(cy); }}
+                  onNodeClick={handleNodeClick}
+                  onEdgeClick={handleEdgeClick}
+                />
+                <CaseMapLegend />
+              </>
+            )}
 
-          {/* Minimap */}
-          {showMinimap && !isEmpty && (
-            <div className="minimap-container" aria-hidden>
-              <CytoscapeCanvas elements={elements} interactionDisabled />
-            </div>
+            {/* Minimap */}
+            {showMinimap && !isEmpty && (
+              <div className="minimap-container" aria-hidden>
+                <CytoscapeCanvas elements={elements} interactionDisabled />
+              </div>
+            )}
+          </div>
+
+          {/* Thread Dock — beneath the canvas, spans canvas width */}
+          {!isEmpty && (
+            <ThreadDock
+              threads={threads}
+              totalCount={threadsTotal}
+              loading={threadsLoading}
+              error={threadsError}
+              selectedThreadId={selection.kind === "thread" ? selection.id : undefined}
+              onSelectThread={(id) => {
+                if (selection.kind === "thread" && selection.id === id) {
+                  clearSelection();              // clicking the active row exits Path Mode
+                } else {
+                  const t = threads.find((x) => x.id === id);
+                  selectThread(id, t?.title ?? "");
+                }
+              }}
+              onRetry={loadThreads}
+            />
           )}
         </div>
 
@@ -638,6 +746,7 @@ export default function InvestigateTab({
             <ThreadInspector
               caseId={caseId}
               threadId={selection.id}
+              noVisibleMapPath={noVisibleMapPath}
               onOpenThread={() =>
                 openThread({ id: selection.id, title: activeAngleTitle ?? "" })
               }
