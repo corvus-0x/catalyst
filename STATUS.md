@@ -776,6 +776,27 @@ In rough priority order. Subject to change as the rebuild progresses.
 - **Migrations added Session 48 (PR #12):** `0035_alter_financialsnapshot_source` (no-op AlterField — help_text/choices only, isolating a pre-existing model drift) and `0036_finding_overreach_reviewed` (adds `Finding.overreach_reviewed BooleanField(default=False)` — the stored 4th tie-off-gate condition; no backfill by design).
 - **Tie-off gate is enforced server-side only on the *transition into* CONFIRMED.** Editing an already-confirmed Angle is intentionally not re-gated ("condition loss is allowed") — removing the last citation or downgrading weight leaves `status=CONFIRMED` but drops the Angle from referral-grade (it recounts as "need work" and is excluded from the PDF). Working as designed; the readiness `overreach_review` WARN item surfaces the "one acknowledgement away" case.
 
+### Deferred from PR #15 — Case Map Phase 2
+
+Non-blocking follow-ups surfaced in review (not done in the Phase 2 PR; pick up next):
+
+- **Narrow stringly-typed sentinels** to unions so a backend rename fails at compile time, not silently
+  at runtime — especially relevant with the vocabulary migration in flight:
+  - `ReferralReadinessItem.key` (the `"pending_connections"` routing sentinel in `WhatsMissingPanel`)
+  - `EvidenceRef.kind` and `EvidenceRef.category`
+  - `UnderlyingRelationship.kind`
+- **Add `title` to `Selection.thread`** so the full-thread breadcrumb label can't be stale (today it
+  reads the ambient `activeAngleTitle` pointer). Same change closes the CodeRabbit "dedup keeps stale
+  frame metadata when reopening the same id" note (`CaseWorkspaceContext.tsx`).
+- **Add an upper-bound guard to `goTo(index)`** in the focus reducer (lower bound is already clamped).
+- **Tighten `STATUS_LABEL` typing** to `Record<FindingStatus, string>` in `RelationshipSummaryPanel`
+  so a new `FindingStatus` member is a compile error rather than a silent raw-string display.
+- **Existing debt:** `ProfilePanel` notes fetch still has a swallowed `.catch(() => {})` (predates
+  Phase 2; left untouched since the C1 fix didn't modify `ProfilePanel`).
+- **Phase 2 follow-on phases:** Thread Path Mode (Phase 3) and the structured Thread Builder (Phase 4)
+  per `docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md`; ThreadInspector
+  "cite source" (CiteDocumentPicker) is intentionally deferred there (citing lives in full AngleView).
+
 ---
 
 ## How to read this file
