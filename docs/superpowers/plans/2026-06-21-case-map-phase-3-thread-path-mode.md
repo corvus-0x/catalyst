@@ -1,0 +1,995 @@
+# Case Map Phase 3 — Thread Path Mode + Thread Dock Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Selecting a thread makes the Case Map enter Thread Path Mode (emphasize the thread's relationships, neutral-ring its subjects, dim the rest), and add a persistent canvas-width Thread Dock so every thread is reachable from the map.
+
+**Architecture:** Frontend-only. Pure helpers in `caseMapElements.ts` compute the path set and severity class; a new `ThreadDock` renders the list; `InvestigateTab` wires the dock + an imperative Cytoscape class-toggle keyed on the existing `selection.kind === "thread"` reducer state. No backend change, no reducer change — Phase 3 is a *render* of Phase 2's selection.
+
+**Tech Stack:** React + TypeScript + Vite, Cytoscape.js (`react-cytoscapejs` + `cose-bilkent`), Vitest + `@testing-library/react`, Lucide icons.
+
+**Spec:** `docs/superpowers/specs/2026-06-21-case-map-phase-3-thread-path-mode-design.md`
+
+## Global Constraints
+
+- **No backend files change.** `entity_links` (with `entity_type`) is already in the `/findings/` serializer.
+- **No reducer change.** Path Mode renders existing `selection.kind === "thread"`. Do not add fields to `CaseWorkspaceContext`.
+- **Banned UI strings** (enforced by CI gate): never render "Haiku", "Sonnet", "Opus", "Claude", "AI assistant", "LLM", "GPT". Use Thread / Subject / Substantiated / Set aside / Lead vocabulary.
+- **Code style:** double quotes, 2-space indent, LF. Run `cd frontend && npx tsc --noEmit` clean before each commit.
+- **Severity is the full enum:** `CRITICAL | HIGH | MEDIUM | LOW | INFORMATIONAL`. Sort order CRITICAL>HIGH>MEDIUM>LOW>INFORMATIONAL. Severity *color* only for CRITICAL/HIGH/MEDIUM; LOW/INFORMATIONAL are neutral.
+- **Test command:** `cd frontend && npx vitest run <path>` (single file) / `npx vitest run` (all). Type check: `cd frontend && npx tsc --noEmit`.
+- **Commit signature:** end every commit body with `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- **Branch:** `feature/case-map-phase-3-thread-path-mode` (already created).
+
+---
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `frontend/src/views/caseMapElements.ts` (modify) | add pure `threadPath`, `severityEdgeClass`, `compareBySeverity` |
+| `frontend/src/components/threadReadiness.ts` (new) | shared `threadReadiness(finding)` — the one referral-grade gap definition |
+| `frontend/src/components/ThreadInspector.tsx` (modify) | consume `threadReadiness`; full-enum `severityColor`; `noVisibleMapPath` prop + line |
+| `frontend/src/components/ThreadDock.tsx` (new) | the dock surface — rows, sort, collapse, states |
+| `frontend/src/components/CytoscapeCanvas.tsx` (modify) | add `.thread-path-edge*` + `.thread-path-subject` styles |
+| `frontend/src/views/InvestigateTab.tsx` (modify) | dock state/fetch isolation, `cyReady`, `applyThreadPathMode`, dock render, refresh extension |
+
+Build order: Task 1 (path/severity helpers) → Task 2 (readiness helper + ThreadInspector) → Task 3 (stylesheet) → Task 4 (ThreadDock) → Task 5 (InvestigateTab wiring). Tasks 1–4 are independent leaves; Task 5 consumes all of them.
+
+---
+
+### Task 1: Pure path + severity helpers in `caseMapElements.ts`
+
+**Files:**
+- Modify: `frontend/src/views/caseMapElements.ts`
+- Test: `frontend/src/views/caseMapElements.test.ts`
+
+**Interfaces:**
+- Consumes: `SummaryEdge`, `FindingEntityLink`, `FindingSeverity` from `../types`.
+- Produces:
+  - `threadPath(args: { threadId: string; edges: SummaryEdge[]; entityLinks: FindingEntityLink[] }): { pathEdgeIds: string[]; participatingSubjectIds: string[] }`
+  - `severityEdgeClass(sev: FindingSeverity): "" | "critical" | "high" | "medium"`
+  - `compareBySeverity(a: FindingSeverity, b: FindingSeverity): number` (negative when `a` is more severe)
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `frontend/src/views/caseMapElements.test.ts`:
+
+```ts
+import {
+  threadPath,
+  severityEdgeClass,
+  compareBySeverity,
+} from "./caseMapElements";
+import type { FindingEntityLink, FindingSeverity } from "../types";
+
+function edgeWithThreads(id: string, source: string, target: string, threadIds: string[]): SummaryEdge {
+  const e = edge("documented");
+  return {
+    ...e,
+    id, source, target,
+    thread_refs: threadIds.map((tid) => ({
+      thread_id: tid, title: "t", status: "NEEDS_EVIDENCE",
+      severity: "HIGH", rule_id: "SR-015", signal_type: "INSIDER_SWAP", handoff_ready: false,
+    })),
+  };
+}
+function link(entity_id: string, entity_type: FindingEntityLink["entity_type"]): FindingEntityLink {
+  return { entity_id, entity_type, context_note: "" };
+}
+
+describe("threadPath", () => {
+  it("returns path edges referencing the thread and their endpoints", () => {
+    const edges = [
+      edgeWithThreads("a__b", "a", "b", ["T1"]),
+      edgeWithThreads("b__c", "b", "c", ["T1"]),
+      edgeWithThreads("c__d", "c", "d", ["T2"]),
+    ];
+    const r = threadPath({ threadId: "T1", edges, entityLinks: [] });
+    expect(r.pathEdgeIds.sort()).toEqual(["a__b", "b__c"]);
+    expect(r.participatingSubjectIds.sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("lights a subject-only thread from entity_links when no edge matches", () => {
+    const edges = [edgeWithThreads("a__b", "a", "b", ["OTHER"])];
+    const r = threadPath({
+      threadId: "T1", edges,
+      entityLinks: [link("p1", "person"), link("o1", "organization")],
+    });
+    expect(r.pathEdgeIds).toEqual([]);
+    expect(r.participatingSubjectIds.sort()).toEqual(["o1", "p1"]);
+  });
+
+  it("ignores non-subject entity_links (document/property)", () => {
+    const r = threadPath({
+      threadId: "T1", edges: [],
+      entityLinks: [link("d1", "document"), link("pr1", "property"), link("p1", "person")],
+    });
+    expect(r.participatingSubjectIds).toEqual(["p1"]);
+  });
+
+  it("returns both empty when the thread has no map presence", () => {
+    const r = threadPath({ threadId: "T1", edges: [edgeWithThreads("a__b", "a", "b", ["X"])], entityLinks: [] });
+    expect(r.pathEdgeIds).toEqual([]);
+    expect(r.participatingSubjectIds).toEqual([]);
+  });
+
+  it("dedups a subject that is both an edge endpoint and an entity_link", () => {
+    const edges = [edgeWithThreads("a__b", "a", "b", ["T1"])];
+    const r = threadPath({ threadId: "T1", edges, entityLinks: [link("a", "person")] });
+    expect(r.participatingSubjectIds.sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("severityEdgeClass", () => {
+  it("maps CRITICAL/HIGH/MEDIUM to a suffix and LOW/INFORMATIONAL to empty", () => {
+    expect(severityEdgeClass("CRITICAL")).toBe("critical");
+    expect(severityEdgeClass("HIGH")).toBe("high");
+    expect(severityEdgeClass("MEDIUM")).toBe("medium");
+    expect(severityEdgeClass("LOW")).toBe("");
+    expect(severityEdgeClass("INFORMATIONAL")).toBe("");
+  });
+});
+
+describe("compareBySeverity", () => {
+  it("orders CRITICAL > HIGH > MEDIUM > LOW > INFORMATIONAL", () => {
+    const order: FindingSeverity[] = ["INFORMATIONAL", "CRITICAL", "MEDIUM", "LOW", "HIGH"];
+    expect([...order].sort(compareBySeverity)).toEqual(
+      ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL"],
+    );
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cd frontend && npx vitest run src/views/caseMapElements.test.ts`
+Expected: FAIL — `threadPath`, `severityEdgeClass`, `compareBySeverity` are not exported.
+
+- [ ] **Step 3: Implement the helpers**
+
+Append to `frontend/src/views/caseMapElements.ts` (add `FindingEntityLink`, `FindingSeverity` to the existing type import from `../types`):
+
+```ts
+import type {
+  SubjectNode, SummaryEdge, EdgeStrengthLevel, FindingEntityLink, FindingSeverity,
+} from "../types";
+
+/** Compute the Case Map elements a thread relies on. Edge-backed threads come from
+ *  edge.thread_refs; subject-only threads come from the finding's person/org entity_links. */
+export function threadPath(args: {
+  threadId: string;
+  edges: SummaryEdge[];
+  entityLinks: FindingEntityLink[];
+}): { pathEdgeIds: string[]; participatingSubjectIds: string[] } {
+  const pathEdgeIds: string[] = [];
+  const subjects = new Set<string>();
+  for (const e of args.edges) {
+    if (e.thread_refs.some((r) => r.thread_id === args.threadId)) {
+      pathEdgeIds.push(e.id);
+      subjects.add(e.source);
+      subjects.add(e.target);
+    }
+  }
+  for (const l of args.entityLinks) {
+    if (l.entity_type === "person" || l.entity_type === "organization") {
+      subjects.add(l.entity_id);
+    }
+  }
+  return { pathEdgeIds, participatingSubjectIds: [...subjects] };
+}
+
+const SEVERITY_RANK: Record<FindingSeverity, number> = {
+  CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFORMATIONAL: 4,
+};
+
+/** Path-edge color suffix. Only elevated severities get color; LOW/INFORMATIONAL stay neutral. */
+export function severityEdgeClass(sev: FindingSeverity): "" | "critical" | "high" | "medium" {
+  switch (sev) {
+    case "CRITICAL": return "critical";
+    case "HIGH": return "high";
+    case "MEDIUM": return "medium";
+    default: return "";
+  }
+}
+
+/** Sort comparator: most-severe first (CRITICAL → INFORMATIONAL). */
+export function compareBySeverity(a: FindingSeverity, b: FindingSeverity): number {
+  return SEVERITY_RANK[a] - SEVERITY_RANK[b];
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `cd frontend && npx vitest run src/views/caseMapElements.test.ts`
+Expected: PASS (all describe blocks).
+
+- [ ] **Step 5: Type check + commit**
+
+```bash
+cd frontend && npx tsc --noEmit
+cd .. && git add frontend/src/views/caseMapElements.ts frontend/src/views/caseMapElements.test.ts
+git commit -m "feat(case-map): pure threadPath + severity helpers (Phase 3)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: Shared `threadReadiness` helper + ThreadInspector updates
+
+**Files:**
+- Create: `frontend/src/components/threadReadiness.ts`
+- Create: `frontend/src/components/threadReadiness.test.ts`
+- Modify: `frontend/src/components/ThreadInspector.tsx`
+- Modify: `frontend/src/components/ThreadInspector.test.tsx`
+
+**Interfaces:**
+- Consumes: `FindingItem`, `FindingSeverity` from `../types`.
+- Produces: `threadReadiness(f: Pick<FindingItem, "status" | "evidence_weight" | "overreach_reviewed" | "document_links">): { ready: boolean; summary: string }`. `ThreadInspector` gains a `noVisibleMapPath?: boolean` prop.
+
+The current `ThreadInspector.gapSummary()` (lines 142–152) and the referral-readiness color block (lines 257–272) duplicate the referral-grade predicate. Extract it once so the dock (Task 4) and the inspector share a single definition.
+
+- [ ] **Step 1: Write the failing helper test**
+
+Create `frontend/src/components/threadReadiness.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { threadReadiness } from "./threadReadiness";
+
+const base = {
+  status: "CONFIRMED" as const,
+  evidence_weight: "DOCUMENTED" as const,
+  overreach_reviewed: true,
+  document_links: [{ document_id: "d1", document_filename: "x", page_reference: "", context_note: "" }],
+};
+
+describe("threadReadiness", () => {
+  it("is ready when all referral-grade conditions are met", () => {
+    expect(threadReadiness(base)).toEqual({ ready: true, summary: "All referral-grade conditions met." });
+  });
+  it("reports no cited sources", () => {
+    expect(threadReadiness({ ...base, document_links: [] })).toMatchObject({
+      ready: false, summary: expect.stringContaining("No cited sources"),
+    });
+  });
+  it("reports weight below Documented", () => {
+    expect(threadReadiness({ ...base, evidence_weight: "SPECULATIVE" })).toMatchObject({
+      ready: false, summary: expect.stringContaining("Evidence weight below Documented"),
+    });
+  });
+  it("reports overreach not reviewed", () => {
+    expect(threadReadiness({ ...base, overreach_reviewed: false })).toMatchObject({
+      ready: false, summary: expect.stringContaining("Overreach not reviewed"),
+    });
+  });
+  it("reports not yet substantiated", () => {
+    expect(threadReadiness({ ...base, status: "NEEDS_EVIDENCE" })).toMatchObject({
+      ready: false, summary: expect.stringContaining("Not yet substantiated"),
+    });
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/threadReadiness.test.ts`
+Expected: FAIL — module `./threadReadiness` does not exist.
+
+- [ ] **Step 3: Implement the helper**
+
+Create `frontend/src/components/threadReadiness.ts` (logic lifted verbatim from `ThreadInspector.gapSummary`):
+
+```ts
+import type { FindingItem } from "../types";
+
+type ReadinessInput = Pick<
+  FindingItem,
+  "status" | "evidence_weight" | "overreach_reviewed" | "document_links"
+>;
+
+/** The single referral-grade gap definition shared by ThreadInspector and the Thread Dock.
+ *  Mirrors referral_grade.py: CONFIRMED ∧ ≥1 cited doc ∧ weight ∈ {DOCUMENTED, TRACED} ∧ overreach_reviewed. */
+export function threadReadiness(f: ReadinessInput): { ready: boolean; summary: string } {
+  const gaps: string[] = [];
+  if (f.document_links.length === 0) gaps.push("No cited sources");
+  if (!["DOCUMENTED", "TRACED"].includes(f.evidence_weight)) gaps.push("Evidence weight below Documented");
+  if (!f.overreach_reviewed) gaps.push("Overreach not reviewed");
+  if (f.status !== "CONFIRMED") gaps.push("Not yet substantiated");
+  if (gaps.length === 0) return { ready: true, summary: "All referral-grade conditions met." };
+  return { ready: false, summary: gaps.join(" · ") };
+}
+```
+
+- [ ] **Step 4: Run it to verify it passes**
+
+Run: `cd frontend && npx vitest run src/components/threadReadiness.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Refactor ThreadInspector to consume the helper + full-enum severity + no-path prop**
+
+In `frontend/src/components/ThreadInspector.tsx`:
+
+(a) Add the import:
+```ts
+import { threadReadiness } from "./threadReadiness";
+```
+
+(b) Extend `severityColor` (lines 42–49) so LOW/INFORMATIONAL are explicit (no behavior change, but removes the implicit `default`):
+```ts
+function severityColor(severity: FindingSeverity): string {
+  switch (severity) {
+    case "CRITICAL": return "var(--color-critical, #f87171)";
+    case "HIGH":     return "#fbbf24";
+    case "MEDIUM":   return "var(--color-info, #60a5fa)";
+    case "LOW":
+    case "INFORMATIONAL":
+    default:         return "var(--text-3)";
+  }
+}
+```
+
+(c) Add `noVisibleMapPath` to the props interface (lines 30–36):
+```ts
+export interface ThreadInspectorProps {
+  caseId: string;
+  threadId: string;
+  onOpenThread: () => void;
+  onClear: () => void;
+  onChanged: () => void;
+  noVisibleMapPath?: boolean;
+}
+```
+and destructure it in the component signature (lines 72–78): add `noVisibleMapPath = false,`.
+
+(d) Replace the `gapSummary()` function (lines 142–152) and its two call sites with the shared helper. Delete `gapSummary`. Compute once after `const isSetAside = ...` (line 139 area):
+```ts
+const readiness = thread
+  ? threadReadiness(thread)
+  : { ready: false, summary: "" };
+```
+Then in the "Referral readiness" block (lines 257–272) replace the inline color condition + `{gapSummary()}` with:
+```tsx
+{sectionLabel("Referral readiness")}
+<div style={{ fontSize: 11, color: readiness.ready ? "var(--color-success, #34d399)" : "var(--text-3)", lineHeight: 1.5 }}>
+  {readiness.summary}
+</div>
+```
+
+(e) Add the no-path line directly under the status+severity row (after line 248, the closing `</div>` of the status row), so it shows whenever Path Mode found nothing on the map:
+```tsx
+{noVisibleMapPath && (
+  <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-3)", lineHeight: 1.5 }}>
+    This thread has no visible Case Map path yet.
+  </div>
+)}
+```
+
+- [ ] **Step 6: Add ThreadInspector tests for the new behavior**
+
+Append to `frontend/src/components/ThreadInspector.test.tsx` (the file already mocks `../api` with a `NEEDS_EVIDENCE` thread → not referral-grade):
+
+```ts
+it("shows the no-visible-path note when noVisibleMapPath is set", async () => {
+  const { findByText } = render(
+    <ThreadInspector caseId="c1" threadId="t1" noVisibleMapPath
+      onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+  );
+  expect(await findByText(/no visible Case Map path yet/i)).toBeTruthy();
+});
+
+it("does not show the no-visible-path note by default", async () => {
+  const { findByText, queryByText } = render(
+    <ThreadInspector caseId="c1" threadId="t1"
+      onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+  );
+  await findByText("Insider swap");
+  expect(queryByText(/no visible Case Map path yet/i)).toBeNull();
+});
+
+it("renders the shared readiness summary (developing thread → not referral-grade)", async () => {
+  const { findByText } = render(
+    <ThreadInspector caseId="c1" threadId="t1"
+      onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+  );
+  // BASE thread is NEEDS_EVIDENCE / SPECULATIVE / overreach false → multiple gaps
+  expect(await findByText(/Not yet substantiated/)).toBeTruthy();
+});
+```
+
+- [ ] **Step 7: Run the inspector + helper tests**
+
+Run: `cd frontend && npx vitest run src/components/threadReadiness.test.ts src/components/ThreadInspector.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 8: Type check + commit**
+
+```bash
+cd frontend && npx tsc --noEmit
+cd .. && git add frontend/src/components/threadReadiness.ts frontend/src/components/threadReadiness.test.ts frontend/src/components/ThreadInspector.tsx frontend/src/components/ThreadInspector.test.tsx
+git commit -m "feat(case-map): shared threadReadiness helper + ThreadInspector no-path prop (Phase 3)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: Thread Path Mode stylesheet classes
+
+**Files:**
+- Modify: `frontend/src/components/CytoscapeCanvas.tsx` (the exported `STYLESHEET`)
+- Test: `frontend/src/components/CytoscapeCanvas.stylesheet.test.ts`
+
+**Interfaces:**
+- Produces: stylesheet selectors `.thread-path-edge`, `.thread-path-edge--critical|--high|--medium`, `.thread-path-subject`. Task 5 applies these classes imperatively.
+
+- [ ] **Step 1: Write the failing stylesheet test**
+
+Append to `frontend/src/components/CytoscapeCanvas.stylesheet.test.ts`:
+
+```ts
+it("defines Phase 3 thread-path classes (edge emphasis + severity colors + subject ring)", () => {
+  const sel = selectors();
+  expect(sel).toContain(".thread-path-edge");
+  expect(sel).toContain(".thread-path-edge--critical");
+  expect(sel).toContain(".thread-path-edge--high");
+  expect(sel).toContain(".thread-path-edge--medium");
+  expect(sel).toContain(".thread-path-subject");
+  // base path edge emphasizes but stays neutral (no line-color); severity classes set color
+  const crit = STYLESHEET.find((r) => r.selector === ".thread-path-edge--critical");
+  expect(crit?.style?.["line-color"]).toBe("#f87171");
+});
+
+it("keeps .dimmed reserved at low opacity", () => {
+  const dim = STYLESHEET.find((r) => r.selector === ".dimmed");
+  expect(dim?.style?.opacity).toBe(0.1);
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/CytoscapeCanvas.stylesheet.test.ts`
+Expected: FAIL — the new selectors aren't present.
+
+- [ ] **Step 3: Add the classes to STYLESHEET**
+
+In `frontend/src/components/CytoscapeCanvas.tsx`, replace the reserved dimmed comment block (lines 89–90) with the full Phase 3 vocabulary. Order matters in Cytoscape (later rules win): place `.thread-path-edge*` and `.thread-path-subject` AFTER the `.dimmed` rule and after `edge.summary`/`edge.material` so they override dimming/width on the path:
+
+```ts
+  /* ── Phase 3 — Thread Path Mode ─────────────────────────────────────────── */
+  /* Dimmed — everything not on the selected thread's path */
+  { selector: ".dimmed", style: { opacity: 0.1 } },
+  /* Path edge — emphasis width, neutral by default (LOW/INFORMATIONAL stay here) */
+  {
+    selector: ".thread-path-edge",
+    style: { width: 5, opacity: 1, "line-color": "#94a3b8" },
+  },
+  /* Severity color on the path edge only — never on subjects */
+  { selector: ".thread-path-edge--critical", style: { "line-color": "#f87171" } },
+  { selector: ".thread-path-edge--high", style: { "line-color": "#fbbf24" } },
+  { selector: ".thread-path-edge--medium", style: { "line-color": "#60a5fa" } },
+  /* Participating subject — neutral amber ring, NOT an accusation */
+  {
+    selector: ".thread-path-subject",
+    style: { opacity: 1, "outline-width": 3, "outline-color": "#fbbf24", "outline-offset": 2 },
+  },
+```
+
+(The `edge.summary`/`edge.material` rules above are unchanged. Note these path rules must be placed *after* them in the array.)
+
+- [ ] **Step 4: Run it to verify it passes**
+
+Run: `cd frontend && npx vitest run src/components/CytoscapeCanvas.stylesheet.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Type check + commit**
+
+```bash
+cd frontend && npx tsc --noEmit
+cd .. && git add frontend/src/components/CytoscapeCanvas.tsx frontend/src/components/CytoscapeCanvas.stylesheet.test.ts
+git commit -m "feat(case-map): Thread Path Mode stylesheet classes (Phase 3)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 4: ThreadDock component
+
+**Files:**
+- Create: `frontend/src/components/ThreadDock.tsx`
+- Create: `frontend/src/components/ThreadDock.test.tsx`
+
+**Interfaces:**
+- Consumes: `threadReadiness` (Task 2), `compareBySeverity` (Task 1), `FindingItem`/`FindingSeverity` from `../types`.
+- Produces:
+```ts
+type SortKey = "severity" | "status" | "readiness" | "recency";
+interface ThreadDockProps {
+  threads: FindingItem[];
+  loading: boolean;
+  error: boolean;
+  selectedThreadId: string | undefined;   // from selection.kind==="thread"
+  onSelectThread: (id: string) => void;    // row click; clicking the active row clears (parent decides)
+  onRetry: () => void;
+}
+export default function ThreadDock(props: ThreadDockProps): JSX.Element
+```
+The dock is presentational: it owns only **collapse** + **sort** local state. Selection lives in the parent reducer (the §6 invariant). The 100-cap note shows when `threads.length === 100`.
+
+- [ ] **Step 1: Write the failing component tests**
+
+Create `frontend/src/components/ThreadDock.test.tsx`:
+
+```ts
+import { render, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import ThreadDock from "./ThreadDock";
+import type { FindingItem } from "../types";
+
+function thread(over: Partial<FindingItem>): FindingItem {
+  return {
+    id: "t1", rule_id: "SR-015", source: "AUTO", title: "Insider swap",
+    description: "", narrative: "", severity: "HIGH", status: "NEEDS_EVIDENCE",
+    evidence_weight: "SPECULATIVE", overreach_reviewed: false,
+    trigger_entity_id: null, narrative_source: "", evidence_snapshot: {},
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+    entity_links: [], document_links: [],
+    ...over,
+  } as FindingItem;
+}
+
+const THREADS = [
+  thread({ id: "med", title: "Overpayment", severity: "MEDIUM", status: "DISMISSED" }),
+  thread({ id: "crit", title: "990 contradiction", severity: "CRITICAL", status: "CONFIRMED",
+    evidence_weight: "DOCUMENTED", overreach_reviewed: true,
+    document_links: [{ document_id: "d", document_filename: "x", page_reference: "", context_note: "" }] }),
+  thread({ id: "high", title: "Insider swap", severity: "HIGH", status: "NEEDS_EVIDENCE" }),
+];
+
+describe("ThreadDock", () => {
+  it("renders rows default-sorted by severity (CRITICAL first)", () => {
+    const { getAllByRole } = render(
+      <ThreadDock threads={THREADS} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />,
+    );
+    const rows = getAllByRole("button", { name: /thread row/i });
+    expect(within(rows[0]).getByText("990 contradiction")).toBeTruthy();
+    expect(within(rows[2]).getByText("Overpayment")).toBeTruthy();
+  });
+
+  it("calls onSelectThread with the row id on click", () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <ThreadDock threads={THREADS} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={onSelect} onRetry={() => {}} />,
+    );
+    fireEvent.click(getByText("Insider swap"));
+    expect(onSelect).toHaveBeenCalledWith("high");
+  });
+
+  it("marks the active row from selectedThreadId", () => {
+    const { getByText } = render(
+      <ThreadDock threads={THREADS} loading={false} error={false}
+        selectedThreadId="high" onSelectThread={() => {}} onRetry={() => {}} />,
+    );
+    const row = getByText("Insider swap").closest("[data-active]");
+    expect(row?.getAttribute("data-active")).toBe("true");
+  });
+
+  it("shows the readiness cell from threadReadiness", () => {
+    const { getByText } = render(
+      <ThreadDock threads={THREADS} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />,
+    );
+    // the CONFIRMED+cited+documented+overreach thread is referral-grade
+    expect(getByText(/referral-grade/i)).toBeTruthy();
+  });
+
+  it("renders empty / loading / error states", () => {
+    const empty = render(
+      <ThreadDock threads={[]} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
+    expect(empty.getByText(/No threads yet/i)).toBeTruthy();
+
+    const loading = render(
+      <ThreadDock threads={[]} loading error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
+    expect(loading.getByText(/Loading threads/i)).toBeTruthy();
+
+    const onRetry = vi.fn();
+    const err = render(
+      <ThreadDock threads={[]} loading={false} error
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={onRetry} />);
+    fireEvent.click(err.getByText(/Retry/i));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it("collapses to the header when toggled", () => {
+    const { getByLabelText, queryByText } = render(
+      <ThreadDock threads={THREADS} loading={false} error={false}
+        selectedThreadId={undefined} onSelectThread={() => {}} onRetry={() => {}} />);
+    fireEvent.click(getByLabelText(/collapse threads/i));
+    expect(queryByText("Insider swap")).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/ThreadDock.test.tsx`
+Expected: FAIL — `./ThreadDock` does not exist.
+
+- [ ] **Step 3: Implement ThreadDock**
+
+Create `frontend/src/components/ThreadDock.tsx`:
+
+```tsx
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import type { FindingItem, FindingSeverity, FindingStatus } from "../types";
+import { compareBySeverity } from "../views/caseMapElements";
+import { threadReadiness } from "./threadReadiness";
+
+type SortKey = "severity" | "status" | "readiness" | "recency";
+
+export interface ThreadDockProps {
+  threads: FindingItem[];
+  loading: boolean;
+  error: boolean;
+  selectedThreadId: string | undefined;
+  onSelectThread: (id: string) => void;
+  onRetry: () => void;
+}
+
+const STATUS_RANK: Record<FindingStatus, number> = {
+  NEW: 0, NEEDS_EVIDENCE: 1, CONFIRMED: 2, DISMISSED: 3,
+};
+
+function statusLabel(s: FindingStatus): string {
+  switch (s) {
+    case "CONFIRMED": return "Substantiated";
+    case "DISMISSED": return "Set aside";
+    case "NEEDS_EVIDENCE":
+    case "NEW": return "Developing";
+    default: return "Developing";
+  }
+}
+function statusColor(s: FindingStatus): string {
+  switch (s) {
+    case "CONFIRMED": return "var(--color-success, #34d399)";
+    case "DISMISSED": return "var(--text-3)";
+    default: return "#fbbf24";
+  }
+}
+function severityColor(sev: FindingSeverity): string {
+  switch (sev) {
+    case "CRITICAL": return "var(--color-critical, #f87171)";
+    case "HIGH": return "#fbbf24";
+    case "MEDIUM": return "var(--color-info, #60a5fa)";
+    default: return "var(--text-3)";
+  }
+}
+
+function sortThreads(threads: FindingItem[], key: SortKey): FindingItem[] {
+  const byTitle = (a: FindingItem, b: FindingItem) => a.title.localeCompare(b.title);
+  const copy = [...threads];
+  switch (key) {
+    case "severity":
+      return copy.sort((a, b) => compareBySeverity(a.severity, b.severity) || byTitle(a, b));
+    case "status":
+      return copy.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || byTitle(a, b));
+    case "readiness":
+      return copy.sort((a, b) =>
+        Number(threadReadiness(b).ready) - Number(threadReadiness(a).ready) || byTitle(a, b));
+    case "recency":
+      return copy.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    default:
+      return copy;
+  }
+}
+
+export default function ThreadDock({
+  threads, loading, error, selectedThreadId, onSelectThread, onRetry,
+}: ThreadDockProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("severity");
+  const sorted = useMemo(() => sortThreads(threads, sortKey), [threads, sortKey]);
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border-1)", background: "var(--bg-1)", display: "flex", flexDirection: "column", maxHeight: collapsed ? 33 : 180, flexShrink: 0 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottom: collapsed ? "none" : "1px solid var(--border-1)", flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)" }}>
+          Threads · {threads.length}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {!collapsed && (
+            <label style={{ fontSize: 11, color: "var(--text-3)" }}>
+              sort:{" "}
+              <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}
+                style={{ fontSize: 11, background: "var(--bg-2)", color: "var(--text-1)", border: "1px solid var(--border-1)", borderRadius: 4 }}>
+                <option value="severity">severity</option>
+                <option value="status">status</option>
+                <option value="readiness">readiness</option>
+                <option value="recency">recency</option>
+              </select>
+            </label>
+          )}
+          <button type="button" aria-label={collapsed ? "Expand threads" : "Collapse threads"}
+            onClick={() => setCollapsed((c) => !c)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", display: "flex" }}>
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {!collapsed && (
+        <div style={{ overflowY: "auto" }}>
+          {loading ? (
+            <div style={{ padding: 12, fontSize: 12, color: "var(--text-3)" }}>Loading threads…</div>
+          ) : error ? (
+            <div style={{ padding: 12, fontSize: 12, color: "var(--color-critical, #f87171)" }} role="alert">
+              Couldn’t load threads.{" "}
+              <button type="button" onClick={onRetry} style={{ background: "none", border: "none", color: "var(--color-info, #60a5fa)", cursor: "pointer", textDecoration: "underline" }}>Retry</button>
+            </div>
+          ) : threads.length === 0 ? (
+            <div style={{ padding: 12, fontSize: 12, color: "var(--text-3)" }}>
+              No threads yet — start one from a subject or relationship.
+            </div>
+          ) : (
+            <>
+              {sorted.map((t) => {
+                const active = t.id === selectedThreadId;
+                const r = threadReadiness(t);
+                return (
+                  <button key={t.id} type="button" aria-label={`thread row ${t.title}`}
+                    data-active={active ? "true" : "false"}
+                    onClick={() => onSelectThread(t.id)}
+                    style={{
+                      display: "grid", gridTemplateColumns: "92px 1fr 70px 150px", gap: 10,
+                      alignItems: "center", width: "100%", textAlign: "left",
+                      padding: "6px 12px", border: "none", borderTop: "1px solid var(--bg-2)",
+                      background: active ? "rgba(251,191,36,0.10)" : "transparent",
+                      boxShadow: active ? "inset 3px 0 0 #fbbf24" : "none",
+                      cursor: "pointer", color: "var(--text-1)", fontSize: 12,
+                    }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: statusColor(t.status) }}>
+                      {statusLabel(t.status)}
+                    </span>
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-1)", fontWeight: 500 }}>
+                      {t.title}
+                      {t.rule_id && <span style={{ color: "var(--text-3)", fontSize: 10, marginLeft: 6 }}>{t.rule_id}</span>}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, textAlign: "right", color: severityColor(t.severity) }}>
+                      {t.severity}
+                    </span>
+                    <span style={{ fontSize: 10, textAlign: "right", color: r.ready ? "var(--color-success, #34d399)" : "var(--text-3)" }}>
+                      {r.ready ? "✓ referral-grade" : r.summary.split(" · ")[0]}
+                    </span>
+                  </button>
+                );
+              })}
+              {threads.length === 100 && (
+                <div style={{ padding: "6px 12px", fontSize: 10, color: "var(--text-3)" }}>
+                  Showing first 100 — sort to surface the rest.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+> **Note on the `thread(...)` test factory:** the exact `FindingItem` field set may differ slightly from the codebase. If `tsc` flags a missing/extra field in the test factory, align it to `frontend/src/types/index.ts` `FindingItem` (lines 835–882) — do NOT change the production type.
+
+- [ ] **Step 4: Run it to verify it passes**
+
+Run: `cd frontend && npx vitest run src/components/ThreadDock.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5: Type check + commit**
+
+```bash
+cd frontend && npx tsc --noEmit
+cd .. && git add frontend/src/components/ThreadDock.tsx frontend/src/components/ThreadDock.test.tsx
+git commit -m "feat(case-map): ThreadDock component — sortable thread list (Phase 3)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: Wire the dock + Thread Path Mode into InvestigateTab
+
+**Files:**
+- Modify: `frontend/src/views/InvestigateTab.tsx`
+- Test: `frontend/src/views/InvestigateTab.threadpath.test.tsx` (new)
+
+**Interfaces:**
+- Consumes: `ThreadDock` (Task 4), `threadPath`/`severityEdgeClass` (Task 1), `fetchAngles` from `../api`, the existing focus reducer (`selection`, `selectThread`, `clearSelection`).
+- Produces: no new exports — terminal integration.
+
+This task carries the §6 reducer-binding invariant, fetch isolation, init ordering, and the no-path state.
+
+- [ ] **Step 1: Add isolated thread state + an isolated fetch effect**
+
+In `InvestigateTab` add imports:
+```ts
+import { fetchAngles } from "../api";
+import ThreadDock from "../components/ThreadDock";
+import { threadPath, severityEdgeClass } from "./caseMapElements";
+import type { FindingItem } from "../types";
+```
+Add state near the other `useState` calls:
+```ts
+const [threads, setThreads] = useState<FindingItem[]>([]);
+const [threadsLoading, setThreadsLoading] = useState(true);
+const [threadsError, setThreadsError] = useState(false);
+const [cyReady, setCyReady] = useState(false);
+```
+Add a **separate** effect (NOT in the mount `Promise.all`, so a thread-fetch failure can't blank the map):
+```ts
+const loadThreads = useCallback(() => {
+  setThreadsLoading(true);
+  setThreadsError(false);
+  fetchAngles(caseId, { limit: 100 })
+    .then((res) => setThreads(res.results))
+    .catch(() => { setThreads([]); setThreadsError(true); })
+    .finally(() => setThreadsLoading(false));
+}, [caseId]);
+useEffect(() => { loadThreads(); }, [loadThreads]);
+```
+(Add `useCallback` to the React import.)
+
+- [ ] **Step 2: Derive selectedThread + the path set (single source for effect AND prop)**
+
+After the existing `selectedSummaryEdge` memo, add:
+```ts
+const selectedThread =
+  selection.kind === "thread" ? threads.find((t) => t.id === selection.id) ?? null : null;
+
+const pathSet = useMemo(() => {
+  if (selection.kind !== "thread") return { pathEdgeIds: [] as string[], participatingSubjectIds: [] as string[] };
+  return threadPath({
+    threadId: selection.id,
+    edges: caseMap?.edges ?? [],
+    entityLinks: selectedThread?.entity_links ?? [],
+  });
+}, [selection, selectedThread, caseMap]);
+const noVisibleMapPath =
+  selection.kind === "thread" && pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0;
+```
+
+- [ ] **Step 3: Implement applyThreadPathMode + call it from effect and onCyInit**
+
+Add the function (uses `pathSet`/`selectedThread`/`selection` from closure):
+```ts
+function applyThreadPathMode(cy: cytoscape.Core) {
+  cy.elements().removeClass(
+    "dimmed thread-path-edge thread-path-edge--critical thread-path-edge--high thread-path-edge--medium thread-path-subject",
+  );
+  if (selection.kind !== "thread") return;
+  if (pathSet.pathEdgeIds.length === 0 && pathSet.participatingSubjectIds.length === 0) return; // no-path: don't dim to nothing
+  const suffix = severityEdgeClass(selectedThread?.severity ?? "INFORMATIONAL");
+  cy.elements().addClass("dimmed");
+  pathSet.pathEdgeIds.forEach((id) =>
+    cy.getElementById(id).removeClass("dimmed").addClass(`thread-path-edge${suffix ? " thread-path-edge--" + suffix : ""}`));
+  pathSet.participatingSubjectIds.forEach((id) =>
+    cy.getElementById(id).removeClass("dimmed").addClass("thread-path-subject"));
+}
+
+useEffect(() => {
+  const cy = cyRef.current;
+  if (cy) applyThreadPathMode(cy);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [selection, selectedThread, caseMap, cyReady, pathSet]);
+```
+Update the canvas `onCyInit` to flip `cyReady` and paint immediately (handles selection-before-init):
+```tsx
+onCyInit={(cy) => { cyRef.current = cy; setCyReady(true); applyThreadPathMode(cy); }}
+```
+
+- [ ] **Step 4: Render the dock under the canvas + pass noVisibleMapPath; extend refresh**
+
+Inside the canvas column wrapper (`graph-canvas-dark` div), render `ThreadDock` directly below `CytoscapeCanvas` so it spans the canvas width (NOT inside the right rail). After the canvas `</div>` that wraps the `CytoscapeCanvas`/legend/minimap, add:
+```tsx
+{!isEmpty && (
+  <ThreadDock
+    threads={threads}
+    loading={threadsLoading}
+    error={threadsError}
+    selectedThreadId={selection.kind === "thread" ? selection.id : undefined}
+    onSelectThread={(id) => {
+      if (selection.kind === "thread" && selection.id === id) {
+        clearSelection();              // clicking the active row exits Path Mode
+      } else {
+        const t = threads.find((x) => x.id === id);
+        selectThread(id, t?.title ?? "");
+      }
+    }}
+    onRetry={loadThreads}
+  />
+)}
+```
+> Layout: wrap the existing canvas `<div className="graph-canvas-dark">` and the new `<ThreadDock>` in a flex column (`display:flex; flexDirection:column; flex:1; minWidth:0`) so the map takes the remaining height and the dock sits beneath it. The right rail stays a sibling of that column.
+
+Pass the prop to the existing `ThreadInspector` (line ~638):
+```tsx
+<ThreadInspector
+  caseId={caseId}
+  threadId={selection.id}
+  noVisibleMapPath={noVisibleMapPath}
+  onOpenThread={() => openThread({ id: selection.id, title: activeAngleTitle ?? "" })}
+  onClear={clearSelection}
+  onChanged={() => { refreshCaseData().catch(/* existing */); }}
+/>
+```
+Extend `refreshCaseData` to refresh the dock list and clear a now-missing thread selection. After the existing `setCaseMap/setGraph/...` block:
+```ts
+const ang = await fetchAngles(caseId, { limit: 100 });
+setThreads(ang.results);
+if (selection.kind === "thread" && !ang.results.some((t) => t.id === selection.id)) {
+  clearSelection();
+}
+```
+
+- [ ] **Step 5: Write the integration tests**
+
+Create `frontend/src/views/InvestigateTab.threadpath.test.tsx`. Mock `../api` so `fetchAngles` returns two threads, `fetchCaseMap` returns an edge whose `thread_refs` reference one of them, and the other fetches resolve minimally. Assert the §6 invariant + fetch isolation + no-path. (Follow the mock pattern in the existing `InvestigateTab.caseMap.test.tsx`; read it first for the exact mock shape and `CaseWorkspaceProvider` wrapper.)
+
+```ts
+// Skeleton — fill mocks from InvestigateTab.caseMap.test.tsx
+it("selecting a dock row enters Thread Path Mode and opens ThreadInspector", async () => {
+  // render InvestigateTab inside CaseWorkspaceProvider with mocked api
+  // click the dock row for the edge-backed thread
+  // assert: ThreadInspector header "Thread" visible; the dock row has data-active="true"
+});
+
+it("a thread with no map presence shows the no-visible-path note and does not blank the map", async () => {
+  // select the subject-only thread (no matching edge, empty entity_links)
+  // assert: "no visible Case Map path yet" text; canvas still rendered
+});
+
+it("the Case Map still renders when fetchAngles rejects", async () => {
+  // make fetchAngles reject; assert canvas present and dock shows Retry
+});
+```
+
+> The integration test wiring (provider, cytoscape mock) is non-trivial — read `InvestigateTab.caseMap.test.tsx` and reuse its `vi.mock` block and any cytoscape stub verbatim. If Cytoscape class assertions are impractical in jsdom, assert the **observable** proxies instead: `data-active` on the dock row, the ThreadInspector text, and `noVisibleMapPath` behavior — the class application itself is covered by Task 1 (`threadPath`) + Task 3 (stylesheet) unit tests.
+
+- [ ] **Step 6: Run the integration tests + full suite**
+
+Run: `cd frontend && npx vitest run src/views/InvestigateTab.threadpath.test.tsx`
+Expected: PASS.
+Then full suite: `cd frontend && npx vitest run`
+Expected: PASS (all prior tests green — no regressions).
+
+- [ ] **Step 7: Type check + commit**
+
+```bash
+cd frontend && npx tsc --noEmit
+cd .. && git add frontend/src/views/InvestigateTab.tsx frontend/src/views/InvestigateTab.threadpath.test.tsx
+git commit -m "feat(case-map): wire Thread Dock + Thread Path Mode into InvestigateTab (Phase 3)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+## Self-Review (completed)
+
+**Spec coverage:** §4 dock → Task 4 + Task 5 render; §5 Path Mode (path helper, severity suffix, imperative apply, cyReady, no-path) → Tasks 1, 3, 5; §6 reducer-binding invariant → Task 5 Step 5; §7 unified refresh → Task 5 Step 4; §8 class vocabulary → Task 3; readiness reuse (§4) → Task 2; full severity enum (corrections #2) → Tasks 1, 2, 4; fetch isolation (#1) → Task 5 Step 1; limit-100 cap (#3) → Task 4 (100-row note); no-path prop (#4) → Tasks 2, 5; cyReady (#5) → Task 5 Step 3. All covered.
+
+**Placeholder scan:** Task 5 Step 5 intentionally leaves the integration-test *mock body* to be filled from the existing `InvestigateTab.caseMap.test.tsx` rather than inventing a divergent mock — the assertions and structure are specified; only the shared mock block is reused. All production code is complete.
+
+**Type consistency:** `threadPath` / `severityEdgeClass` / `compareBySeverity` signatures match between Task 1 definition and Task 4/5 consumption. `threadReadiness` shape (`{ ready, summary }`) consistent across Tasks 2, 4. `ThreadDockProps` consistent between Task 4 definition and Task 5 usage. `noVisibleMapPath` prop consistent across Tasks 2, 5.
+
+## Scope guardrails (do NOT build — Phase 5)
+
+No filters, search, saved views, command-palette, resizable dock, or Timeline-brush integration. Sorting only.
