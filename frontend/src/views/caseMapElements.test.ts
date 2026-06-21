@@ -4,8 +4,11 @@ import {
   subjectNodeToElement,
   summaryEdgeToElement,
   subjectBadges,
+  threadPath,
+  severityEdgeClass,
+  compareBySeverity,
 } from "./caseMapElements";
-import type { SubjectNode, SummaryEdge } from "../types";
+import type { SubjectNode, SummaryEdge, FindingEntityLink, FindingSeverity } from "../types";
 
 function node(over: Partial<SubjectNode> = {}): SubjectNode {
   return {
@@ -76,5 +79,83 @@ describe("subjectBadges", () => {
       node({ id: "b" }),
     ];
     expect(subjectBadges(nodes)).toEqual([{ nodeId: "a" }]);
+  });
+});
+
+function edgeWithThreads(id: string, source: string, target: string, threadIds: string[]): SummaryEdge {
+  const e = edge("documented");
+  return {
+    ...e,
+    id, source, target,
+    thread_refs: threadIds.map((tid) => ({
+      thread_id: tid, title: "t", status: "NEEDS_EVIDENCE",
+      severity: "HIGH", rule_id: "SR-015", signal_type: "INSIDER_SWAP", handoff_ready: false,
+    })),
+  };
+}
+function link(entity_id: string, entity_type: FindingEntityLink["entity_type"]): FindingEntityLink {
+  return { entity_id, entity_type, context_note: "" };
+}
+
+describe("threadPath", () => {
+  it("returns path edges referencing the thread and their endpoints", () => {
+    const edges = [
+      edgeWithThreads("a__b", "a", "b", ["T1"]),
+      edgeWithThreads("b__c", "b", "c", ["T1"]),
+      edgeWithThreads("c__d", "c", "d", ["T2"]),
+    ];
+    const r = threadPath({ threadId: "T1", edges, entityLinks: [] });
+    expect(r.pathEdgeIds.sort()).toEqual(["a__b", "b__c"]);
+    expect(r.participatingSubjectIds.sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("lights a subject-only thread from entity_links when no edge matches", () => {
+    const edges = [edgeWithThreads("a__b", "a", "b", ["OTHER"])];
+    const r = threadPath({
+      threadId: "T1", edges,
+      entityLinks: [link("p1", "person"), link("o1", "organization")],
+    });
+    expect(r.pathEdgeIds).toEqual([]);
+    expect(r.participatingSubjectIds.sort()).toEqual(["o1", "p1"]);
+  });
+
+  it("ignores non-subject entity_links (property / financial_instrument)", () => {
+    // EntityType = "person" | "organization" | "property" | "financial_instrument"
+    const r = threadPath({
+      threadId: "T1", edges: [],
+      entityLinks: [link("pr1", "property"), link("fi1", "financial_instrument"), link("p1", "person")],
+    });
+    expect(r.participatingSubjectIds).toEqual(["p1"]);
+  });
+
+  it("returns both empty when the thread has no map presence", () => {
+    const r = threadPath({ threadId: "T1", edges: [edgeWithThreads("a__b", "a", "b", ["X"])], entityLinks: [] });
+    expect(r.pathEdgeIds).toEqual([]);
+    expect(r.participatingSubjectIds).toEqual([]);
+  });
+
+  it("dedups a subject that is both an edge endpoint and an entity_link", () => {
+    const edges = [edgeWithThreads("a__b", "a", "b", ["T1"])];
+    const r = threadPath({ threadId: "T1", edges, entityLinks: [link("a", "person")] });
+    expect(r.participatingSubjectIds.sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("severityEdgeClass", () => {
+  it("maps CRITICAL/HIGH/MEDIUM to a suffix and LOW/INFORMATIONAL to empty", () => {
+    expect(severityEdgeClass("CRITICAL")).toBe("critical");
+    expect(severityEdgeClass("HIGH")).toBe("high");
+    expect(severityEdgeClass("MEDIUM")).toBe("medium");
+    expect(severityEdgeClass("LOW")).toBe("");
+    expect(severityEdgeClass("INFORMATIONAL")).toBe("");
+  });
+});
+
+describe("compareBySeverity", () => {
+  it("orders CRITICAL > HIGH > MEDIUM > LOW > INFORMATIONAL", () => {
+    const order: FindingSeverity[] = ["INFORMATIONAL", "CRITICAL", "MEDIUM", "LOW", "HIGH"];
+    expect([...order].sort(compareBySeverity)).toEqual(
+      ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL"],
+    );
   });
 });
