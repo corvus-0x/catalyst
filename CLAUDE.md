@@ -180,10 +180,14 @@ Vocabulary moved to investigative-journalism / public-accountability language pe
 | **Observation** | `InvestigatorNote` | Free-text note on a Subject, Relationship, or Thread (was "Quick capture"). |
 | **Pending relationships** | `FuzzyMatchCandidate` review queue | Badge on the Case Map toolbar (was "Pending connections"). |
 
-> **Rename in progress (Phase 1A doc-alignment).** This table is the **target** vocabulary and
-> the source of truth. The frontend *code* still uses the prior terms (Angle/Knot/Web/Connection)
-> until Phase 1B/2 migrate it. **Do not partially rename** — the code rename lands as its own
-> phase so the vocabulary never half-migrates.
+> **Rename status (after Phase 1B/2, Session 50).** This table is the source of truth, and the new
+> vocabulary is now **live in user-visible copy** on the Case Map workspace — the canvas is the "Case
+> Map", nodes are "Subjects", the summarized edge inspector says "Relationship", and "Thread" appears
+> throughout the inspectors and toolbar ("New thread", "Substantiated", "Set aside"). **Internal
+> identifiers are intentionally NOT renamed** and remain the contract bridge: the focus reducer's
+> `Frame.kind` still uses `"web"`/`"angle"`, component/prop names persist, and backend models
+> (`Finding`, `Person`, `Organization`, `Relationship`) are unchanged. So "Angle"/"Knot"/"Web" you see
+> in *code* (types, frame kinds, API calls) is correct, not stale; only *user-visible strings* moved.
 
 **Banned strings in any user-visible text:** "Haiku", "Sonnet", "Opus", "Claude", "AI assistant", "LLM", "GPT"
 
@@ -191,7 +195,12 @@ Vocabulary moved to investigative-journalism / public-accountability language pe
 
 ## FRONTEND VIEWS
 
-→ Full tab specs, drill-down interaction model, node/edge encoding: **`docs/architecture/frontend-design-spec.md`**
+→ Full tab specs, node/edge encoding: **`docs/architecture/frontend-design-spec.md`**.
+**Note (Session 50):** that spec's *Investigate drill-down interaction model* (4-level full-width
+swaps) is **superseded** by the Case Map redesign — see
+`docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md` (§5) and
+`2026-06-20-case-map-phase-2-right-inspector-design.md`. Investigate is now a persistent Case Map +
+right inspector (selection = inspector state; frame = breadcrumb history), shipped in PRs #14/#15.
 
 Routes: `/` Dashboard · `/cases` CasesList · `/cases/:id` CaseDetail (6 tabs: Investigate ·
 Research · Financials · Timeline · Referrals · Replay) · `/search` · `/settings`

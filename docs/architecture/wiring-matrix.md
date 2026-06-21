@@ -1,6 +1,6 @@
 # Wiring Matrix — Backend → Frontend
 
-**Last updated:** 2026-06-19 (Session 49 — added `/case-map/`, backend-ahead pending Phase 1B)
+**Last updated:** 2026-06-21 (Session 50 — `/case-map/` now wired front-to-back via `fetchCaseMap` → Case Map workspace, PRs #14/#15)
 **Purpose:** Make the question *"is every backend endpoint actually reachable from the UI?"*
 answerable at a glance. Each backend endpoint is traced through its API client function to the
 exact view/component that calls it. Anything with no caller is a **dead end** — either a feature to
@@ -116,7 +116,7 @@ backend endpoint (urls.py)  →  API client fn (frontend/src/api/*)  →  UI cal
 | Endpoint | Client fn | UI caller | |
 |----------|-----------|-----------|---|
 | `GET …/graph/` | `fetchGraph` | InvestigateTab, TimelineTab | ✅ |
-| `GET …/case-map/` | _(none yet)_ | _(none — Phase 1B)_ | ⚠️ backend-ahead |
+| `GET …/case-map/` | `fetchCaseMap` | `InvestigateTab` (Case Map canvas) | ✅ |
 | `GET /api/entities/` | `fetchEntities` | ConnectKnotsModal, AngleSplitModal | ✅ |
 | `GET /api/entities/<type>/<id>/` | `fetchEntityDetail` | InvestigateTab | ✅ |
 | `GET …/persons/deceased/` | `getDeceasedPersons` | ResearchTab | ✅ |
@@ -178,10 +178,9 @@ Pulled out of the tables above so there's a single punch list.
 
 ### Deferred on purpose (leave as-is)
 
-- **`GET …/case-map/`** — the summarized subject-pair Case Map endpoint (Session 49, PR #13).
-  Intentionally has no client yet: the visual Case Map that consumes it is **Phase 1B**, gated
-  on locking the node-marker system (case-map spec §12 Q1). Live-verified on the PR preview
-  (21/21 contract checks). Do NOT classify as dead code.
+- **`GET …/case-map/`** — the summarized subject-pair Case Map endpoint (PR #13). **Wired in
+  Phase 1B/2** (Session 50, PRs #14/#15): `fetchCaseMap` → the `InvestigateTab` Case Map canvas +
+  the Subject/Relationship/Thread inspectors. Playwright-verified live on the PR-15 preview. ✅
 
 ---
 
