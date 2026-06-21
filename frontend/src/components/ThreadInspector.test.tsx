@@ -164,4 +164,30 @@ describe("ThreadInspector", () => {
     expect(styledDiv).toBeTruthy();
     expect(styledDiv?.getAttribute("style") ?? "").toContain("color-success");
   });
+
+  it("shows the no-visible-path note when noVisibleMapPath is set", async () => {
+    const { findByText } = render(
+      <ThreadInspector caseId="c1" threadId="t1" noVisibleMapPath
+        onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+    );
+    expect(await findByText(/no visible Case Map path yet/i)).toBeTruthy();
+  });
+
+  it("does not show the no-visible-path note by default", async () => {
+    const { findByText, queryByText } = render(
+      <ThreadInspector caseId="c1" threadId="t1"
+        onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+    );
+    await findByText("Insider swap");
+    expect(queryByText(/no visible Case Map path yet/i)).toBeNull();
+  });
+
+  it("renders the shared readiness summary (developing thread → not referral-grade)", async () => {
+    const { findByText } = render(
+      <ThreadInspector caseId="c1" threadId="t1"
+        onOpenThread={() => {}} onClear={() => {}} onChanged={() => {}} />,
+    );
+    // BASE thread is NEEDS_EVIDENCE / SPECULATIVE / overreach false → multiple gaps
+    expect(await findByText(/Not yet substantiated/)).toBeTruthy();
+  });
 });

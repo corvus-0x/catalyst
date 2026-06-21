@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { fetchAngle, updateAngle } from "../api";
 import { sectionLabel } from "./inspectorChrome";
 import type { FindingItem, FindingSeverity, FindingStatus } from "../types";
+import { threadReadiness } from "./threadReadiness";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -33,6 +34,7 @@ export interface ThreadInspectorProps {
   onOpenThread: () => void;
   onClear: () => void;
   onChanged: () => void;
+  noVisibleMapPath?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,8 @@ function severityColor(severity: FindingSeverity): string {
     case "CRITICAL": return "var(--color-critical, #f87171)";
     case "HIGH":     return "#fbbf24";
     case "MEDIUM":   return "var(--color-info, #60a5fa)";
+    case "LOW":
+    case "INFORMATIONAL":
     default:         return "var(--text-3)";
   }
 }
@@ -75,6 +79,7 @@ export default function ThreadInspector({
   onOpenThread,
   onClear,
   onChanged,
+  noVisibleMapPath = false,
 }: ThreadInspectorProps) {
   const [thread, setThread]   = useState<FindingItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,19 +142,9 @@ export default function ThreadInspector({
 
   const citedCount = thread?.document_links.length ?? 0;
   const isSetAside = thread?.status === "DISMISSED";
-
-  // Readiness gap summary
-  function gapSummary(): string {
-    if (!thread) return "";
-    const gaps: string[] = [];
-    if (citedCount === 0) gaps.push("No cited sources");
-    if (!["DOCUMENTED", "TRACED"].includes(thread.evidence_weight))
-      gaps.push("Evidence weight below Documented");
-    if (!thread.overreach_reviewed) gaps.push("Overreach not reviewed");
-    if (thread.status !== "CONFIRMED") gaps.push("Not yet substantiated");
-    if (gaps.length === 0) return "All referral-grade conditions met.";
-    return gaps.join(" · ");
-  }
+  const readiness = thread
+    ? threadReadiness(thread)
+    : { ready: false, summary: "" };
 
   return (
     <div
@@ -246,6 +241,11 @@ export default function ThreadInspector({
                 {thread.severity}
               </span>
             </div>
+            {noVisibleMapPath && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-3)", lineHeight: 1.5 }}>
+                This thread has no visible Case Map path yet.
+              </div>
+            )}
 
             {/* Cited sources count */}
             {sectionLabel("Evidence")}
@@ -255,20 +255,8 @@ export default function ThreadInspector({
 
             {/* Gaps / readiness summary */}
             {sectionLabel("Referral readiness")}
-            <div
-              style={{
-                fontSize: 11,
-                color:
-                  thread.status === "CONFIRMED" &&
-                  citedCount > 0 &&
-                  (thread.evidence_weight === "DOCUMENTED" || thread.evidence_weight === "TRACED") &&
-                  thread.overreach_reviewed
-                    ? "var(--color-success, #34d399)"
-                    : "var(--text-3)",
-                lineHeight: 1.5,
-              }}
-            >
-              {gapSummary()}
+            <div style={{ fontSize: 11, color: readiness.ready ? "var(--color-success, #34d399)" : "var(--text-3)", lineHeight: 1.5 }}>
+              {readiness.summary}
             </div>
 
             {/* Narrative preview (if any) */}
