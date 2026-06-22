@@ -1093,7 +1093,11 @@ class FindingUpdateSerializer:
         self.instance.save(update_fields=update_fields)
 
         for document in self._documents_to_add:
-            FindingDocument.objects.get_or_create(finding=self.instance, document=document)
+            FindingDocument.objects.get_or_create(
+                finding=self.instance,
+                document=document,
+                defaults={"is_legacy": True},
+            )
 
         if self._documents_to_remove:
             FindingDocument.objects.filter(
