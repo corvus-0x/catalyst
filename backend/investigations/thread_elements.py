@@ -33,3 +33,24 @@ def finding_has_handoff_ready_assertion(finding) -> bool:
             element_type=ThreadElementType.ASSERTION, handoff_ready=True
         )
     )
+
+
+def ensure_document_link(finding, document):
+    """Ensure a non-legacy FindingDocument compatibility row exists for (finding, document)."""
+    from .models import FindingDocument
+
+    FindingDocument.objects.get_or_create(
+        finding=finding, document=document, defaults={"is_legacy": False}
+    )
+
+
+def reap_document_link_if_orphaned(finding, document):
+    """Remove the FindingDocument row iff no element still cites it AND it is not legacy."""
+    from .models import FindingDocument, ThreadElementCitation
+
+    still_cited = ThreadElementCitation.objects.filter(
+        element__finding=finding, document=document
+    ).exists()
+    if still_cited:
+        return
+    FindingDocument.objects.filter(finding=finding, document=document, is_legacy=False).delete()
