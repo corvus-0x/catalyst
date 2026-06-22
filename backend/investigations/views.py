@@ -3453,7 +3453,9 @@ def api_case_finding_detail(request, pk, finding_id):
     """Retrieve, update, or delete a single finding within a case."""
     case = get_object_or_404(Case, pk=pk)
     finding = get_object_or_404(
-        Finding.objects.prefetch_related("entity_links", "document_links"),
+        Finding.objects.prefetch_related(
+            "entity_links", "document_links", "elements__citations__document"
+        ),
         pk=finding_id,
         case=case,
     )
@@ -3488,9 +3490,9 @@ def api_case_finding_detail(request, pk, finding_id):
     with transaction.atomic():
         updated = serializer.save()
         updated.refresh_from_db()
-        updated = Finding.objects.prefetch_related("entity_links", "document_links").get(
-            pk=updated.pk
-        )
+        updated = Finding.objects.prefetch_related(
+            "entity_links", "document_links", "elements__citations__document"
+        ).get(pk=updated.pk)
         AuditLog.log(
             action=AuditAction.FINDING_UPDATED,
             table_name="findings",

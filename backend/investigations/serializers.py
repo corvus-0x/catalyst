@@ -729,6 +729,8 @@ def serialize_finding(finding) -> dict:
             }
             for link in finding.document_links.all()
         ],
+        "gate_version": finding.gate_version,
+        "elements": [serialize_element(e) for e in finding.elements.all()],
     }
 
 
