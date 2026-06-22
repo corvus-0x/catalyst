@@ -161,6 +161,32 @@ urlpatterns = [
         name="api_case_finding_detail",
     ),
     path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/",
+        views.api_thread_element_collection,
+        name="api_thread_element_collection",
+    ),
+    path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/reorder/",
+        views.api_thread_element_reorder,
+        name="api_thread_element_reorder",
+    ),
+    path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/<uuid:element_id>/",
+        views.api_thread_element_detail,
+        name="api_thread_element_detail",
+    ),
+    path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/<uuid:element_id>/citations/",
+        views.api_thread_element_citation_collection,
+        name="api_thread_element_citation_collection",
+    ),
+    path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/"
+        "<uuid:element_id>/citations/<uuid:citation_id>/",
+        views.api_thread_element_citation_detail,
+        name="api_thread_element_citation_detail",
+    ),
+    path(
         "api/cases/<uuid:pk>/referral-pdf/",
         views.api_case_referral_pdf,
         name="api_case_referral_pdf",
