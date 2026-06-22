@@ -1004,8 +1004,11 @@ class Command(BaseCommand):
                 "SR-003": [("Deed_1250_Oak_St.pdf", "Page 1", "Transaction evidence")],
                 "SR-005": [("Deed_875_Elm_Ave.pdf", "Page 1", "Transaction evidence")],
                 "SR-006": [
-                    ("BFF_Form990_2021.pdf", "Part IV, Line 28",
-                     "Line 28 answered Yes; Schedule L absent"),
+                    (
+                        "BFF_Form990_2021.pdf",
+                        "Part IV, Line 28",
+                        "Line 28 answered Yes; Schedule L absent",
+                    ),
                 ],
                 "SR-012": [
                     ("BFF_Form990_2021.pdf", "Part VI", "No COI policy disclosed"),
@@ -1016,8 +1019,7 @@ class Command(BaseCommand):
                 "SR-015": [
                     ("Deed_1250_Oak_St.pdf", "Page 1", "BFF purchase from Mitchell Dev"),
                     ("Deed_875_Elm_Ave.pdf", "Page 1", "$0 transfer to James Mitchell"),
-                    ("Mitchell_Dev_Formation.pdf", "Page 1",
-                     "Sarah Mitchell listed as manager"),
+                    ("Mitchell_Dev_Formation.pdf", "Page 1", "Sarah Mitchell listed as manager"),
                 ],
                 "SR-021": [
                     ("BFF_Form990_2021.pdf", "Part I", "Revenue trend across filings"),
@@ -1086,6 +1088,51 @@ class Command(BaseCommand):
                 f"cited confirmed angles marked referral-grade"
             )
         )
+
+        # ────────────────────────────────────────────────────────────────
+        # 11b-4A. PHASE 4 ASSERTIONS — flagship confirmed thread gets a
+        # cited assertion + a handoff_ready assertion so it is
+        # referral-grade-shaped under ASSERTION_V1.  The finding's
+        # existing `narrative` and its legacy FindingDocument rows are
+        # intentionally retained so the pre-4C PDF/UI still render.
+        # ────────────────────────────────────────────────────────────────
+
+        from investigations.models import ThreadElement, ThreadElementType  # noqa: PLC0415
+
+        flagship_finding = (
+            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
+            .order_by("created_at")
+            .first()
+        )
+        deed_oak_doc = docs["Deed_1250_Oak_St.pdf"]
+
+        if flagship_finding and not flagship_finding.elements.exists():
+            cited_el = ThreadElement.objects.create(
+                finding=flagship_finding,
+                element_type=ThreadElementType.ASSERTION,
+                position=0,
+                text="Org purchased 1250 Oak Street for $425,000 on 2021-06-28.",
+            )
+            cited_el.citations.create(
+                document=deed_oak_doc,
+                page_reference="p.2",
+                context_note="Recorded sale price from county deed (instrument #2021-0045678).",
+            )
+            ThreadElement.objects.create(
+                finding=flagship_finding,
+                element_type=ThreadElementType.ASSERTION,
+                position=1,
+                text=(
+                    "Above-market insider transfer from related LLC warranting "
+                    "review of board minutes and appraisal records."
+                ),
+                handoff_ready=True,
+            )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  ✓ Phase 4 assertions added to flagship thread: {flagship_finding.rule_id}"
+                )
+            )
 
         # ────────────────────────────────────────────────────────────────
         # 11c. AI FINDING (seeded to demonstrate AI pattern analysis)
@@ -1266,9 +1313,7 @@ class Command(BaseCommand):
                 step_number=step_data["step_number"],
                 defaults=step_data,
             )
-        self.stdout.write(
-            self.style.SUCCESS(f"  ✓ {len(steps_data)} investigation replay steps")
-        )
+        self.stdout.write(self.style.SUCCESS(f"  ✓ {len(steps_data)} investigation replay steps"))
 
         # ────────────────────────────────────────────────────────────────
         # 12. INVESTIGATOR NOTES

@@ -47,6 +47,8 @@ from .models import (
     Relationship,
     SearchJob,
     Severity,
+    ThreadElement,
+    ThreadElementCitation,
 )
 from .serializers import (
     CaseIntakeSerializer,
@@ -57,10 +59,14 @@ from .serializers import (
     FindingUpdateSerializer,
     NoteIntakeSerializer,
     NoteUpdateSerializer,
+    ThreadElementCitationSerializer,
+    ThreadElementCreateSerializer,
+    ThreadElementUpdateSerializer,
     serialize_audit_log,
     serialize_case,
     serialize_case_detail,
     serialize_document,
+    serialize_element,
     serialize_financial_instrument,
     serialize_finding,
     serialize_note,
@@ -68,6 +74,7 @@ from .serializers import (
     serialize_person,
     serialize_property,
 )
+from .thread_elements import reap_document_link_if_orphaned
 
 DEFAULT_PAGE_LIMIT = 25
 MAX_BULK_FILES = 50
@@ -1971,30 +1978,36 @@ def api_case_investigation_steps(request, pk):
     case = get_object_or_404(Case, pk=pk)
 
     if request.method == "GET":
-        steps = InvestigationStep.objects.filter(case=case).select_related(
-            "triggered_finding"
-        ).order_by("step_number")
+        steps = (
+            InvestigationStep.objects.filter(case=case)
+            .select_related("triggered_finding")
+            .order_by("step_number")
+        )
 
         results = []
         for s in steps:
             tf = s.triggered_finding
-            results.append({
-                "id": str(s.pk),
-                "step_number": s.step_number,
-                "question": s.question,
-                "source": s.source,
-                "what_was_found": s.what_was_found,
-                "who_originated": s.who_originated,
-                "triggered_finding": {
-                    "id": str(tf.pk),
-                    "title": tf.title,
-                    "severity": tf.severity,
-                    "status": tf.status,
-                } if tf else None,
-                "triggered_question": s.triggered_question,
-                "status": s.status,
-                "created_at": s.created_at.isoformat(),
-            })
+            results.append(
+                {
+                    "id": str(s.pk),
+                    "step_number": s.step_number,
+                    "question": s.question,
+                    "source": s.source,
+                    "what_was_found": s.what_was_found,
+                    "who_originated": s.who_originated,
+                    "triggered_finding": {
+                        "id": str(tf.pk),
+                        "title": tf.title,
+                        "severity": tf.severity,
+                        "status": tf.status,
+                    }
+                    if tf
+                    else None,
+                    "triggered_question": s.triggered_question,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat(),
+                }
+            )
 
         return JsonResponse({"count": len(results), "results": results})
 
@@ -2040,9 +2053,8 @@ def api_case_investigation_steps(request, pk):
     triggered_finding = None
     if triggered_finding_id:
         from .models import Finding
-        triggered_finding = Finding.objects.filter(
-            pk=triggered_finding_id, case=case
-        ).first()
+
+        triggered_finding = Finding.objects.filter(pk=triggered_finding_id, case=case).first()
 
     step = InvestigationStep.objects.create(
         case=case,
@@ -2057,23 +2069,28 @@ def api_case_investigation_steps(request, pk):
     )
 
     tf = step.triggered_finding
-    return JsonResponse({
-        "id": str(step.pk),
-        "step_number": step.step_number,
-        "question": step.question,
-        "source": step.source,
-        "what_was_found": step.what_was_found,
-        "who_originated": step.who_originated,
-        "triggered_finding": {
-            "id": str(tf.pk),
-            "title": tf.title,
-            "severity": tf.severity,
-            "status": tf.status,
-        } if tf else None,
-        "triggered_question": step.triggered_question,
-        "status": step.status,
-        "created_at": step.created_at.isoformat(),
-    }, status=201)
+    return JsonResponse(
+        {
+            "id": str(step.pk),
+            "step_number": step.step_number,
+            "question": step.question,
+            "source": step.source,
+            "what_was_found": step.what_was_found,
+            "who_originated": step.who_originated,
+            "triggered_finding": {
+                "id": str(tf.pk),
+                "title": tf.title,
+                "severity": tf.severity,
+                "status": tf.status,
+            }
+            if tf
+            else None,
+            "triggered_question": step.triggered_question,
+            "status": step.status,
+            "created_at": step.created_at.isoformat(),
+        },
+        status=201,
+    )
 
 
 @require_http_methods(["GET"])
@@ -2085,12 +2102,12 @@ def api_case_persons_deceased(request, pk):
     results = []
     for p in persons:
         if p.date_of_death is not None or "DECEASED" in (p.role_tags or []):
-            results.append({
-                "full_name": p.full_name,
-                "date_of_death": (
-                    p.date_of_death.isoformat() if p.date_of_death else None
-                ),
-            })
+            results.append(
+                {
+                    "full_name": p.full_name,
+                    "date_of_death": (p.date_of_death.isoformat() if p.date_of_death else None),
+                }
+            )
     return JsonResponse({"results": results})
 
 
@@ -2119,10 +2136,12 @@ def api_case_referral_targets(request, pk):
 
     if request.method == "GET":
         targets = ReferralTarget.objects.filter(case=case).order_by("created_at")
-        return JsonResponse({
-            "count": targets.count(),
-            "results": [_serialize_target(t) for t in targets],
-        })
+        return JsonResponse(
+            {
+                "count": targets.count(),
+                "results": [_serialize_target(t) for t in targets],
+            }
+        )
 
     # POST
     try:
@@ -2137,10 +2156,11 @@ def api_case_referral_targets(request, pk):
     status_val = body.get("status", "DRAFT")
     if status_val not in {"DRAFT", "SENT", "ACKNOWLEDGED", "CLOSED"}:
         return JsonResponse(
-            {"error": (
-                f"Invalid status: {status_val!r}. "
-                "Must be DRAFT, SENT, ACKNOWLEDGED, or CLOSED."
-            )},
+            {
+                "error": (
+                    f"Invalid status: {status_val!r}. Must be DRAFT, SENT, ACKNOWLEDGED, or CLOSED."
+                )
+            },
             status=400,
         )
 
@@ -2344,8 +2364,7 @@ def build_case_readiness(case):
             "Referral target",
             "PASS" if target_count else "FAIL",
             (
-                f"{target_count} referral target"
-                f"{'' if target_count == 1 else 's'} selected."
+                f"{target_count} referral target{'' if target_count == 1 else 's'} selected."
                 if target_count
                 else "Select at least one agency before exporting a referral package."
             ),
@@ -2543,10 +2562,14 @@ def api_case_signal_collection(request, pk):
         return sort_error
 
     ordering = _build_ordering_fields(order_by, direction)
-    signals_qs = Finding.objects.filter(case=case).prefetch_related(
-        "entity_links",
-        "document_links__document",
-    ).order_by(*ordering)
+    signals_qs = (
+        Finding.objects.filter(case=case)
+        .prefetch_related(
+            "entity_links",
+            "document_links__document",
+        )
+        .order_by(*ordering)
+    )
 
     # Optional filters
     raw_status = request.GET.get("status")
@@ -3430,7 +3453,9 @@ def api_case_finding_detail(request, pk, finding_id):
     """Retrieve, update, or delete a single finding within a case."""
     case = get_object_or_404(Case, pk=pk)
     finding = get_object_or_404(
-        Finding.objects.prefetch_related("entity_links", "document_links"),
+        Finding.objects.prefetch_related(
+            "entity_links", "document_links", "elements__citations__document"
+        ),
         pk=finding_id,
         case=case,
     )
@@ -3465,9 +3490,9 @@ def api_case_finding_detail(request, pk, finding_id):
     with transaction.atomic():
         updated = serializer.save()
         updated.refresh_from_db()
-        updated = Finding.objects.prefetch_related("entity_links", "document_links").get(
-            pk=updated.pk
-        )
+        updated = Finding.objects.prefetch_related(
+            "entity_links", "document_links", "elements__citations__document"
+        ).get(pk=updated.pk)
         AuditLog.log(
             action=AuditAction.FINDING_UPDATED,
             table_name="findings",
@@ -3493,6 +3518,128 @@ def api_case_finding_detail(request, pk, finding_id):
                     performed_by=getattr(request, "api_token", None),
                 )
     return JsonResponse(serialize_finding(updated))
+
+
+def _get_case_finding(pk, finding_id):
+    case = get_object_or_404(Case, pk=pk)
+    finding = get_object_or_404(Finding, pk=finding_id, case=case)
+    return case, finding
+
+
+@require_http_methods(["GET", "POST"])
+def api_thread_element_collection(request, pk, finding_id):
+    case, finding = _get_case_finding(pk, finding_id)
+    if request.method == "GET":
+        elements = list(finding.elements.prefetch_related("citations__document"))
+        return JsonResponse(
+            {"count": len(elements), "results": [serialize_element(e) for e in elements]}
+        )
+
+    payload, err = _parse_json_body(request)
+    if err:
+        return err
+    serializer = ThreadElementCreateSerializer(data=payload, finding=finding)
+    if not serializer.is_valid():
+        return JsonResponse({"errors": serializer.errors}, status=400)
+    with transaction.atomic():
+        element = serializer.save()
+        AuditLog.log(
+            action=AuditAction.RECORD_CREATED,
+            table_name="thread_element",
+            record_id=element.pk,
+            case_id=case.pk,
+            after_state={"element_type": element.element_type},
+            performed_by=getattr(request, "api_token", None),
+        )
+    return JsonResponse(serialize_element(element), status=201)
+
+
+@require_http_methods(["PATCH", "DELETE"])
+def api_thread_element_detail(request, pk, finding_id, element_id):
+    case, finding = _get_case_finding(pk, finding_id)
+    element = get_object_or_404(ThreadElement, pk=element_id, finding=finding)
+
+    if request.method == "DELETE":
+        with transaction.atomic():
+            doc_ids = list(element.citations.values_list("document_id", flat=True))
+            element.delete()
+            for doc_id in doc_ids:
+                reap_document_link_if_orphaned(finding, Document.objects.get(pk=doc_id))
+            AuditLog.log(
+                action=AuditAction.RECORD_DELETED,
+                table_name="thread_element",
+                record_id=element_id,
+                case_id=case.pk,
+                performed_by=getattr(request, "api_token", None),
+            )
+        return HttpResponse(status=204)
+
+    payload, err = _parse_json_body(request)
+    if err:
+        return err
+    serializer = ThreadElementUpdateSerializer(data=payload, instance=element)
+    if not serializer.is_valid():
+        return JsonResponse({"errors": serializer.errors}, status=400)
+    with transaction.atomic():
+        serializer.save()
+    return JsonResponse(serialize_element(element))
+
+
+@require_http_methods(["POST"])
+def api_thread_element_reorder(request, pk, finding_id):
+    case, finding = _get_case_finding(pk, finding_id)
+    payload, err = _parse_json_body(request)
+    if err:
+        return err
+    raw_ids = payload.get("ordered_ids")
+    if not isinstance(raw_ids, list):
+        return JsonResponse(
+            {"errors": {"ordered_ids": ["ordered_ids must be a list of element ids."]}},
+            status=400,
+        )
+    ordered_ids = [str(i) for i in raw_ids]
+    existing = {str(i) for i in finding.elements.values_list("id", flat=True)}
+    if set(ordered_ids) != existing or len(ordered_ids) != len(existing):
+        return JsonResponse(
+            {"errors": {"ordered_ids": ["Must list exactly this thread's element ids."]}},
+            status=400,
+        )
+    with transaction.atomic():
+        for offset, eid in enumerate(ordered_ids):
+            ThreadElement.objects.filter(pk=eid).update(position=offset + 1000)
+        for offset, eid in enumerate(ordered_ids):
+            ThreadElement.objects.filter(pk=eid).update(position=offset)
+    elements = list(finding.elements.prefetch_related("citations__document"))
+    return JsonResponse(
+        {"count": len(elements), "results": [serialize_element(e) for e in elements]}
+    )
+
+
+@require_http_methods(["POST"])
+def api_thread_element_citation_collection(request, pk, finding_id, element_id):
+    case, finding = _get_case_finding(pk, finding_id)
+    element = get_object_or_404(ThreadElement, pk=element_id, finding=finding)
+    payload, err = _parse_json_body(request)
+    if err:
+        return err
+    serializer = ThreadElementCitationSerializer(data=payload, element=element)
+    if not serializer.is_valid():
+        return JsonResponse({"errors": serializer.errors}, status=400)
+    with transaction.atomic():
+        serializer.save()
+    return JsonResponse(serialize_element(element), status=201)
+
+
+@require_http_methods(["DELETE"])
+def api_thread_element_citation_detail(request, pk, finding_id, element_id, citation_id):
+    case, finding = _get_case_finding(pk, finding_id)
+    element = get_object_or_404(ThreadElement, pk=element_id, finding=finding)
+    citation = get_object_or_404(ThreadElementCitation, pk=citation_id, element=element)
+    document = citation.document
+    with transaction.atomic():
+        citation.delete()
+        reap_document_link_if_orphaned(finding, document)
+    return HttpResponse(status=204)
 
 
 @require_http_methods(["GET"])
@@ -4696,9 +4843,7 @@ def api_case_fetch_990s(request, pk):
                 related_party_disclosed=parsed.governance.schedule_l_required,
                 has_coi_policy=parsed.governance.conflict_of_interest_policy,
                 has_whistleblower_policy=parsed.governance.whistleblower_policy,
-                has_document_retention_policy=(
-                    parsed.governance.document_retention_policy
-                ),
+                has_document_retention_policy=(parsed.governance.document_retention_policy),
                 # Metadata
                 source="IRS_TEOS_XML",
                 confidence=parsed.parse_quality,
@@ -5559,8 +5704,7 @@ def api_ai_ask(request, pk):
     from django.core.cache import cache as _cache  # noqa: PLC0415
 
     sanitized_history = [
-        {"role": e["role"], "content": e["content"]}
-        for e in raw_history[-_MAX_HISTORY_ENTRIES:]
+        {"role": e["role"], "content": e["content"]} for e in raw_history[-_MAX_HISTORY_ENTRIES:]
     ]
     history_ref = str(_uuid.uuid4())
     _cache.set(f"ai_ask_history:{history_ref}", sanitized_history, timeout=7200)
