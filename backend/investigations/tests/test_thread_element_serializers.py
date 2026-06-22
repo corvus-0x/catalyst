@@ -47,6 +47,12 @@ class ElementSerializerTests(TestCase):
         self.assertFalse(s.is_valid())
         self.assertIn("element_type", s.errors)
 
+    def test_update_rejects_empty_payload(self):
+        a = self._assertion()
+        s = ThreadElementUpdateSerializer(data={}, instance=a)
+        self.assertFalse(s.is_valid())
+        self.assertIn("non_field_errors", s.errors)
+
     def test_handoff_ready_rejected_on_non_assertion(self):
         q = ThreadElement.objects.create(
             finding=self.f,

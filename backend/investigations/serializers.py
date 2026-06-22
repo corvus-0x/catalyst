@@ -1211,6 +1211,11 @@ class ThreadElementUpdateSerializer:
 
     def is_valid(self) -> bool:
         self._errors = {}
+        if not self.initial_data:
+            self._errors = {
+                "non_field_errors": ["Provide at least one updatable field in the payload."]
+            }
+            return False
         unexpected = sorted(set(self.initial_data) - self.allowed_fields)
         if unexpected:
             self._errors = {"non_field_errors": [f"Unexpected field(s): {', '.join(unexpected)}"]}

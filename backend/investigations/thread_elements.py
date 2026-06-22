@@ -36,7 +36,18 @@ def finding_has_handoff_ready_assertion(finding) -> bool:
 
 
 def ensure_document_link(finding, document):
-    """Ensure a non-legacy FindingDocument compatibility row exists for (finding, document)."""
+    """Ensure a FindingDocument compatibility row exists for (finding, document).
+
+    Creates a non-legacy row when none exists. A pre-existing row is left as-is —
+    in particular an ``is_legacy=True`` row is NOT promoted to non-legacy, because
+    legacy links (the ``add_document_ids`` path / pre-Phase-4 backfill, e.g.
+    referral-PDF citations) must survive even when an assertion later cites the same
+    document. So ``is_legacy`` means "this link has a legacy reason to exist", not
+    "this link has no citation reason"; ``reap_document_link_if_orphaned`` therefore
+    never removes it. (4B note: if the gate needs to tell "purely legacy" from
+    "legacy + also cited" apart, that distinction must be modeled then — a single
+    boolean cannot carry it, and promoting here would make a legacy link reapable.)
+    """
     from .models import FindingDocument
 
     FindingDocument.objects.get_or_create(

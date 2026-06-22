@@ -30,7 +30,21 @@ class ThreadElementApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(r.status_code, 201, r.content)
-        self.assertEqual(len(self.client.get(self.base).json()["results"]), 1)
+        listing = self.client.get(self.base).json()
+        self.assertEqual(len(listing["results"]), 1)
+        self.assertEqual(listing["count"], 1)
+
+    def test_reorder_rejects_non_list_ordered_ids(self):
+        ThreadElement.objects.create(
+            finding=self.f, element_type=ThreadElementType.ASSERTION, position=0
+        )
+        r = self.client.post(
+            self.base + "reorder/",
+            data={"ordered_ids": None},
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn("ordered_ids", r.json()["errors"])
 
     def test_reorder_atomic(self):
         a = ThreadElement.objects.create(

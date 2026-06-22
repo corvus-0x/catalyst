@@ -54,3 +54,17 @@ class DocumentLinkSyncTests(TestCase):
         self.assertEqual(
             FindingDocument.objects.filter(finding=self.f, document=self.doc).count(), 1
         )
+
+    def test_ensure_over_existing_legacy_row_keeps_it_legacy_and_survives_reap(self):
+        # A legacy link (add_document_ids / pre-Phase-4 backfill — e.g. a referral-PDF
+        # citation) must survive even after an assertion later cites the same document
+        # AND that assertion citation is removed. ensure_document_link must NOT promote
+        # the row to non-legacy (promotion would make reap delete the legacy link).
+        FindingDocument.objects.create(finding=self.f, document=self.doc, is_legacy=True)
+        ensure_document_link(self.f, self.doc)  # an assertion now also cites it
+        link = FindingDocument.objects.get(finding=self.f, document=self.doc)
+        self.assertTrue(link.is_legacy)  # NOT promoted
+        reap_document_link_if_orphaned(self.f, self.doc)  # assertion citation later removed
+        self.assertTrue(
+            FindingDocument.objects.filter(finding=self.f, document=self.doc).exists()
+        )

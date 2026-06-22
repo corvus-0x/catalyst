@@ -3530,8 +3530,10 @@ def _get_case_finding(pk, finding_id):
 def api_thread_element_collection(request, pk, finding_id):
     case, finding = _get_case_finding(pk, finding_id)
     if request.method == "GET":
-        elements = finding.elements.prefetch_related("citations__document")
-        return JsonResponse({"results": [serialize_element(e) for e in elements]})
+        elements = list(finding.elements.prefetch_related("citations__document"))
+        return JsonResponse(
+            {"count": len(elements), "results": [serialize_element(e) for e in elements]}
+        )
 
     payload, err = _parse_json_body(request)
     if err:
@@ -3589,7 +3591,13 @@ def api_thread_element_reorder(request, pk, finding_id):
     payload, err = _parse_json_body(request)
     if err:
         return err
-    ordered_ids = [str(i) for i in payload.get("ordered_ids", [])]
+    raw_ids = payload.get("ordered_ids")
+    if not isinstance(raw_ids, list):
+        return JsonResponse(
+            {"errors": {"ordered_ids": ["ordered_ids must be a list of element ids."]}},
+            status=400,
+        )
+    ordered_ids = [str(i) for i in raw_ids]
     existing = {str(i) for i in finding.elements.values_list("id", flat=True)}
     if set(ordered_ids) != existing or len(ordered_ids) != len(existing):
         return JsonResponse(
@@ -3601,8 +3609,10 @@ def api_thread_element_reorder(request, pk, finding_id):
             ThreadElement.objects.filter(pk=eid).update(position=offset + 1000)
         for offset, eid in enumerate(ordered_ids):
             ThreadElement.objects.filter(pk=eid).update(position=offset)
-    elements = finding.elements.prefetch_related("citations__document")
-    return JsonResponse({"results": [serialize_element(e) for e in elements]})
+    elements = list(finding.elements.prefetch_related("citations__document"))
+    return JsonResponse(
+        {"count": len(elements), "results": [serialize_element(e) for e in elements]}
+    )
 
 
 @require_http_methods(["POST"])
