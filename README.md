@@ -60,6 +60,8 @@ The deliverable is a **deterministic referral package** — not an AI summary. A
 
 **5. Backwards from a real case.** Every signal rule, every data model field, every UI affordance traces to an actual pain point from the founding investigation. Nothing here is speculative.
 
+**6. The AI is held to an evidence bar — and it's measured, not promised.** Every AI "Lead" is graded by a dedicated eval harness. Deterministic guards confirm each citation resolves to a real case document and the text carries no accusatory language; an **LLM-as-judge** then scores two axes against golden fixtures — *faithfulness* (is the Lead actually supported by the evidence it was given?) and *overreach* (does it assert a verdict as established fact instead of a pattern to review?). Most fixtures are **negative controls** — same-name-but-unrelated people, a fully-documented clean filing — where the correct output is zero Leads. Per-fixture thresholds gate the run. The credibility firewall this product depends on isn't a line in a prompt; it's a property under test.
+
 ---
 
 ## How this is built
@@ -68,7 +70,7 @@ AI-first, on purpose. Claude Code writes most of the implementation inside a har
 
 - **`.claude/skills/`**: `new-connector` scaffolds a failure-isolated public-records connector with its tests, `smoke-test` runs the live API health check, `session-wrap` closes out a working session with the docs updated.
 - **`.github/workflows/`**: Claude reviews every PR (`claude-code-review.yml`) alongside CodeRabbit. CI gates the merge.
-- **Strict TDD throughout.** The failing test lands before the implementation does. 924 tests hold the line.
+- **Strict TDD throughout.** The failing test lands before the implementation does. 1,055 tests hold the line.
 
 What ships in a referral package, how evidence is weighed, and when an entity merge is confirmed stay human decisions.
 
@@ -78,7 +80,7 @@ What ships in a referral package, how evidence is weighed, and when an entity me
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Django 4.2 · PostgreSQL 16 · Django-Q2 async jobs |
+| Backend | Django 5.2 · PostgreSQL 16 · Django-Q2 async jobs |
 | Frontend | React 18 · TypeScript · Vite · Cytoscape.js · D3 (timeline) |
 | AI | Anthropic Claude API (Haiku + Sonnet) |
 | Connectors | IRS TEOS 990 XML · Ohio SOS · Ohio AOS · 88-county Recorder · ODNR Parcels |
@@ -88,11 +90,18 @@ What ships in a referral package, how evidence is weighed, and when an entity me
 
 ## Test surface
 
-924 backend tests covering connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, data quality validators, and the referral PDF exporter. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
+1,055 backend tests covering connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, data quality validators, and the referral PDF exporter. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
 
 ```bash
 # Run the full suite (inside Docker):
 docker compose exec backend python manage.py test investigations
+```
+
+**AI eval harness** (`investigations/tests/evals/`) — a separate faithfulness/overreach suite that grades AI Leads against golden fixtures (see engineering decision #6). It runs in two lanes by design: the **deterministic** guards (citation resolves to a real document, no accusatory language) run inside the normal suite above, while the **LLM-as-judge** scoring is tagged `@tag("eval")` and excluded from CI — model calls are non-deterministic, so gating every push on them would make CI flaky. Run the judged evals on demand with a real key:
+
+```bash
+# Live AI evals (needs ANTHROPIC_API_KEY; writes a scorecard artifact):
+docker compose exec backend python manage.py test investigations.tests.evals.test_lead_quality --tag=eval
 ```
 
 ---
