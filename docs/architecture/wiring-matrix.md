@@ -1,6 +1,6 @@
 # Wiring Matrix — Backend → Frontend
 
-**Last updated:** 2026-06-21 (Session 50 — `/case-map/` now wired front-to-back via `fetchCaseMap` → Case Map workspace, PRs #14/#15)
+**Last updated:** 2026-06-22 (Session 51 — Phase 3 Thread Path Mode + Thread Dock, PR #16. No new endpoints/clients; the dock reuses existing `fetchAngles` — InvestigateTab/ThreadDock added as a consumer.)
 **Purpose:** Make the question *"is every backend endpoint actually reachable from the UI?"*
 answerable at a glance. Each backend endpoint is traced through its API client function to the
 exact view/component that calls it. Anything with no caller is a **dead end** — either a feature to
@@ -67,7 +67,7 @@ backend endpoint (urls.py)  →  API client fn (frontend/src/api/*)  →  UI cal
 
 | Endpoint | Client fn | UI caller | |
 |----------|-----------|-----------|---|
-| `GET/POST /api/cases/<id>/findings/` | `fetchAngles` / `createAngle` | DocumentView, ReferralsTab / ConnectKnotsModal, AngleSplitModal | ✅ |
+| `GET/POST /api/cases/<id>/findings/` | `fetchAngles` / `createAngle` | DocumentView, ReferralsTab, **InvestigateTab/ThreadDock** (Phase 3 thread list) / ConnectKnotsModal, AngleSplitModal | ✅ |
 | `GET/PATCH /api/cases/<id>/findings/<fid>/` | `fetchAngle` / `updateAngle` | AngleView, CaseDetailView, TieOffModal, CiteDocumentPicker, … | ✅ |
 | `DELETE …/findings/<fid>/` | `deleteAngle` | AngleView toolbar | ✅ wired (2026-06-05) |
 | ~~`GET /api/findings/` (cross-case)~~ | ~~`fetchAllAngles`~~ | — | ✅ **endpoint + client deleted Session 43** |

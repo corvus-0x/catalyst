@@ -201,6 +201,10 @@ swaps) is **superseded** by the Case Map redesign — see
 `docs/superpowers/specs/2026-06-19-case-map-and-thread-builder-design.md` (§5) and
 `2026-06-20-case-map-phase-2-right-inspector-design.md`. Investigate is now a persistent Case Map +
 right inspector (selection = inspector state; frame = breadcrumb history), shipped in PRs #14/#15.
+**Phase 3 (PR #16, Session 51)** added **Thread Path Mode** (selecting a thread emphasizes its
+relationships + dims the rest) and a canvas-width sortable **Thread Dock** under the map — see
+`docs/superpowers/specs/2026-06-21-case-map-phase-3-thread-path-mode-design.md`. Frontend-only; renders
+the existing `selection.kind==="thread"` (no reducer change). Phase 4 = Thread Builder (not yet built).
 
 Routes: `/` Dashboard · `/cases` CasesList · `/cases/:id` CaseDetail (6 tabs: Investigate ·
 Research · Financials · Timeline · Referrals · Replay) · `/search` · `/settings`
