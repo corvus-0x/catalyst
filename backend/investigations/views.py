@@ -3556,17 +3556,18 @@ def api_thread_element_detail(request, pk, finding_id, element_id):
     element = get_object_or_404(ThreadElement, pk=element_id, finding=finding)
 
     if request.method == "DELETE":
-        doc_ids = list(element.citations.values_list("document_id", flat=True))
-        element.delete()
-        for doc_id in doc_ids:
-            reap_document_link_if_orphaned(finding, Document.objects.get(pk=doc_id))
-        AuditLog.log(
-            action=AuditAction.RECORD_DELETED,
-            table_name="thread_element",
-            record_id=element_id,
-            case_id=case.pk,
-            performed_by=getattr(request, "api_token", None),
-        )
+        with transaction.atomic():
+            doc_ids = list(element.citations.values_list("document_id", flat=True))
+            element.delete()
+            for doc_id in doc_ids:
+                reap_document_link_if_orphaned(finding, Document.objects.get(pk=doc_id))
+            AuditLog.log(
+                action=AuditAction.RECORD_DELETED,
+                table_name="thread_element",
+                record_id=element_id,
+                case_id=case.pk,
+                performed_by=getattr(request, "api_token", None),
+            )
         return HttpResponse(status=204)
 
     payload, err = _parse_json_body(request)
