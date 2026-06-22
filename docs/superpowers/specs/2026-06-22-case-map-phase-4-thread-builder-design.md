@@ -128,10 +128,16 @@ Recursive, evaluated at gate-time (drafting stays permissive):
    per-link metadata is wanted (e.g. "reason this fact supports the claim", supporting-fact
    ordering).
 
-## 4. `document_links` as a synced union (compatibility surface)
+## 4. `document_links` as a synced union (compatibility citation index)
 
-`Finding.document_links` (`FindingDocument`) stays — the `/case-map/` builder, credibility counts, and
-the current referral PDF all read it. Strangler-fig, not rip-and-replace.
+**Source-of-truth framing (load-bearing — keep this language in the implementation plan):**
+`ThreadElementCitation` is the **source of truth** for citations. `Finding.document_links`
+(`FindingDocument`) is the **compatibility citation index** — a denormalized/export-compatibility
+layer plus the legacy-preservation layer. It is **not** a place to author citations. This wording
+exists to stop future code from drifting back toward finding-level citation as the primary surface.
+
+`Finding.document_links` stays because the `/case-map/` builder, credibility counts, and the current
+referral PDF all read it. Strangler-fig, not rip-and-replace.
 
 - **Definition:** `document_links` = the **union of all element citations' documents** (non-legacy)
   **plus** preserved **legacy** citations (`is_legacy=True`).
@@ -263,9 +269,11 @@ Frontend tests run locally (Vitest).
 
 ## 9. Phase 4C — referral PDF renders structured elements (separate but LOCKED)
 
-4C is the payoff and is **non-optional**: it is the committed next slice after 4B, with its own PR and
-test suite (the PDF generator is a distinct subsystem — ordering, citation rendering, page layout,
-export filters, regression tests).
+4C is the payoff and is **non-optional**: it is part of **Phase 4's product-level definition of done**
+— the model and builder must not be considered "Phase 4 complete" until the export renders the
+structured truth. It ships as its own PR after 4B (the PDF generator is a distinct subsystem —
+ordering, citation rendering, page layout, export filters, regression tests), but it is committed
+scope, not a "someday" follow-on.
 
 **Acceptance criteria (locked):**
 - PDF renders `FACT` elements with **per-element citations**.
