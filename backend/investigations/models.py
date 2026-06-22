@@ -1,6 +1,7 @@
 import uuid
 
 from django.contrib.postgres.fields import ArrayField
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F
 from django.utils import timezone
@@ -1174,10 +1175,7 @@ class ReferralTarget(UUIDPrimaryKeyModel):
     )
     agency_name = models.CharField(
         max_length=200,
-        help_text=(
-            "Name of the receiving agency "
-            "(e.g. 'Ohio AG — Charitable Law Section')"
-        ),
+        help_text=("Name of the receiving agency (e.g. 'Ohio AG — Charitable Law Section')"),
     )
     complaint_type = models.CharField(
         max_length=200,
@@ -1221,6 +1219,11 @@ class ReferralTarget(UUIDPrimaryKeyModel):
 
     def __str__(self):
         return f"{self.agency_name} ({self.status})"
+
+
+class GateVersion(models.TextChoices):
+    LEGACY_NARRATIVE = "LEGACY_NARRATIVE", "Legacy narrative"
+    ASSERTION_V1 = "ASSERTION_V1", "Assertion v1"
 
 
 class Finding(UUIDPrimaryKeyModel):
@@ -1291,6 +1294,15 @@ class Finding(UUIDPrimaryKeyModel):
         help_text=(
             "Investigator acknowledged the overreach checklist at tie-off. "
             "The 4th referral-grade gate condition. Never backfilled."
+        ),
+    )
+    gate_version = models.CharField(
+        max_length=20,
+        choices=GateVersion.choices,
+        default=GateVersion.ASSERTION_V1,
+        help_text=(
+            "Which referral-grade gate applies. LEGACY_NARRATIVE = grandfathered "
+            "pre-Phase-4 threads (old predicate); ASSERTION_V1 = structured-assertion gate."
         ),
     )
     source = models.CharField(
@@ -1380,6 +1392,13 @@ class FindingDocument(UUIDPrimaryKeyModel):
     )
     page_reference = models.CharField(max_length=100, blank=True, default="")
     context_note = models.TextField(blank=True, default="")
+    is_legacy = models.BooleanField(
+        default=False,
+        help_text=(
+            "True for compatibility-index rows not authored via ThreadElementCitation "
+            "(pre-Phase-4 citations, or the legacy add_document_ids path). Never reaped."
+        ),
+    )
 
     class Meta:
         db_table = "finding_document"
@@ -1395,6 +1414,73 @@ class FindingDocument(UUIDPrimaryKeyModel):
                 name="idx_finding_document_doc",
             ),
         ]
+
+
+class ThreadElementType(models.TextChoices):
+    ASSERTION = "ASSERTION", "Assertion"
+    QUESTION = "QUESTION", "Unresolved question"
+    NOTE = "NOTE", "Context note"  # migration/context only — never gates
+
+
+class ThreadElement(UUIDPrimaryKeyModel):
+    """One element of a thread. An ASSERTION's role is derived from evidence:
+    cited -> fact, uncited -> analysis, handoff_ready -> claim. QUESTION = a gap;
+    NOTE = subordinate context (e.g. migrated narrative)."""
+
+    finding = models.ForeignKey(Finding, on_delete=models.CASCADE, related_name="elements")
+    element_type = models.CharField(max_length=20, choices=ThreadElementType.choices)
+    text = models.TextField(blank=True, default="")
+    position = models.PositiveIntegerField(default=0)
+    handoff_ready = models.BooleanField(
+        default=False,
+        help_text="The 'claim' flag — meaningful only on ASSERTION; gated so others cannot set it.",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "thread_element"
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["finding", "position"], name="uniq_thread_element_position"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["finding", "position"], name="idx_thread_element_fp"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.element_type} @ {self.position}"
+
+
+class ThreadElementCitation(UUIDPrimaryKeyModel):
+    """Per-assertion evidence binding — the SOURCE OF TRUTH for citations."""
+
+    element = models.ForeignKey(ThreadElement, on_delete=models.CASCADE, related_name="citations")
+    document = models.ForeignKey(
+        "Document", on_delete=models.CASCADE, related_name="element_citations"
+    )
+    page_reference = models.CharField(max_length=100, blank=True, default="")
+    context_note = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "thread_element_citation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["element", "document", "page_reference"],
+                name="uniq_thread_element_citation",
+            ),
+        ]
+
+    def clean(self):
+        # Defense-in-depth only (Django does NOT call clean() on save()); the
+        # serializer is the authoritative same-case guard.
+        if self.element.finding.case_id != self.document.case_id:
+            raise ValidationError("Citation document must belong to the same case as the thread.")
+
+    def __str__(self) -> str:
+        return f"cite {self.document_id} @ {self.element_id}"
 
 
 class AuditAction(models.TextChoices):
