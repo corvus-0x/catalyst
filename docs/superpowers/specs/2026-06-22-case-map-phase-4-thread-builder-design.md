@@ -1,429 +1,408 @@
-# Case Map Phase 4 — Thread Builder (structured evidentiary elements)
+# Case Map Phase 4 — Thread Builder (structured assertions)
 
-**Date:** 2026-06-22
-**Status:** **READY TO PLAN** — design approved in brainstorm. All load-bearing decisions locked
-(data model, per-element citations, full-width layout, elements-replace-narrative, two-tier
-strengthened gate). Slices (renamed for deployment safety — see §11):
-- **4A-additive** — backend model + API + migration + seed, **changes no existing behavior** (safe
-  to land on `main`/demo alone).
-- **4B-gate-and-builder** — the `ThreadBuilder` UI **and** the Tier-1/Tier-2 gate flip, in one
-  deploy unit (the gate strengthens only when the UI can satisfy it).
-- **4C-export** — referral PDF renders structured elements (separate but committed).
-
-> **Deployment-sequencing invariant (load-bearing):** the gate flip (Tier-1 narrative→fact, Tier-2
-> referral-grade strengthening) **must not reach `main` before 4B**. Today's `AngleView` can only
-> author `narrative` + finding-level citations — it cannot create complete FACT/CLAIM elements — so a
-> gate flip on `main` ahead of 4B would make the live UI unable to confirm new threads. 4A therefore
-> ships the predicate helpers **unwired**; 4B wires them into `FindingUpdateSerializer` +
-> `referral_grade.py` in the same PR as the editor.
+**Date:** 2026-06-22 (rev. 2026-06-22 — pivoted to the Assertion model after a product-owner
+pressure-test; supersedes the earlier 5-type FACT/INFERENCE/QUESTION/CLAIM design in this file's
+history)
+**Status:** **READY TO PLAN** — design + product-friction review complete. Load-bearing decisions
+locked (Assertion model, evidence-dictates-role, per-element citations, full-width layout,
+elements-replace-narrative, softened two-tier gate, `gate_version` grandfathering, AI-assist as a
+committed assist-only slice).
 **Scope:** Replace the freeform `AngleView` narrative editor with a structured **Thread Builder**
-backed by typed, individually-cited evidentiary elements (Fact / Inference / Question / Claim), and
-make that taxonomy *load-bearing* by strengthening the referral-grade gate.
+backed by typed evidentiary **assertions** with per-assertion citations, and make that structure
+*load-bearing* by strengthening the referral-grade gate — **without** taxing the investigator with an
+upfront classification chore.
+
+> ### Slices (renamed for deployment safety — see §11)
+> - **4A-additive** — backend model + API + migration + seed; **changes no existing behavior** (safe
+>   on `main`/demo alone). Gate predicate helpers exist but are **unwired**.
+> - **4B-gate-and-builder** — the `ThreadBuilder` UI **and** the softened two-tier gate flip
+>   (`gate_version`-aware), in one deploy unit.
+> - **4C-export** — referral PDF renders structured assertions by derived role.
+> - **4D-assist** — AI-assisted structuring (committed, post-4B): proposes assertions/citations from
+>   freeform text for human confirmation. **Assist-only; never touches the gate.**
+>
+> **Deployment-sequencing invariant (load-bearing):** the gate flip must not reach `main` before 4B —
+> today's `AngleView` cannot author cited assertions, so a gate flip ahead of the UI would make the
+> live tool unable to confirm new threads. 4A ships helpers unwired; 4B wires them.
 
 > ### Relationship to other specs
-> - **Implements Phase 4** of `2026-06-19-case-map-and-thread-builder-design.md` (the controlling
->   plan), §7 "Thread Builder Direction" + §11 "Phase 4". This document is the detailed design for
->   that phase.
+> - **Implements Phase 4** of `2026-06-19-case-map-and-thread-builder-design.md` (controlling plan),
+>   §7 "Thread Builder Direction" + §11 "Phase 4". **Departs** from that section's literal
+>   Fact/Inference/Question/Claim list: see §2 for why the taxonomy collapsed to assertions.
 > - **Builds on Phase 2/3.** The focus reducer, `selection.kind === "thread"`, `ThreadInspector`
 >   ("Open full Thread" → `openThread` → `frame.kind === "angle"`), the Thread Dock, and Thread Path
->   Mode all exist. Phase 4 changes *what the `angle` frame renders* — it does **not** add reducer
->   fields or change the dock/path-mode.
-> - **Aligns the tie-off gate.** Extends — does not replace — `referral_grade.py` and the
->   `FindingUpdateSerializer` tie-off gate from `2026-06-18-tie-off-gate-and-credibility-design.md`.
-> - **No `/case-map/` contract change.** The Case Map's `handoff_ready` / `handoff_included` /
->   `material` already derive from the referral-grade predicate; strengthening that predicate flows
->   through automatically (edges just get stricter).
+>   Mode all exist. Phase 4 changes *what the `angle` frame renders* — no reducer/dock/path changes.
+> - **Aligns the tie-off gate.** Extends `referral_grade.py` and the `FindingUpdateSerializer` tie-off
+>   gate from `2026-06-18-tie-off-gate-and-credibility-design.md`, adding `gate_version` awareness.
+> - **No `/case-map/` contract change.** `handoff_ready` / `handoff_included` / `material` already
+>   derive from the referral-grade predicate; strengthening it flows through (once 4B flips).
 
 ---
 
 ## 1. Purpose — what Phase 4 completes
 
-`AngleView` today is a single freeform `narrative` textarea plus a flat list of cited documents, with
-`[Doc-N]` tokens regex-scraped out of the prose (`citationRefs()`). That is "nicer note-taking," not
-defensible structure. Phase 4 turns a thread into an **ordered list of typed, individually-cited
-evidentiary elements** so that:
+`AngleView` today is one freeform `narrative` textarea plus a flat cited-docs list, with `[Doc-N]`
+tokens regex-scraped from prose (`citationRefs()`). That is "nicer note-taking," not defensible
+structure. The professional who receives the handoff (AG/IRS/FBI, subpoena power) needs the
+investigator's **cited observations** cleanly separated from their **uncited reasoning** and their
+**headline accusation** — that separation is the credibility firewall (CLAUDE.md
+`project_banned_strings_rationale`).
 
-- every assertion is classified — **Fact** (cited observation), **Inference** (reasoning over
-  facts), **Question** (a gap requiring subpoena power/interviews), **Claim** (the handoff-ready
-  accusation);
-- every Fact points to the exact source (document + page + excerpt) that makes it a fact;
-- a Claim is only "handoff-ready" when it is backed by cited facts;
-- the referral package can render *facts → reasoning → claim* with per-sentence citations instead of
-  scraping a prose blob (Phase 4C).
+Phase 4 delivers that separation **without forcing the investigator to pre-classify every thought.**
+A thread becomes an ordered list of **assertions** whose *role is dictated by evidence*, not chosen
+from a dropdown:
 
-This is the realization of Catalyst's core thesis (CLAUDE.md "Prime"/"Reframe"): the customer of the
-output is a professional with subpoena power who will discount an unstructured narrative.
+| What the investigator does | How the system + export read it |
+|---|---|
+| writes an assertion, attaches a source | **Documented fact** (cited) |
+| writes an assertion, no source (yet) | **Analysis / inference** (uncited) |
+| flags an assertion `handoff_ready` | **Claim** — the accusation handed off |
+| writes a `QUESTION` | an open gap (subpoena/interview territory) |
+| (migration) old narrative | a subordinate **`NOTE`** (context, never gates) |
+
+The same documented payment can be **both** a cited fact **and** the headline claim — one assertion,
+cited + `handoff_ready` — which is how real investigations work. The PDF (4C) still renders the three
+roles in order; the structure is preserved while the *authoring tax* is removed.
 
 The redesign's "one job per surface" principle holds: the **map** is the overview (Thread Dock +
-Thread Path Mode already answer "where does this thread live" before you open it), and the **Thread
-Builder** is the full-width detail surface where the thread is made defensible.
+Thread Path Mode answer "where does this thread live" before you open it); the **Thread Builder** is
+the full-width detail surface where a thread is made defensible.
 
-## 2. Locked decisions (from brainstorm)
+## 2. Why the taxonomy collapsed (the product-friction pivot)
+
+The controlling plan's §7 named four explicit element types (Fact / Inference / Question / Claim) with
+mandatory fact→claim backing. A product-owner pressure-test found that design optimizes the **reader**
+at the **author's** expense — contradicting CLAUDE.md's "make Catalyst useful for actual investigation
+work" and "first 70% is 100%." Three failures drove the pivot:
+
+1. **Taxonomy paralysis.** "The charity paid $500k to an LLC owned by a board member's brother" is
+   simultaneously a documented fact *and* the core accusation. A 4-type model forces it to exist as
+   two near-identical elements (a FACT and a CLAIM) to satisfy "complete." Pure data-entry tax.
+2. **Graph-in-a-graph.** Mandatory `supported_by` wiring makes the investigator do software
+   engineering; in practice they link everything to turn the gate green — making the backing data
+   worthless ("green theater").
+3. **Hostile migration.** Flipping a strict gate retroactively demotes yesterday's referral-grade
+   work to "needs claim." Burns trust.
+
+**Resolution (locked):** collapse to a single **`ASSERTION`** whose role is derived from evidence;
+keep `QUESTION` and `NOTE`; drop the mandatory backing graph (optional backing + edge-`rationale`
+returns as a Phase-5 power feature, answering the "reasoning on the edge" / cell-tower case then);
+grandfather existing work via `gate_version`. AI-assisted structuring is elevated to a committed
+slice (4D) **but kept assist-only** — it must never decide what counts as a cited fact (credibility
+firewall) or drive referral-readiness (determinism).
+
+## 3. Locked decisions
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | Structure | **New backend structured records** (not frontend-only, not JSON-on-Finding). |
-| 2 | Evidence binding | **Per-element citations** — each Fact binds to specific source(s). |
-| 3 | Layout | **Full-width Thread Builder** (keeps `frame.kind === "angle"`); map is the overview. |
-| 4 | Narrative | **Elements replace the narrative.** Legacy narrative migrates to a `NOTE` element. |
-| 5 | Gate | **Strengthened + two-tier** (see §5). |
-| 6 | PDF | **4C — separate but committed** (see §8). |
+| 1 | Structure | New backend structured records (assertions), not freeform-only, not JSON-on-Finding. |
+| 2 | Taxonomy | **`ASSERTION` · `QUESTION` · `NOTE`** (3); role derived from evidence + `handoff_ready` flag. |
+| 3 | Evidence binding | **Per-assertion citations** (`ASSERTION` only). |
+| 4 | Backing graph | **None in v1.** Optional `supported_by` + edge `rationale` → Phase 5. |
+| 5 | Layout | Full-width Thread Builder (`frame.kind === "angle"` stays); map is the overview. |
+| 6 | Narrative | Assertions replace it; legacy narrative migrates to a `NOTE`. |
+| 7 | Gate | Softened two-tier, **`gate_version`-aware** (§5). Wired in 4B. |
+| 8 | Grandfather | `Finding.gate_version` enum; currently-referral-grade findings → `LEGACY_NARRATIVE`. |
+| 9 | AI | Committed assist-only slice (4D); never gates, never auto-classifies as authoritative. |
+| 10 | PDF | 4C — separate but committed (definition of done). |
 
-## 3. Data model (Phase 4A)
+## 4. Data model (Phase 4A-additive)
 
-Three new tables, following existing `Finding*` conventions (`UUIDPrimaryKeyModel`, `related_name`,
-explicit `db_table`, indexes, the `page_reference`/`context_note` citation shape on
-`FindingDocument`).
+Two new tables + two new `Finding`-area fields, following existing `Finding*` conventions
+(`UUIDPrimaryKeyModel`, `related_name`, explicit `db_table`, indexes, the
+`page_reference`/`context_note` citation shape on `FindingDocument`).
 
 ### `ThreadElement` — `db_table = "thread_element"`
 
 | Field | Type | Notes |
 |---|---|---|
-| `finding` | FK → Finding, `related_name="elements"`, `on_delete=CASCADE` | the thread |
-| `element_type` | TextChoices: `FACT` · `INFERENCE` · `QUESTION` · `CLAIM` · `NOTE` | taxonomy + migration bucket |
-| `text` | TextField | element content |
-| `position` | PositiveIntegerField | order within the thread |
-| `handoff_ready` | BooleanField, default False | meaningful only on `CLAIM` |
-| `supported_by` | `ManyToManyField("self", symmetrical=False, related_name="supports_elements", blank=True)` | a CLAIM/INFERENCE → the FACT(s) backing it |
+| `finding` | FK → Finding, `related_name="elements"`, CASCADE | the thread |
+| `element_type` | TextChoices: `ASSERTION` · `QUESTION` · `NOTE` | `NOTE` = migration/context bucket, never gates |
+| `text` | TextField | content |
+| `position` | PositiveIntegerField | order within thread |
+| `handoff_ready` | BooleanField, default False | meaningful only on `ASSERTION` (the "claim" flag) |
 | `created_at` / `updated_at` | DateTimeField | |
 
-**Naming rationale:** the edge lives on the claim and points *to* the facts. `claim.supported_by.all()`
-= the cited facts backing this claim; `fact.supports_elements.all()` = the claims/inferences this
-fact backs. (`symmetrical=False` because support is directional.)
+**No `supported_by` M2M in v1** (decision #4). **Meta:** `ordering = ["position"]`; index on
+`(finding, position)`; `unique(finding, position)`.
 
-**`supported_by` is constrained (v1):** only `CLAIM` and `INFERENCE` elements may have
-`supported_by` entries, and every target must be a `FACT` in the **same thread**. **Self-support is
-rejected.** (Enforced in the serializer — see §3 invariants.)
-
-**`NOTE` is not a peer category.** It exists for migration and freeform context only. The builder
-renders it as a subordinate "Context note," never as a fifth equal chip in the four-part model, and
-it can **never** satisfy a gate.
-
-**Meta:** `ordering = ["position"]`; index on `(finding, position)`; **`unique(finding, position)`**.
+**Derived role (render-time, not stored)** — `serialize_element` exposes a `role` for the
+frontend/PDF:
+- `ASSERTION` + ≥1 citation → `"fact"`
+- `ASSERTION` + `handoff_ready` → `"claim"` (a cited+handoff_ready assertion is both; PDF lists it in
+  both the facts and the claims sections, or flags it as a "documented claim")
+- `ASSERTION`, uncited, not handoff_ready → `"analysis"`
+- `QUESTION` → `"question"`; `NOTE` → `"note"`
 
 ### `ThreadElementCitation` — `db_table = "thread_element_citation"`
 
 | Field | Type | Notes |
 |---|---|---|
-| `element` | FK → ThreadElement, `related_name="citations"`, `on_delete=CASCADE` | |
-| `document` | FK → Document, `related_name="element_citations"`, `on_delete=CASCADE` | |
+| `element` | FK → ThreadElement, `related_name="citations"`, CASCADE | |
+| `document` | FK → Document, `related_name="element_citations"`, CASCADE | |
 | `page_reference` | CharField(blank) | mirrors `FindingDocument` |
-| `context_note` | TextField(blank) | the excerpt that makes this a fact |
+| `context_note` | TextField(blank) | the excerpt |
 
-**Citations attach to `FACT` elements only (v1).** The citation serializer/endpoint **rejects** a
-citation whose target element is not a `FACT`. (Cited claims/questions are deliberately out of scope;
-inferences reason over facts, they don't carry their own evidence.)
+**Citations attach to `ASSERTION` only.** The serializer/endpoint reject a citation whose target is a
+`QUESTION` or `NOTE`.
 
-**Same-case guard (required):** `document.case_id == element.finding.case_id`. The **authoritative**
-enforcement is in the **serializer** (the only write path). The model also implements `clean()` as
-defense-in-depth for any `full_clean()` caller — but note Django does **not** call `clean()` on
-`save()`, and there is **no DB constraint** across this join, so the serializer check + tests (§7)
-are what actually guarantee it.
+**Same-case guard (required):** `document.case_id == element.finding.case_id`. Authoritative in the
+**serializer** (only write path); model `clean()` is defense-in-depth for `full_clean()` callers — note
+Django does **not** call `clean()` on `save()` and there is **no DB constraint** across this join, so
+the serializer check + tests guarantee it.
 
-**Meta:** `unique(element, document, page_reference)` (prevents duplicate citation chips).
+**Meta:** `unique(element, document, page_reference)`.
 
-### `FindingDocument.is_legacy` (new field, additive)
+### `Finding.gate_version` (new field)
 
-`BooleanField(default=False)`. Set `True` for all pre-Phase-4 rows during migration. Turns the
-`document_links` sync rule from "infer provenance" into "respect provenance" (§4).
+`CharField` TextChoices: `LEGACY_NARRATIVE` · `ASSERTION_V1`, **default `ASSERTION_V1`** (so every new
+thread uses the new gate). The migration (§6) stamps `LEGACY_NARRATIVE` on findings that are
+referral-grade under the *old* predicate, preserving their status. `referral_grade` reads this to pick
+which gate applies (§5).
 
-### Completeness (the predicates the gates use)
+### `FindingDocument.is_legacy` (new field)
 
-Recursive, evaluated at gate-time (drafting stays permissive):
+`BooleanField(default=False)`. `True` for compatibility-index rows not authored via
+`ThreadElementCitation` (pre-Phase-4 citations + the legacy `add_document_ids` path). Never reaped.
 
-- **Complete `FACT`** = `text` non-empty **and** ≥1 `ThreadElementCitation`.
-- **Complete `CLAIM`** = `text` non-empty **and** ≥1 `supported_by` element that is a **complete
-  `FACT`**.
-- `INFERENCE` / `QUESTION` / `NOTE` have no completeness requirement and never satisfy a gate.
+### Completeness helpers (the predicates 4B's gate uses; built unwired in 4A)
 
-### Invariants (enforced; see §7 for tests)
+- `assertion_is_cited(element)` = `element_type == ASSERTION ∧ text ∧ ≥1 citation`
+- `finding_has_cited_assertion(finding)` = any assertion is cited
+- `finding_has_handoff_ready_assertion(finding)` = any `ASSERTION` with `handoff_ready ∧ text`
 
-1. `handoff_ready = true` is **rejected** (error, not silent downgrade) unless the element is a
-   complete `CLAIM`.
-2. `element_type` change is **conservative**: allowed only when the resulting element still satisfies
-   its type invariants; a change that would orphan citations or invalidate `supported_by` is rejected
-   with a clear error in v1.
-3. **Citations attach to `FACT` only**; a citation on a non-FACT element is rejected.
-4. **`supported_by` only on `CLAIM`/`INFERENCE`**; targets must be `FACT` elements in the same
-   thread; **self-support rejected**.
-5. `DELETE element` cleanup order: delete its citations → remove it from every other element's
-   `supported_by` → resync `FindingDocument` (§4).
-6. Self-M2M is the v1 backing mechanism. A dedicated through-table is only warranted later if
-   per-link metadata is wanted (e.g. "reason this fact supports the claim", supporting-fact
-   ordering).
+No recursive claim/fact backing — the softened gate checks thread-level presence, not per-claim wiring.
 
-All of these are **serializer-enforced** (the authoritative write path); there are no DB-level
-constraints expressing them, so each has a test in §7.
+### Invariants (serializer-enforced; tests in §7)
 
-## 4. `document_links` as a synced union (compatibility citation index)
+1. `handoff_ready = true` rejected unless the element is an `ASSERTION` with non-empty text. (No
+   backing requirement at *set* time — the referral-grade gate checks thread-level evidence.)
+2. Citations attach to `ASSERTION` only.
+3. `element_type` change is conservative: changing an `ASSERTION` with citations to `QUESTION`/`NOTE`
+   is rejected until its citations are removed; clearing `handoff_ready` is required before a type
+   change off `ASSERTION`.
+4. `DELETE element` cleanup: delete its citations → resync `FindingDocument` (§4). (No `supported_by`
+   to unwire in v1.)
 
-**Source-of-truth framing (load-bearing — keep this language in the implementation plan):**
-`ThreadElementCitation` is the **source of truth** for citations. `Finding.document_links`
-(`FindingDocument`) is the **compatibility citation index** — a denormalized/export-compatibility
-layer plus the legacy-preservation layer. It is **not** a place to author citations. This wording
-exists to stop future code from drifting back toward finding-level citation as the primary surface.
+There are no DB-level constraints expressing these; each has a test in §7.
 
-`Finding.document_links` stays because the `/case-map/` builder, credibility counts, and the current
-referral PDF all read it. Strangler-fig, not rip-and-replace.
+## 5. `document_links` as a synced compatibility citation index
 
-- **Definition:** `document_links` = the **union of all element citations' documents** (non-legacy)
-  **plus** preserved **legacy** citations (`is_legacy=True`).
-- **On adding** an element citation: ensure a `FindingDocument(finding, document, is_legacy=False)`
-  exists.
-- **On removing** an element citation: remove the `FindingDocument` row **only if** no other element
-  still cites that document **and** the row is not `is_legacy=True`.
-- Legacy rows are **never reaped** by element-citation churn.
+**Source-of-truth framing (keep in the plan):** `ThreadElementCitation` is the **source of truth**.
+`Finding.document_links` (`FindingDocument`) is the **compatibility citation index** —
+denormalized/export-compat + legacy-preservation — **not** a place to author citations.
 
-**The old finding-level authoring path is demoted, not deleted.** `FindingUpdateSerializer` still
-accepts `add_document_ids` / `remove_document_ids` (the current `AngleView` uses them, and it stays
-live until 4B). In 4A these are reclassified as **legacy compatibility only**: rows they create are
-written with **`is_legacy=True`** so they enter the compatibility index without ever becoming
-authoritative element-citation rows. `ThreadElementCitation` remains the sole authoring surface for
-real citations. (This keeps the source-of-truth framing honest while the old editor is still on
-`main`.)
+- `document_links` = union of element-citation documents (non-legacy) ∪ preserved legacy rows.
+- Adding an element citation ensures a `FindingDocument(is_legacy=False)` exists.
+- Removing an element citation reaps the `FindingDocument` row **only if** no other element cites that
+  document **and** it is not `is_legacy=True`.
+- The old finding-level path (`add_document_ids` / `remove_document_ids` in `FindingUpdateSerializer`)
+  stays for the current UI but is **demoted**: rows it creates are `is_legacy=True`. Authoritative
+  citations come only through `ThreadElementCitation`.
 
-## 5. Two-tier strengthened gate (wired in 4B, NOT 4A)
+## 6. Softened two-tier gate (wired in 4B, NOT 4A)
 
-> **Sequencing:** per §11 + the header invariant, the predicate **helpers** (`finding_has_complete_fact`,
-> `finding_has_handoff_ready_backed_claim`) and their unit tests are built in **4A-additive** but left
-> **unwired**. The actual flip — editing `FindingUpdateSerializer` and `referral_grade.py` — ships in
-> **4B-gate-and-builder**, atomically with the editor that can satisfy it. The design below is the
-> binding target for that 4B wiring.
+> **Sequencing:** the helpers (§4) + their unit tests are built in **4A-additive, unwired**. The flip
+> — editing `FindingUpdateSerializer` and `referral_grade.py` — ships in **4B** atomically with the
+> editor. The design below is the binding target for that wiring.
 
-The two enforcement points stay distinct and must remain equivalent where they overlap (see parity
-test, §7). The strengthening preserves the **"Substantiated but not yet handoff-ready"** middle state
-the rest of the app relies on (Case Map `substantiated_thread_count` vs `handoff_ready`, Thread Dock
-readiness column, credibility counts).
+Two enforcement points, both now `gate_version`-aware. The strengthening preserves the **"Substantiated
+but not yet handoff-ready"** middle state the rest of the app relies on.
 
-### Tier 1 — CONFIRMED tie-off gate (`FindingUpdateSerializer`, serializers.py:1038)
+### Tier 1 — CONFIRMED tie-off gate (`FindingUpdateSerializer`)
 
-Fires only on the transition **into** CONFIRMED (condition loss after tie-off remains allowed).
+Fires only on the transition into CONFIRMED (condition loss after tie-off remains allowed).
 
-> **CONFIRMED requires:** ≥1 **complete `FACT`** (text + citation) ∧ `evidence_weight ∈
-> {DOCUMENTED, TRACED}` ∧ `overreach_reviewed`.
+> **`ASSERTION_V1` CONFIRMED requires:** ≥1 **cited assertion** ∧ `evidence_weight ∈
+> {DOCUMENTED, TRACED}` ∧ `overreach_reviewed`. (Replaces the dead `post_narrative` check.)
 
-Replaces the now-dead `post_narrative` non-empty check (serializers.py:1066). "≥1 complete FACT"
-subsumes today's finding-level citation check, since a cited fact syncs into `document_links`.
+New threads are always `ASSERTION_V1` (the field default), so new tie-offs always use this rule.
+`LEGACY_NARRATIVE` threads are pre-launch and already past tie-off; the gate does not re-fire on edit.
 
-### Tier 2 — Referral-grade (`referral_grade.py`)
+### Tier 2 — Referral-grade (`referral_grade.py`, dual-version)
 
-> **Referral-grade requires:** CONFIRMED ∧ `evidence_weight ∈ {DOCUMENTED, TRACED}` ∧
-> `overreach_reviewed` ∧ ≥1 cited document ∧ **≥1 `handoff_ready` `CLAIM` backed by ≥1 complete
-> `FACT`**.
+> **`ASSERTION_V1` referral-grade:** CONFIRMED ∧ weight ∈ {DOCUMENTED, TRACED} ∧ `overreach_reviewed`
+> ∧ ≥1 cited document ∧ **≥1 `handoff_ready` assertion** ∧ **≥1 cited assertion** (a
+> cited + `handoff_ready` assertion satisfies both with one element).
+>
+> **`LEGACY_NARRATIVE` referral-grade:** the **old** predicate unchanged — CONFIRMED ∧ weight ∧
+> `overreach_reviewed` ∧ ≥1 cited document. (Grandfathered; never demoted.)
 
-Both definitions are updated and must agree (parity test, §7):
-- `is_referral_grade(finding)` — instance predicate (add `finding_has_handoff_ready_backed_claim`).
-- `referral_grade_qs(case)` — the single-SQL queryset; add the element predicate via nested
-  `Exists()` subqueries.
-
-**Exact queryset (binding — supersedes the earlier loose sketch).** The backing fact is found via the
-**reverse M2M accessor** `supports_elements` (a `FACT` backs a `CLAIM` iff the claim is in the fact's
-`supports_elements`):
+Both `is_referral_grade(finding)` and `referral_grade_qs(case)` branch on `gate_version` and must
+agree (parity test, §7). Queryset shape:
 
 ```python
-from django.db.models import Count, Exists, OuterRef
-from .models import Finding, FindingStatus, ThreadElement, ThreadElementType
+from django.db.models import Count, Exists, OuterRef, Q
+from .models import Finding, FindingStatus, ThreadElement, GateVersion
 
 def referral_grade_qs(case):
-    # A FACT, in the same thread, that backs THIS claim (OuterRef) and is itself cited.
-    cited_backing_fact = ThreadElement.objects.filter(
-        element_type=ThreadElementType.FACT,
-        supports_elements=OuterRef("pk"),   # reverse M2M: this fact supports the outer CLAIM
-        citations__isnull=False,
+    cited_assertion = ThreadElement.objects.filter(
+        finding=OuterRef("pk"), element_type="ASSERTION", citations__isnull=False
     )
-    # A handoff_ready CLAIM, on THIS finding (OuterRef), that has such a backing fact.
-    handoff_claim = ThreadElement.objects.filter(
-        finding=OuterRef("pk"),
-        element_type=ThreadElementType.CLAIM,
-        handoff_ready=True,
-    ).filter(Exists(cited_backing_fact))
-    return (
+    handoff_assertion = ThreadElement.objects.filter(
+        finding=OuterRef("pk"), element_type="ASSERTION", handoff_ready=True
+    )
+    base = (
         Finding.objects.filter(
-            case=case,
-            status=FindingStatus.CONFIRMED,
-            evidence_weight__in=REFERRAL_WEIGHTS,
-            overreach_reviewed=True,
+            case=case, status=FindingStatus.CONFIRMED,
+            evidence_weight__in=REFERRAL_WEIGHTS, overreach_reviewed=True,
         )
-        .annotate(_citation_count=Count("document_links"))
-        .filter(_citation_count__gt=0)
-        .filter(Exists(handoff_claim))
+        .annotate(_cc=Count("document_links")).filter(_cc__gt=0)
+    )
+    return base.filter(
+        Q(gate_version=GateVersion.LEGACY_NARRATIVE)
+        | (
+            Q(gate_version=GateVersion.ASSERTION_V1)
+            & Exists(cited_assertion) & Exists(handoff_assertion)
+        )
     )
 ```
 
-The nested `OuterRef("pk")` in `cited_backing_fact` resolves against the `handoff_claim` row (its
-immediate outer query), which is the documented Django pattern for two-level `Exists()` nesting. The
-parity test is the acceptance gate — if the queryset and `is_referral_grade` disagree on any fixture,
-the queryset is wrong, not the test.
-
 **Flows through for free:** `/case-map/` `handoff_ready` / `handoff_included` / `material` derive from
-this predicate — no contract change; material edges and handoff status simply get stricter (once 4B
-flips the gate).
+this predicate — no contract change; edges get stricter for `ASSERTION_V1` threads once 4B flips.
 
-## 6. Migration (Phase 4A) — and its intended consequence
+## 7. Migration + grandfathering (Phase 4A-additive)
 
-Schema + data migration (lands in **4A-additive**):
+Schema + data migration:
 
-1. Add `NOTE` to `element_type` choices; add `FindingDocument.is_legacy`.
-2. For each `Finding` with non-empty `narrative` → create one `NOTE` element. **Idempotent + collision-
-   safe:** insert at the **next free `position`** (`max(position)+1`, or `0` when the thread has no
-   elements), and **skip** if an equivalent `NOTE` (same text) already exists. Do **not** assume
-   position 0 is free — that would collide with `unique(finding, position)` on re-run. The original
-   `Finding.narrative` is **left in place** (not deleted).
-3. Flag all existing `FindingDocument` rows `is_legacy=True` (preserved, never reaped).
+1. Add `element_type` choices (`ASSERTION`/`QUESTION`/`NOTE`); add `Finding.gate_version`
+   (default `ASSERTION_V1`); add `FindingDocument.is_legacy`.
+2. **Grandfather:** for each pre-existing Finding that **is referral-grade under the OLD predicate**
+   (evaluated now, while the old predicate is still in force in 4A), set
+   `gate_version = LEGACY_NARRATIVE`. All other findings keep the default `ASSERTION_V1`.
+3. For each Finding with non-empty `narrative` → create one `NOTE` element. **Idempotent +
+   collision-safe:** insert at the **next free position** (`max(position)+1`, or `0` if none); skip
+   if an equivalent `NOTE` already exists. **Leave `Finding.narrative` in place** (the legacy PDF
+   reads it until 4C).
+4. Flag all existing `FindingDocument` rows `is_legacy=True`.
 
-**Intended consequence (per locked decision #4/#5) — but it only bites once 4B flips the gate.** In
-**4A-additive the gate is unchanged**, so nothing drops out of referral-grade on the 4A deploy. When
-**4B** flips the gate, already-CONFIRMED findings **keep CONFIRMED status** (the gate does not re-fire
-retroactively) but **drop out of referral-grade** until reworked into facts/claims — because a `NOTE`
-can never be a complete `FACT`. This is correct, not a regression.
+**Consequence — and it only bites for `ASSERTION_V1` threads once 4B flips.** In 4A-additive the gate
+is unchanged, so nothing drops out on the 4A deploy. After 4B:
+- `LEGACY_NARRATIVE` threads keep referral-grade under the old predicate — **never demoted**.
+- A pre-launch thread that was *not* referral-grade stays `ASSERTION_V1`; to become referral-grade it
+  needs cited assertions + a handoff_ready assertion (its old narrative is now a `NOTE`).
 
-**Mitigations:**
-- **`seed_demo` (in 4A)** builds real `ThreadElement` facts/claims so the demo case is already
-  referral-grade-shaped under the future gate (portfolio-critical — recruiters see the demo). It
-  **also retains the legacy `narrative` text + legacy `FindingDocument` rows** on those threads so the
-  **current PDF/UI/demo keep rendering correctly between 4A and 4C** (the PDF still reads `narrative`
-  until 4C; a referral-grade thread with no narrative would otherwise export blank).
-- **(4B)** The UI frames a dropped thread as **"needs handoff-ready claim,"** never as vanished data
-  (the shared `threadReadiness` helper supplies the gap string; Phase 3 §7 wired it into the dock +
-  inspector).
+**UI affordance (4B):** `LEGACY_NARRATIVE` threads show a non-blocking prompt — *"Legacy narrative
+format. Convert to structured assertions when you next edit."* Export is **never blocked** for them.
 
-## 7. API surface + test plan (Phase 4A)
+**Demo:** `seed_demo` (in 4A) builds real assertions (a cited assertion + a `handoff_ready` assertion)
+so the demo is referral-grade-shaped under `ASSERTION_V1`, **and** retains its `narrative` + legacy
+`FindingDocument` rows so the pre-4C PDF still renders.
 
-### Endpoints (nested under the thread; finding detail also embeds `elements[]`)
+## 8. API surface + test plan (Phase 4A-additive)
 
-- `GET / POST  /api/cases/:id/findings/:fid/elements/` — create `{element_type, text, position?}`
-- `PATCH / DELETE  …/elements/:eid/` — edit `{text, element_type?, handoff_ready?, supported_by_ids?}`
-- `POST  …/elements/reorder/` — `{ordered_ids: […]}`; rewrites `position` atomically in one
-  transaction (required because `unique(finding, position)` forbids transient collisions that per-row
-  PATCHes would cause).
+### Endpoints (nested under the thread; finding detail embeds `elements[]`)
+
+- `GET / POST  …/findings/:fid/elements/` — create `{element_type, text}`
+- `PATCH / DELETE  …/elements/:eid/` — edit `{text, element_type?, handoff_ready?}`
+- `POST  …/elements/reorder/` — `{ordered_ids: […]}`; atomic two-phase rewrite (the
+  `unique(finding, position)` constraint forbids transient collisions)
 - `POST  …/elements/:eid/citations/` — `{document_id, page_reference, context_note}`; **rejects a
-  non-FACT target** and a cross-case document.
-- `DELETE  …/citations/:cid/` — runs the §4 sync/deletion rule.
+  non-ASSERTION target and a cross-case document**
+- `DELETE  …/citations/:cid/` — runs the §5 sync/deletion rule
 
-The finding-detail serializer (`fetchAngle`) gains `elements: [...]` with nested `citations` and
-`supported_by_ids`.
+`serialize_finding` (`fetchAngle`) gains `elements: [...]` with nested `citations` and derived `role`.
 
 ### Backend tests (TDD — red first)
 
-**4A-additive (these ship in 4A; behavior-preserving):**
-- **Completeness helpers:** complete vs incomplete FACT (text/citation); complete vs incomplete CLAIM
-  (text + ≥1 *complete*-FACT backing); INFERENCE/QUESTION/NOTE never complete. (Helpers exist but are
-  **not** wired into any gate in 4A.)
-- **Citation FACT-only:** a citation on a non-FACT element is rejected.
-- **`supported_by` constraints:** only CLAIM/INFERENCE may have it; targets must be same-thread FACTs;
-  self-support rejected.
-- **Same-case citation guard** rejects a cross-case `document_id` (serializer-level; a model
-  `full_clean()` test covers the defense-in-depth path).
-- **`handoff_ready` rejection** unless complete CLAIM; **`element_type`-change** constraint.
-- **Deletion sync:** removing an element citation reaps the `FindingDocument` only when no other
-  element cites it and it is not `is_legacy`; legacy rows survive.
-- **`add_document_ids` legacy:** finding-level adds create `is_legacy=True` rows.
-- **Reorder** atomicity honors `unique(finding, position)`.
-- **`document_links` union** equals non-legacy element-citation documents ∪ legacy rows.
-- **Migration:** narrative → one NOTE element at the next free position (idempotent on re-run);
-  `FindingDocument` rows flagged `is_legacy`; original `narrative` retained.
-- **Regression sweep:** the full existing suite stays green — 4A changes no gate, so `test_tie_off_gate`
-  and credibility/Case-Map count tests are untouched.
+**4A-additive (behavior-preserving):**
+- **Completeness helpers** (unwired): `assertion_is_cited`; `finding_has_cited_assertion`;
+  `finding_has_handoff_ready_assertion`; QUESTION/NOTE never cited/handoff.
+- **Citation ASSERTION-only**; **same-case guard** (serializer + a `full_clean()` defense test).
+- **`handoff_ready` rejection** on non-ASSERTION / empty-text; **`element_type`-change** constraints.
+- **Deletion sync**; **`add_document_ids` → `is_legacy=True`**; **`document_links` union**.
+- **Reorder** atomicity under `unique(finding, position)`.
+- **Migration:** narrative → NOTE (idempotent, next free position, narrative retained);
+  `FindingDocument` flagged legacy; **`gate_version` stamping** — a finding referral-grade under the
+  old predicate becomes `LEGACY_NARRATIVE`, others `ASSERTION_V1`.
+- **Regression sweep:** full existing suite green **untouched** (4A changes no gate).
 
-**4B-gate-and-builder (these ship with the gate flip, NOT in 4A):**
-- **Tier-1 gate:** transition into CONFIRMED **blocked** without a complete FACT; allowed with one;
-  weight/overreach still enforced; editing an already-CONFIRMED thread does not re-gate. (Update the
-  existing narrative-based `test_tie_off_gate` fixtures here.)
-- **Tier-2 predicate:** referral-grade **false** for a CONFIRMED thread with no handoff-ready claim;
-  **true** once a handoff_ready CLAIM backed by a complete FACT exists.
-- **Parity test:** `is_referral_grade(f)` agrees with `f in referral_grade_qs(f.case)` across a
-  fixture matrix — the anti-drift guard that justifies a single source of truth.
-- **Migration consequence:** a previously-CONFIRMED legacy finding stays CONFIRMED **and** drops out
-  of `referral_grade_qs` once the gate is wired.
+**4B-gate-and-builder (with the flip):**
+- **Tier-1** `ASSERTION_V1` CONFIRMED blocked without a cited assertion; allowed with one; no re-gate
+  on edit; update existing `test_tie_off_gate` fixtures.
+- **Tier-2 dual-version:** `ASSERTION_V1` needs cited + handoff_ready assertion; `LEGACY_NARRATIVE`
+  passes under the old predicate; a stamped legacy thread stays referral-grade after the flip.
+- **Parity test:** `is_referral_grade(f)` ⇔ `f in referral_grade_qs(f.case)` across a matrix covering
+  both `gate_version` values.
 
-Backend tests run on Railway (Postgres + ArrayField); CI-equivalent locally with
-`docker exec catalyst_backend python manage.py test investigations --exclude-tag=eval --keepdb --noinput`.
+Backend tests run on Railway (Postgres + ArrayField); CI-equivalent via the Docker stack.
 
-## 8. Frontend Thread Builder (Phase 4B)
+## 9. Frontend Thread Builder (Phase 4B)
 
-`ThreadBuilder.tsx` replaces `AngleView` as the full-width frame. **The frame kind stays `"angle"`**
-(CLAUDE.md internal-identifier rule) and `openThread` / routing are untouched — only the rendered
-surface changes. `ThreadInspector`'s "Open full Thread" still routes here.
+`ThreadBuilder.tsx` replaces `AngleView` as the full-width frame (`frame.kind === "angle"` stays;
+`openThread` routing untouched; `ThreadInspector`'s "Open full Thread" still routes here).
 
-- **Header:** title, status / severity / weight badges, back-to-map, and a **two-tier readiness
-  line** ("Substantiated ✓ · Referral-grade: needs handoff-ready claim").
-- **Body:** typed element list grouped **Fact → Inference → Question → Claim**, with the **Context
-  note** (migrated `NOTE`) rendered subordinate at the bottom.
-- **`ElementCard`:** type tag, inline `text` edit, per-element citation chips (reuse
-  `CiteDocumentPicker`, now element-scoped), a "supporting facts" multiselect for CLAIM/INFERENCE,
-  and a `handoff_ready` toggle **disabled until the claim is complete** (tooltip names the gap).
-- **Reorder:** up/down buttons → the bulk reorder endpoint (drag polish deferred).
-- **Tie-off:** `TieOffModal` retargeted to the new gate language.
-- **Shared readiness:** update the Phase-3 `threadReadiness` helper to the two-tier gap strings — it
-  automatically flows to the **Thread Dock** and **`ThreadInspector`** (they consume the same
-  helper), so the dock readiness column and the inspector stay coherent with the builder.
-- **`types.ts` / `api.ts`:** add `ThreadElement` / `ThreadElementCitation` types and element CRUD +
-  citation + reorder client functions; `FindingItem` gains `elements[]`.
+- **Header:** title, status/severity/weight badges, back-to-map, a **two-tier readiness line**
+  ("Substantiated ✓ · Referral-grade: add a handoff-ready claim"), and — for `LEGACY_NARRATIVE`
+  threads — the non-blocking **convert prompt** (§7).
+- **Body:** ordered list of **assertion cards**. An assertion shows its **derived role** as a quiet
+  badge (Fact when cited / Analysis when not / Claim when handoff_ready), inline `text` edit,
+  per-assertion citation chips (reuse `CiteDocumentPicker`, element-scoped), and a **`handoff_ready`
+  toggle** (enabled on any non-empty assertion; the readiness line — not the toggle — tells them what
+  referral-grade still needs). `QUESTION`s render as gaps; the migrated `NOTE` renders subordinate.
+- **Reorder:** up/down → bulk reorder endpoint (drag deferred).
+- **Tie-off:** `TieOffModal` retargeted to the `ASSERTION_V1` gate language.
+- **Shared readiness:** update the Phase-3 `threadReadiness` helper to the softened, `gate_version`-
+  aware gap strings — flows automatically to the Thread Dock + `ThreadInspector`.
+- **`types.ts` / `api.ts`:** `ThreadElement` (+ derived `role`) / `ThreadElementCitation` types;
+  element CRUD + citation + reorder clients; `FindingItem` gains `elements[]` + `gate_version`.
 
-### Frontend tests (Vitest)
+## 10. Phase 4C — referral PDF renders structured assertions (separate but LOCKED)
 
-- Renders elements grouped by type; `NOTE` rendered subordinate.
-- Add / edit / delete element; per-element citation attach/detach.
-- Claim-backing multiselect; `handoff_ready` toggle gated by completeness (disabled + tooltip when
-  incomplete).
-- Two-tier readiness line reflects gate state; reorder calls the bulk endpoint.
+Part of Phase 4's **product-level definition of done**. Its own PR after 4B (the generator —
+`referral_export.py` + `tests/test_referral_pdf.py` — is a distinct subsystem). Acceptance criteria:
 
-Frontend tests run locally (Vitest).
-
-## 9. Phase 4C — referral PDF renders structured elements (separate but LOCKED)
-
-4C is the payoff and is **non-optional**: it is part of **Phase 4's product-level definition of done**
-— the model and builder must not be considered "Phase 4 complete" until the export renders the
-structured truth. It ships as its own PR after 4B (the PDF generator is a distinct subsystem —
-ordering, citation rendering, page layout, export filters, regression tests), but it is committed
-scope, not a "someday" follow-on.
-
-**Acceptance criteria (locked):**
-- PDF renders `FACT` elements with **per-element citations**.
-- PDF renders `INFERENCE` **separately** from facts (reasoning, not evidence).
-- PDF renders **only `handoff_ready` `CLAIM`** elements as package claims.
-- `QUESTION` elements render as unresolved questions / follow-up needs.
-- `NOTE` / legacy context is **omitted or placed in a clearly labeled context appendix**, never mixed
-  into claims.
+- Renders cited assertions as **Documented facts** with per-assertion citations.
+- Renders uncited assertions as **Analysis** (clearly separated from facts).
+- Renders `handoff_ready` assertions as **Claims** (a cited+handoff_ready one may appear as a
+  "documented claim").
+- Renders `QUESTION`s as unresolved questions / follow-up needs.
+- `NOTE` / legacy context **omitted or in a clearly labeled appendix**, never mixed into claims.
 - **No `[Doc-N]` scraping** from `Finding.narrative`.
-- Tests prove a referral-grade thread with **no** legacy narrative still exports correctly.
+- For `LEGACY_NARRATIVE` threads, the PDF still renders the legacy `narrative` (grandfathered);
+  `ASSERTION_V1` threads render from assertions.
+- Tests prove an `ASSERTION_V1` referral-grade thread with no legacy narrative exports correctly.
 
-Between 4B and 4C the PDF may still read the legacy narrative field; acceptable because the
-strengthened gate already controls *what qualifies* for export.
+## 11. Phase 4D — AI-assisted structuring (committed, assist-only)
 
-## 10. Scope guardrails — what Phase 4 does NOT ship
+Elevated from "deferred fast-follow" to a committed post-4B slice, because freeform→structured is how
+the model meets a real user. **Hard constraints:**
+- AI **proposes** assertions/citations from freeform text; the human **confirms** every one. Nothing
+  AI produces is authoritative until accepted.
+- AI **never** sets `handoff_ready`, never decides cited-vs-uncited as final, and **never** influences
+  `gate_version` or the referral-grade predicate (determinism + credibility firewall).
+- Reuses `ai_proxy.py` / `ai_pattern_augmentation.py` patterns; surfaced under the existing **"Lead"**
+  / **"Intake"** vocabulary (banned-strings gate applies).
 
-Deferred to a later phase / fast-follow so 4A/4B/4C stay focused:
+## 12. Scope guardrails — NOT in Phase 4
 
-- ❌ `AngleSplitModal` rework for elements (splitting a thread = moving elements).
-- ❌ AI-assisted element drafting / `LeadPanel` retarget / `narrative_source` replacement.
-- ❌ Auto-generated prose narrative from elements.
-- ❌ Drag-to-reorder polish (v1 uses up/down + bulk endpoint).
+- ❌ `supported_by` backing graph + edge `rationale` ("reasoning on the edge") → **Phase 5**.
+- ❌ `AngleSplitModal` rework for assertions.
+- ❌ `narrative_source` replacement / auto-generated prose.
+- ❌ Drag-to-reorder polish (v1 = up/down + bulk endpoint).
 - ❌ Map filters / command palette (Phase 5).
 
-## 11. File-level change map
+## 13. File-level change map
 
 | File | Slice | Change |
 |---|---|---|
-| `backend/investigations/models.py` | 4A-additive | `ThreadElement`, `ThreadElementCitation`, `supported_by` M2M; `FindingDocument.is_legacy`; defense-in-depth `clean()` same-case guard (no DB constraint) |
-| `backend/investigations/thread_elements.py` (new) | 4A-additive | completeness predicate helpers + `document_links` sync helpers — **unwired** |
-| `backend/investigations/migrations/*` | 4A-additive | schema + idempotent data migration (narrative→NOTE at next free position, flag legacy docs); dep on latest (`0036`) |
-| `backend/investigations/serializers.py` | 4A-additive | element/citation serializers (citation FACT-only; `supported_by` CLAIM/INFERENCE + no self; `handoff_ready`/type-change validation); finding-detail `elements[]`; `add_document_ids`→`is_legacy=True` |
-| `backend/investigations/views.py` + `urls.py` | 4A-additive | element CRUD + reorder + citation endpoints; delete-cleanup + sync |
-| `backend/investigations/management/commands/seed_demo.py` | 4A-additive | build real elements **and retain legacy narrative + legacy FindingDocument rows** so the demo PDF/UI keep working pre-4C |
-| `backend/investigations/serializers.py` (`FindingUpdateSerializer` gate) | **4B** | Tier-1 gate rewrite: drop narrative check → require complete FACT |
-| `backend/investigations/referral_grade.py` | **4B** | Tier-2 predicate + nested `Exists()` queryset (§5) + parity test; update existing gate/credibility fixtures |
-| `frontend/src/views/ThreadBuilder.tsx` (new, replaces `AngleView.tsx`) | 4B | full-width structured builder |
-| `frontend/src/components/ElementCard.tsx` (new) | 4B | typed element card + citations + backing + handoff toggle |
-| `frontend/src/components/threadReadiness.ts` | 4B | two-tier gap strings |
-| `frontend/src/types.ts` · `frontend/src/api.ts` | 4B | element types + client functions; `FindingItem.elements` |
-| `backend/investigations/referral_export.py` (+ `tests/test_referral_pdf.py`) | 4C | render elements per §9 acceptance criteria; drop `[Doc-N]` narrative scraping |
+| `backend/investigations/models.py` | 4A | `ThreadElement` (ASSERTION/QUESTION/NOTE, `handoff_ready`), `ThreadElementCitation`; `Finding.gate_version`; `FindingDocument.is_legacy`; defense-in-depth `clean()` (no DB constraint) |
+| `backend/investigations/thread_elements.py` (new) | 4A | completeness helpers + `document_links` sync — **unwired** |
+| `backend/investigations/migrations/*` | 4A | schema + idempotent data migration (narrative→NOTE, flag legacy docs, **stamp `gate_version`**); dep on `0036` |
+| `backend/investigations/serializers.py` | 4A | element/citation serializers (citation ASSERTION-only; `handoff_ready`/type-change validation); finding-detail `elements[]` + derived `role`; `add_document_ids`→`is_legacy=True` |
+| `backend/investigations/views.py` + `urls.py` | 4A | element CRUD + reorder + citation endpoints; delete-cleanup + sync |
+| `backend/investigations/management/commands/seed_demo.py` | 4A | build assertions **and retain legacy narrative + legacy FindingDocument rows** |
+| `backend/investigations/serializers.py` (`FindingUpdateSerializer` gate) | **4B** | Tier-1 `ASSERTION_V1` rewrite (narrative→cited assertion) |
+| `backend/investigations/referral_grade.py` | **4B** | dual-version Tier-2 predicate + queryset (§6) + parity test; fixture rework |
+| `frontend/src/views/ThreadBuilder.tsx` (new, replaces `AngleView.tsx`) | 4B | full-width assertion builder + convert prompt |
+| `frontend/src/components/ElementCard.tsx` (new) | 4B | assertion card: derived-role badge, citations, handoff toggle |
+| `frontend/src/components/threadReadiness.ts` | 4B | softened, `gate_version`-aware gap strings |
+| `frontend/src/types.ts` · `frontend/src/api.ts` | 4B | element types (+ `role`) + clients; `FindingItem.elements` + `gate_version` |
+| `backend/investigations/referral_export.py` (+ `tests/test_referral_pdf.py`) | 4C | render assertions by role; `gate_version`-aware; drop `[Doc-N]` scraping |
+| AI structuring pipeline (path TBD in 4D plan) | 4D | assist-only freeform→assertion proposals |
 
-## 12. Recommended next step
+## 14. Recommended next step
 
-Convert **Phase 4A-additive** into a step-by-step, TDD-first implementation plan — model +
-completeness/sync helpers (unwired) + element/citation serializers + CRUD/reorder/citation endpoints +
-`elements[]` embed + idempotent migration + seed, ending with a full-suite **regression sweep proving
-no existing behavior changed**. The Tier-1/Tier-2 gate flip + fixture rework move into the **4B**
-plan, which ships them atomically with the `ThreadBuilder` UI. 4A-additive is safe to merge to `main`
-on its own; 4B depends on it being deployed to the Railway PR preview; 4C follows 4B.
+Rewrite the **Phase 4A-additive** implementation plan to the Assertion model (3 types, no M2M,
+`gate_version` field + grandfather migration), ending with a regression sweep proving no existing
+behavior changed. 4B (gate flip + builder), 4C (PDF), 4D (AI-assist) follow as their own plans.
