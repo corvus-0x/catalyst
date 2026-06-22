@@ -1,6 +1,6 @@
 # Catalyst — Build Status
 
-**Last updated:** 2026-06-22 (Session 51 — **Case Map Phase 3 shipped** (PR #16, squash `56302f6`) and deploying to prod, plus a CI-infra fix (PR #17, `ae53735`). Selecting a thread now puts the Case Map into **Thread Path Mode**: the relationships the thread relies on become severity-colored emphasized edges, its subjects get a neutral ring, everything else dims. A new canvas-width, collapsible, sortable **Thread Dock** under the map lists every thread (the map-side entry point). Frontend-only — no backend, no `/case-map/` contract, no reducer change. **120 Vitest + tsc clean.** PR #17 dropped a shebang so the banned-strings vitest suite (7 precision tests) finally loads. **Caveat:** #16 was merged on CI-green + a successful preview *build* — the Path Mode visual was **not** eyeballed on a live deploy (the preview seed hung; Tyler chose to merge). Next: Phase 4 (Thread Builder) or the 1A fast-follow collectors.)
+**Last updated:** 2026-06-22 (Session 52 — **Case Map Phase 4A-additive (Thread Assertions backend) MERGED** (PR #18, squash `0e5306c`); post-merge CI on `main` green (1m4s), deploying to prod. **Backend-only, purely additive — changes no existing behavior.** New `ThreadElement` (ASSERTION / QUESTION / NOTE) + `ThreadElementCitation` (per-assertion citation = source of truth) + `Finding.gate_version` + `FindingDocument.is_legacy`; role derived from evidence; completeness + `document_links`-sync helpers built but **UNWIRED** (the tie-off gate + `referral_grade.py` are untouched); CRUD/reorder/citation endpoints; `serialize_finding` embeds `elements[]` + `gate_version`; hermetic backfill migration (frozen predicate, no `referral_grade` import). **1055 backend tests** green; `makemigrations --check` clean. Built subagent-driven (10 TDD tasks) + opus whole-branch review + `/ecc:review-pr` 6-agent pass (4 fixes folded in, 1 finding reversed as a would-be regression). The **softened, `gate_version`-aware gate flip + the ThreadBuilder UI are Phase 4B.** Next: plan 4B (gate + UI), 4C (PDF), 4D (AI-assist); or the 1A fast-follow collectors.)
 
 This project is in active development. This file is updated every time
 the state of a major component changes — and at the end of every working
@@ -73,6 +73,7 @@ the demo-relevant ones:
 | Case status change, delete angle, note CRUD | various | ✅ **Wired (Session 44).** Status selector in case header; delete button in AngleView; full note edit/delete on knots + create/delete on angles. |
 | Statewide parcel search | `/research/parcels/` | ✅ **Wired + verified (Session 43/44).** ODNR recovered; ResearchTab wired; confirmed live on Railway via smoke test. |
 | **Case Map (summarized subject-pair graph)** | `/case-map/` | ⚠️ **Backend live (Session 49, PR #13), no frontend yet.** Returns nodes + one summarized `strength` edge per subject pair; live-verified on the PR preview (21/21 contract checks). The visual Case Map that consumes it is **Phase 1B** (gated on locking the node-marker system, spec §12 Q1). Distinct from `/graph/`, which stays the raw graph for the Timeline. |
+| **Thread assertions (structured evidence)** | `…/findings/<id>/elements/` (+ `/reorder/`, `/<id>/citations/`) | ⚠️ **Backend live (Session 52, PR #18), no frontend yet — by design.** Phase 4A-additive: CRUD + reorder + per-assertion citation endpoints; `serialize_finding` now embeds `elements[]` + `gate_version`. **Purely additive — changes no existing behavior** (the tie-off gate and `referral_grade.py` are untouched; the completeness/sync helpers are built but UNWIRED). The **ThreadBuilder UI + the softened, `gate_version`-aware gate flip are Phase 4B.** |
 
 ---
 
@@ -85,6 +86,60 @@ structural rewrites.
 | Component | Status |
 |-----------|--------|
 | Repo presentation | This file, `README.md`, `CLAUDE.md` — now reconciled to the shipped graph-first app. Updated at the end of each session going forward. |
+
+**Recently completed (Session 52, June 22 2026):**
+
+- **Case Map Phase 4A-additive — Thread Assertions backend — MERGED** (PR #18, squash
+  `0e5306c`; post-merge CI on `main` green in 1m4s; deploying to prod). **Backend-only** slice
+  (contrast: Phases 1B/3 were frontend-only). New `ThreadElement` (ASSERTION / QUESTION / NOTE) +
+  `ThreadElementCitation` (per-assertion citation = **source of truth**) + `Finding.gate_version`
+  (LEGACY_NARRATIVE / ASSERTION_V1) + `FindingDocument.is_legacy`; an assertion's *role*
+  (fact / analysis / claim) is **derived from evidence** (cited / uncited / `handoff_ready`), not
+  stored. New `thread_elements.py` completeness + `document_links` ensure/reap sync helpers; CRUD +
+  two-phase reorder + citation endpoints (case-scoped, append-only audit); `serialize_finding`
+  embeds `elements[]` + `gate_version`; hermetic backfill migration (narrative→NOTE, flag legacy
+  docs, grandfather old-referral-grade→LEGACY_NARRATIVE). **1055 backend tests** green,
+  `makemigrations --check` clean.
+- **Why additive-first.** Catalyst's `main` is the public demo, so a risky gate change can't merge
+  half-built. The slice was deliberately split: 4A adds the models/helpers/endpoints but **wires
+  nothing into the gate** — the tie-off gate (`FindingUpdateSerializer`) and `referral_grade.py`
+  are untouched, the helpers are built-but-UNWIRED. The proof it was safe to ship: **1051
+  pre-existing tests passed unchanged** (tie-off, credibility, referral PDF, Case Map). The gate
+  flip + ThreadBuilder UI are the atomic **Phase 4B** cutover. (See the learned skill
+  `additive-first-deployment-slice`.)
+- **Why the Assertion model (not a fixed taxonomy).** Two product-friction pressure-tests reshaped
+  the design: a rigid FACT/CLAIM/INFERENCE taxonomy with mandatory backing was too high-friction
+  for an investigator, so it collapsed to a single `ASSERTION` whose role is *derived from
+  evidence*. The "$500k claim" is one cited + `handoff_ready` assertion, not a forced duplicate.
+  `supported_by` backing-graph dropped from v1 (→ Phase 5).
+- **Why `gate_version` grandfathering.** 4B's softened gate would otherwise demote existing
+  CONFIRMED findings. A per-row `gate_version` enum (chosen over a boolean — it reads clearly and
+  extends) lets the future gate honor both the old narrative rule and the new assertion rule. The
+  backfill stamps old rows via a **FROZEN inline copy** of the old predicate — it does NOT import
+  `referral_grade.py`, because 4B rewrites that function and a re-run would otherwise grandfather
+  the wrong rows. (See the learned skill `hermetic-data-migrations`.)
+- **Process:** built subagent-driven, 10 TDD tasks, per-task spec+quality reviews + an opus
+  whole-branch review (Ready to merge), then an `/ecc:review-pr` 6-agent pass — **0 Critical**, 4
+  fixes folded in before merge (commit `820cac0`, +3 tests → 1055): reorder rejects a non-list
+  `ordered_ids` (was a latent 500); element collection GET + reorder now return `{count, results}`;
+  empty PATCH rejected (matches sibling serializers). **One 3-agent finding was REVERSED:** they
+  proposed `ensure_document_link` promote a pre-existing `is_legacy=True` row to non-legacy — that
+  would make a legacy referral-PDF link *reapable* and delete it when an unrelated assertion
+  citation is later removed (a regression). Kept the behavior, pinned it with a regression test +
+  docstring. Lesson: verify a reviewer's proposed **fix**, not just the finding. (See the learned
+  skill `adjudicating-review-findings`.)
+- **One authorized existing-test edit:** the `serialize_finding` exact-key-set snapshot in
+  `test_signals.py` gained `gate_version` + `elements` (Task 6 deliberately extended the contract).
+  Tyler adjudicated the plan-internal contradiction (Task 6 adds keys vs. Task 10 "don't edit
+  existing tests") — exact-snapshot tests must record intended additions.
+- **4B carry-forward (logged, not 4A defects):** `referral_grade_qs` counts `document_links`
+  regardless of `is_legacy`, so the document-count gate ingredient now has **two writers** (legacy
+  `add_document_ids` + the citation sync) — 4B must decide `is_legacy` semantics. Also for 4B: add
+  `CheckConstraint` (`handoff_ready=FALSE OR element_type='ASSERTION'`) + a model/DB-level
+  ASSERTION-only-citation guard (currently serializer-only); write-once enforcement on
+  `is_legacy`/`gate_version`; perf (`_element_role` `.exists()`→`.all()` bypasses prefetch; bulk
+  doc fetch in element-DELETE; `save(update_fields=…)`); coverage (API-level PATCH test,
+  TRACED-weight grandfather, near-miss boundary).
 
 **Recently completed (Session 51, June 21–22 2026):**
 
@@ -854,6 +909,8 @@ In rough priority order. Subject to change as the rebuild progresses.
 - **Deferred from the Session 46 audit (LOW):** API error copy surfaces raw strings like "403 Forbidden" in the Research/Referrals panels (largely mooted by the CSRF fix, but the copy path remains); the jobs API exposes raw exception strings in `error_message` (useful for a single-user tool, would need sanitizing for multi-user).
 - **Health check leaves one CLOSED case per production run by design** — labeled "Health-check artifact — safe to ignore" (cases are non-deletable to protect the audit trail; finding/note/document artifacts are deleted).
 - **Migrations added Session 48 (PR #12):** `0035_alter_financialsnapshot_source` (no-op AlterField — help_text/choices only, isolating a pre-existing model drift) and `0036_finding_overreach_reviewed` (adds `Finding.overreach_reviewed BooleanField(default=False)` — the stored 4th tie-off-gate condition; no backfill by design).
+- **Migrations added Session 52 (PR #18):** `0037_finding_gate_version_findingdocument_is_legacy_and_more` (schema — creates `thread_element` + `thread_element_citation` tables, adds `Finding.gate_version CharField(default=ASSERTION_V1)` and `FindingDocument.is_legacy BooleanField(default=False)`) and `0038_phase4_backfill` (**data** migration via `RunPython`, `backwards=pass` — narrative→`NOTE` element [idempotent, narrative retained], flags all existing `FindingDocument` rows `is_legacy=True`, and grandfathers old-referral-grade findings → `gate_version=LEGACY_NARRATIVE` using a FROZEN inline predicate that does NOT import `referral_grade.py`).
+- **Thread-assertion gate ingredients exist but are UNWIRED (Session 52, by design).** `thread_elements.py` ships `assertion_is_cited` / `finding_has_cited_assertion` / `finding_has_handoff_ready_assertion` + `ensure_document_link` / `reap_document_link_if_orphaned`, but no gate calls them yet — Phase 4B wires the softened, `gate_version`-aware gate. Until then `referral_grade.py` counts `document_links` regardless of `is_legacy`, so that count now has two writers (legacy `add_document_ids` + the citation sync); 4B must decide `is_legacy` gate semantics.
 - **Tie-off gate is enforced server-side only on the *transition into* CONFIRMED.** Editing an already-confirmed Angle is intentionally not re-gated ("condition loss is allowed") — removing the last citation or downgrading weight leaves `status=CONFIRMED` but drops the Angle from referral-grade (it recounts as "need work" and is excluded from the PDF). Working as designed; the readiness `overreach_review` WARN item surfaces the "one acknowledgement away" case.
 
 ### Deferred from PR #15 — Case Map Phase 2

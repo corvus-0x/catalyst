@@ -61,6 +61,7 @@ Catalyst/
 │   │   ├── signal_rules.py      ← 15 active fraud detection rules
 │   │   ├── referral_grade.py    ← Referral-grade predicate (tie-off gate) — one def, 3 call sites
 │   │   ├── case_map.py          ← Case Map builder: summarized subject-pair edges + strength (Phase 1A)
+│   │   ├── thread_elements.py   ← Thread assertions: completeness predicates + document_links ensure/reap sync (Phase 4A — built but UNWIRED until 4B)
 │   │   ├── data_quality.py      ← Data validation + audit logging
 │   │   ├── ai_extraction.py     ← Claude AI entity/financial extraction
 │   │   ├── ai_proxy.py          ← Claude API wrapper with caching
@@ -134,6 +135,16 @@ Key models for quick orientation:
   `referral_grade.py` (`referral_grade_qs` / `is_referral_grade`) and is reused by readiness,
   the credibility counts, and the referral PDF filter. Enforced server-side in
   `FindingUpdateSerializer` on the transition into CONFIRMED.
+  **Phase 4A (Session 52):** added `Finding.gate_version` (`LEGACY_NARRATIVE` | `ASSERTION_V1`,
+  default `ASSERTION_V1`) for the 4B grandfathered gate; `serialize_finding` now embeds
+  `elements[]` + `gate_version`. The old tie-off gate above is **unchanged** in 4A.
+- **ThreadElement / ThreadElementCitation** (Phase 4A) — structured thread assertions.
+  `ThreadElement.element_type` ∈ {ASSERTION, QUESTION, NOTE}; an ASSERTION's *role*
+  (fact/analysis/claim) is **derived from evidence** (cited / uncited / `handoff_ready`), not
+  stored. `ThreadElementCitation` (ASSERTION-only, same-case-guarded) is the **source of truth**
+  for citations; `Finding.document_links` is a synced compatibility index (`FindingDocument.is_legacy`
+  marks legacy/`add_document_ids` rows). Helpers in `thread_elements.py` are built but **UNWIRED**
+  until 4B wires the softened, `gate_version`-aware gate.
 - **AuditLog** — append-only. **NEVER UPDATE OR DELETE.**
 - **SearchJob** — async job tracker. Fields: `job_type`, `status`, `query_params`, `result`.
   Index on `(case, -created_at)` for reattach-on-mount.

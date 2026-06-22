@@ -1,5 +1,5 @@
 # API Contract
-**Version:** 1.0 — Session 38  
+**Version:** 1.1 — Session 52 (Phase 4A: finding shape gained `elements[]` + `gate_version`; thread-assertion endpoints added — see §6)  
 **Owner:** Tyler Collins  
 **Source of truth for:** What JSON a React component actually receives when it calls the backend.
 
@@ -671,6 +671,27 @@ Query params:
           "page_reference": "p. 3",
           "context_note": "string"
         }
+      ],
+      "gate_version": "ASSERTION_V1",
+      "elements": [
+        {
+          "id": "uuid",
+          "finding_id": "uuid",
+          "element_type": "ASSERTION" | "QUESTION" | "NOTE",
+          "role": "fact" | "analysis" | "claim" | "question" | "note",
+          "text": "string",
+          "position": 0,
+          "handoff_ready": false,
+          "citations": [
+            {
+              "id": "uuid",
+              "document_id": "uuid",
+              "document_filename": "deed_2019.pdf",
+              "page_reference": "p. 2",
+              "context_note": "string"
+            }
+          ]
+        }
       ]
     }
   ]
@@ -693,7 +714,9 @@ Query params:
 - `trigger_doc_id` / `trigger_doc_filename` — the document that fired the rule (nullable)
 - `trigger_entity_id` — the entity that fired the rule (nullable UUID string)
 - `entity_links` — array of objects linking this finding to entities. May be empty.
-- `document_links` — array of objects linking this finding to source documents with citation. May be empty.
+- `document_links` — array of objects linking this finding to source documents with citation. May be empty. **(Phase 4A) this is now a synced compatibility index, not the source of truth** — per-assertion citations live in `elements[].citations` (and the legacy `add_document_ids` path; legacy rows are flagged server-side).
+- `gate_version` *(Phase 4A — PR #18)* — `"ASSERTION_V1"` (default for new findings) | `"LEGACY_NARRATIVE"` (grandfathered pre-Phase-4 findings). Read-only from the frontend's perspective in 4A; the softened, version-aware referral-grade gate that consumes it is Phase 4B.
+- `elements` *(Phase 4A — PR #18)* — ordered array of structured thread assertions (may be empty). Each: `element_type` ∈ `"ASSERTION" | "QUESTION" | "NOTE"`; `role` is **derived, read-only** (`"claim"` if `handoff_ready`, else `"fact"` if it has citations, else `"analysis"`; non-assertions return their type lowercased — `"question"`/`"note"`); `handoff_ready` is meaningful only on an ASSERTION; `citations` (ASSERTION-only) is the citation **source of truth**. Managed via the `…/elements/…` endpoints below (no UI until Phase 4B).
 
 **⚠️ Source filter note:** The `source` query param maps to `FindingSource` choices. Verify in models.py that `"AI"` is a valid value (it was added as `FindingSource.AI` in Session 36 migration `0023_ai_source_and_jobtype.py`).
 
@@ -710,6 +733,28 @@ Lead-generated findings (`source: "AI"`) must preserve:
 
 The frontend should display these as Lead provenance only when needed for debugging or audit review.
 User-facing investigation copy must use "Lead", not model/vendor names.
+
+### Thread assertion endpoints *(Phase 4A — PR #18; no UI until Phase 4B)*
+
+All synchronous. Case-scoped (a cross-case finding/element/citation/document returns 404 or is
+rejected by the same-case guard). Mutations write an append-only `AuditLog` row. The element object
+shape is exactly the `elements[]` item documented above.
+
+- **`GET /api/cases/:id/findings/:fid/elements/`** → `{ "count": N, "results": [ <element>, … ] }`,
+  ordered by `position`.
+- **`POST …/elements/`** — body `{ "element_type": "ASSERTION"|"QUESTION"|"NOTE", "text": "…" }`.
+  Assigns the next `position`. → `201` + the new element. Rejects an unknown `element_type` with `400`.
+- **`PATCH …/elements/:eid/`** — body may include `text`, `element_type`, `handoff_ready`. Rejects:
+  an empty body (`400`); `handoff_ready=true` on a non-ASSERTION or an ASSERTION without text;
+  a type change off ASSERTION while the element has citations or `handoff_ready`. → `200` + element.
+- **`DELETE …/elements/:eid/`** → `204`. Reaps any now-orphaned (non-legacy) `document_links` rows.
+- **`POST …/elements/reorder/`** — body `{ "ordered_ids": [<eid>, …] }` listing **exactly** this
+  thread's element ids (a non-list or a mismatched set → `400`). → `200` + the reordered `{count, results}`.
+- **`POST …/elements/:eid/citations/`** — body `{ "document_id": "uuid", "page_reference"?, "context_note"? }`.
+  ASSERTION-only; the document must belong to the same case (`400` otherwise). Idempotent on
+  `(element, document, page_reference)`. Syncs a `document_links` row. → `201` + the element.
+- **`DELETE …/elements/:eid/citations/:cid/`** → `204`. Reaps the `document_links` row if no other
+  citation backs it and it is not legacy.
 
 ### POST /api/cases/:id/findings/
 

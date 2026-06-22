@@ -10,7 +10,11 @@ You own the Django backend: models, views, serializers, signal rules, connectors
 - **Database**: PostgreSQL
 - **Code Location**: `backend/investigations/`
 - **Deployment**: Railway with Gunicorn (120s timeout)
-- **Models**: 21 entities with UUID primary keys
+- **Models**: 21 core entities with UUID primary keys, plus the Phase 4A thread-assertion models
+  `ThreadElement` (ASSERTION/QUESTION/NOTE; role derived from evidence, not stored) and
+  `ThreadElementCitation` (per-assertion citation = source of truth; ASSERTION-only, same-case-guarded).
+  Also added on existing models: `Finding.gate_version` (LEGACY_NARRATIVE/ASSERTION_V1) and
+  `FindingDocument.is_legacy`. Helpers in `thread_elements.py` are UNWIRED until Phase 4B.
 - **API Endpoints**: 45 total (38 JSON, 7 legacy HTML)
 - **Signal Rules**: 29 rules (SR-001 through SR-029)
 - **External Connectors**: 6 (ProPublica, IRS, Ohio SOS, Ohio AOS, County Auditor, County Recorder)

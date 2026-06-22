@@ -1,6 +1,6 @@
 # Wiring Matrix — Backend → Frontend
 
-**Last updated:** 2026-06-22 (Session 51 — Phase 3 Thread Path Mode + Thread Dock, PR #16. No new endpoints/clients; the dock reuses existing `fetchAngles` — InvestigateTab/ThreadDock added as a consumer.)
+**Last updated:** 2026-06-22 (Session 52 — Phase 4A-additive, PR #18. Added **5 thread-assertion endpoints** under `…/findings/<fid>/elements/…` with **no client yet by design** (ThreadBuilder UI = Phase 4B); `serialize_finding` now embeds `elements[]` + `gate_version`. No frontend/`api/` change this session. Prior: Session 51 Phase 3 reused `fetchAngles` for ThreadDock.)
 **Purpose:** Make the question *"is every backend endpoint actually reachable from the UI?"*
 answerable at a glance. Each backend endpoint is traced through its API client function to the
 exact view/component that calls it. Anything with no caller is a **dead end** — either a feature to
@@ -72,6 +72,19 @@ backend endpoint (urls.py)  →  API client fn (frontend/src/api/*)  →  UI cal
 | `DELETE …/findings/<fid>/` | `deleteAngle` | AngleView toolbar | ✅ wired (2026-06-05) |
 | ~~`GET /api/findings/` (cross-case)~~ | ~~`fetchAllAngles`~~ | — | ✅ **endpoint + client deleted Session 43** |
 | `POST /api/cases/<id>/reevaluate-findings/` | `reevaluateSignals` | InvestigateTab WebToolbar | ✅ ↺ button (2026-06-04) |
+
+### Thread assertions (Phase 4A-additive — PR #18, Session 52)
+
+Backend live, **no client yet by design** — the ThreadBuilder UI that consumes these is Phase 4B.
+`serialize_finding` also now embeds `elements[]` + `gate_version` (consumed wherever `fetchAngle` is).
+
+| Endpoint | Client fn | UI caller | |
+|----------|-----------|-----------|---|
+| `GET/POST …/findings/<fid>/elements/` | — | — (Phase 4B) | ⏸ backend-ahead |
+| `PATCH/DELETE …/findings/<fid>/elements/<eid>/` | — | — (Phase 4B) | ⏸ backend-ahead |
+| `POST …/findings/<fid>/elements/reorder/` | — | — (Phase 4B) | ⏸ backend-ahead |
+| `POST …/findings/<fid>/elements/<eid>/citations/` | — | — (Phase 4B) | ⏸ backend-ahead |
+| `DELETE …/findings/<fid>/elements/<eid>/citations/<cid>/` | — | — (Phase 4B) | ⏸ backend-ahead |
 
 ### Documents
 
@@ -181,6 +194,10 @@ Pulled out of the tables above so there's a single punch list.
 - **`GET …/case-map/`** — the summarized subject-pair Case Map endpoint (PR #13). **Wired in
   Phase 1B/2** (Session 50, PRs #14/#15): `fetchCaseMap` → the `InvestigateTab` Case Map canvas +
   the Subject/Relationship/Thread inspectors. Playwright-verified live on the PR-15 preview. ✅
+- **Thread-assertion endpoints (`…/findings/<fid>/elements/…`)** — Phase 4A-additive (PR #18,
+  Session 52) shipped the backend ahead of the UI **on purpose**: the slice is purely additive
+  (no behavior change) so it could merge to the public-demo `main` on its own. The ThreadBuilder
+  UI + client functions land in **Phase 4B** atomically with the `gate_version`-aware gate flip.
 
 ---
 
