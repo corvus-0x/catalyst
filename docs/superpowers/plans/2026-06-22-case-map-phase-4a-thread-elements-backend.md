@@ -1,24 +1,26 @@
-# Case Map Phase 4A — Thread Elements Backend Implementation Plan
+# Case Map Phase 4A-additive — Thread Elements Backend Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add structured, individually-cited evidentiary elements (Fact / Inference / Question / Claim / Note) to threads, and make the taxonomy load-bearing by strengthening the referral-grade gate into two tiers.
+**Goal:** Add structured, individually-cited evidentiary elements (Fact / Inference / Question / Claim / Note) to threads — as a purely **additive** backend slice that changes **no existing behavior** and is safe to merge to `main` (the public demo) on its own.
 
-**Architecture:** Three new tables (`ThreadElement`, `ThreadElementCitation`, a self-M2M `supported_by`) plus a `FindingDocument.is_legacy` flag. `ThreadElementCitation` becomes the source of truth for citations; `Finding.document_links` (`FindingDocument`) is kept as a synced **compatibility citation index** so the `/case-map/` builder, credibility counts, and the current PDF keep working. Completeness predicates gate two tiers: CONFIRMED requires a complete cited Fact; referral-grade additionally requires a handoff-ready Claim backed by a complete Fact.
+**Architecture:** Three new tables (`ThreadElement`, `ThreadElementCitation`, a self-M2M `supported_by`) plus a `FindingDocument.is_legacy` flag. `ThreadElementCitation` is the source of truth for citations; `Finding.document_links` (`FindingDocument`) stays as a synced **compatibility citation index**. Completeness predicate helpers and `document_links` sync helpers are built **and unit-tested but left UNWIRED** — the tie-off gate (`FindingUpdateSerializer`) and `referral_grade.py` are **not touched** in this slice. The gate flip ships in **4B** (a later plan) atomically with the `ThreadBuilder` UI that can satisfy it.
 
 **Tech Stack:** Django 5 + PostgreSQL (ArrayField), hand-written serializer classes (NOT Django REST Framework), function-based views with `@require_http_methods`, `unittest`-style `TestCase`. Tests run inside the Docker stack.
 
 ## Global Constraints
 
+- **Deployment-safety invariant:** this slice must change **no existing behavior**. Do NOT edit the `FindingUpdateSerializer` tie-off gate's pass/fail conditions or `referral_grade.py` predicates here. Building unwired helpers is fine; wiring them is 4B. The full existing suite must stay green untouched (Task 10).
 - **Ruff** line length **100 chars max**; double quotes; spaces; LF. `views.py` is NOT E501-exempt — break long strings with parenthesized f-strings. Run `cd backend && ruff check . && ruff format .` before every commit (pre-commit hooks are dormant in this environment).
 - **Serializers are hand-written classes** with `is_valid() -> bool`, `.errors`, `.data`, `.save()` — follow `FindingUpdateSerializer` / `FindingIntakeSerializer`. Do NOT introduce DRF.
 - **Views** are function-based, decorated `@require_http_methods([...])`, case-scoped via `get_object_or_404(Case, pk=pk)`, parse bodies with `_parse_json_body(request)`, return `JsonResponse`. Mutations log via `AuditLog.log(...)`. **Never UPDATE/DELETE `AuditLog`.**
-- **`ThreadElementCitation` is the source of truth for citations.** `Finding.document_links` is the denormalized/export **compatibility citation index** + legacy-preservation layer — never the place to author citations.
+- **`ThreadElementCitation` is the source of truth for citations.** `Finding.document_links` is the denormalized/export **compatibility citation index** + legacy-preservation layer — never the place to author citations. Rows created via the legacy `add_document_ids` path are written `is_legacy=True`.
+- **Model `clean()` is defense-in-depth only** — Django does NOT call it on `save()`, and there is no DB constraint across the citation join. The **serializer** is the authoritative enforcement path; tests cover both.
+- **Citations attach to `FACT` elements only.** `supported_by` is allowed only on `CLAIM`/`INFERENCE`, targets must be same-thread `FACT`s, and self-support is rejected.
+- **Latest migration at authoring time is `0036_finding_overreach_reviewed`** — new migrations depend on it (run `makemigrations`; do not hand-number).
 - **Backend test command (CI-equivalent):**
   `docker exec catalyst_backend python manage.py test investigations.tests.<module> --keepdb --noinput`
   (Full suite: `... test investigations --exclude-tag=eval --keepdb --noinput`.)
-- **Gate predicate lives once** in `referral_grade.py` (`is_referral_grade` / `referral_grade_qs`) and must stay equivalent across the instance + queryset forms (parity test, Task 9).
-- **Migrations:** the current latest migration is `0031_ai_traceability_fields` — new migrations depend on the latest at authoring time (run `python manage.py makemigrations` to get correct dependencies; do not hand-number).
 
 ---
 
@@ -26,11 +28,11 @@
 
 **Files:**
 - Modify: `backend/investigations/models.py` (add after `FindingDocument`, ~line 1385)
-- Create: `backend/investigations/migrations/00XX_thread_elements.py` (via `makemigrations`)
+- Create: `backend/investigations/migrations/0037_thread_elements.py` (via `makemigrations`; verify dep is `0036`)
 - Test: `backend/investigations/tests/test_thread_element_model.py`
 
 **Interfaces:**
-- Produces: `ThreadElement` (`finding`, `element_type`, `text`, `position`, `handoff_ready`, `supported_by` M2M, `created_at`, `updated_at`); `ThreadElementType` TextChoices (`FACT`/`INFERENCE`/`QUESTION`/`CLAIM`/`NOTE`); `ThreadElementCitation` (`element`, `document`, `page_reference`, `context_note`); `FindingDocument.is_legacy: bool`.
+- Produces: `ThreadElement` (`finding`, `element_type`, `text`, `position`, `handoff_ready`, `supported_by` M2M, `created_at`, `updated_at`); `ThreadElementType` TextChoices (`FACT`/`INFERENCE`/`QUESTION`/`CLAIM`/`NOTE`); `ThreadElementCitation` (`element`, `document`, `page_reference`, `context_note`, `.clean()`); `FindingDocument.is_legacy: bool`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -177,7 +179,8 @@ class ThreadElementCitation(UUIDPrimaryKeyModel):
         ]
 
     def clean(self):
-        # Same-case guard — a thread may only cite documents from its own case.
+        # Defense-in-depth only (Django does NOT call clean() on save()); the
+        # serializer is the authoritative same-case guard.
         if self.element.finding.case_id != self.document.case_id:
             raise ValidationError(
                 "Citation document must belong to the same case as the thread."
@@ -193,24 +196,19 @@ Add `is_legacy` to `FindingDocument` (after `context_note`, ~line 1382):
     is_legacy = models.BooleanField(
         default=False,
         help_text=(
-            "True for citations preserved from before Phase 4 (narrative era). "
-            "Legacy rows are never reaped by element-citation churn."
+            "True for compatibility-index rows not authored via ThreadElementCitation "
+            "(pre-Phase-4 citations, or the legacy add_document_ids path). Never reaped "
+            "by element-citation churn."
         ),
     )
 ```
 
-Ensure `ValidationError` is imported at the top of `models.py`:
-
-```python
-from django.core.exceptions import ValidationError
-```
-
-(If already imported, skip. Check the existing import block first.)
+Ensure `ValidationError` is imported at the top of `models.py` (`from django.core.exceptions import ValidationError`) — check the existing import block; add only if missing.
 
 - [ ] **Step 4: Generate the migration**
 
 Run: `docker exec catalyst_backend python manage.py makemigrations investigations`
-Expected: a new migration creating `ThreadElement`, `ThreadElementCitation`, the M2M, and adding `FindingDocument.is_legacy`.
+Expected: a migration (named ~`0037_thread_elements`) creating the two tables + M2M + `FindingDocument.is_legacy`, with `dependencies = [("investigations", "0036_finding_overreach_reviewed")]`. Open the file and confirm that dependency.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -227,7 +225,7 @@ git commit -m "feat(threads): ThreadElement + ThreadElementCitation models + Fin
 
 ---
 
-### Task 2: Completeness predicates
+### Task 2: Completeness predicate helpers (UNWIRED)
 
 **Files:**
 - Create: `backend/investigations/thread_elements.py`
@@ -235,7 +233,7 @@ git commit -m "feat(threads): ThreadElement + ThreadElementCitation models + Fin
 
 **Interfaces:**
 - Consumes: `ThreadElement`, `ThreadElementType` (Task 1).
-- Produces: `is_complete_fact(element) -> bool`; `is_complete_claim(element) -> bool`; `finding_has_complete_fact(finding) -> bool`; `finding_has_handoff_ready_backed_claim(finding) -> bool`.
+- Produces: `is_complete_fact(element) -> bool`; `is_complete_claim(element) -> bool`; `finding_has_complete_fact(finding) -> bool`; `finding_has_handoff_ready_backed_claim(finding) -> bool`. **Built but not called by any gate in 4A** — 4B wires them.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -280,7 +278,7 @@ class CompletenessTests(TestCase):
         claim = ThreadElement.objects.create(
             finding=self.f, element_type=ThreadElementType.CLAIM, position=1, text="claim"
         )
-        self.assertFalse(is_complete_claim(claim))  # no backing yet
+        self.assertFalse(is_complete_claim(claim))
         claim.supported_by.add(fact)
         self.assertTrue(is_complete_claim(claim))
 
@@ -315,10 +313,11 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'investigations.thread_
 Create `backend/investigations/thread_elements.py`:
 
 ```python
-"""Completeness predicates for thread elements — used by both gate tiers.
+"""Thread-element predicates + document_links sync helpers.
 
-Drafting is permissive; these predicates fire only at the gates (tie-off and
-referral-grade evaluation). Keep this the single definition of "complete".
+NOTE: the completeness predicates here are built in 4A-additive but are NOT
+wired into any gate (FindingUpdateSerializer / referral_grade.py) until 4B.
+Keep this the single definition of "complete".
 """
 
 from .models import ThreadElementType
@@ -341,7 +340,7 @@ def is_complete_claim(element) -> bool:
 
 
 def finding_has_complete_fact(finding) -> bool:
-    """Tier-1 (CONFIRMED) ingredient: at least one complete cited FACT."""
+    """Tier-1 (CONFIRMED) ingredient — used by 4B: at least one complete cited FACT."""
     return any(
         is_complete_fact(e)
         for e in finding.elements.filter(element_type=ThreadElementType.FACT)
@@ -349,7 +348,7 @@ def finding_has_complete_fact(finding) -> bool:
 
 
 def finding_has_handoff_ready_backed_claim(finding) -> bool:
-    """Tier-2 (referral-grade) ingredient: a handoff_ready CLAIM backed by a complete FACT."""
+    """Tier-2 (referral-grade) ingredient — used by 4B: handoff_ready CLAIM backed by a complete FACT."""
     return any(
         is_complete_claim(e)
         for e in finding.elements.filter(
@@ -368,12 +367,12 @@ Expected: PASS (4 tests).
 ```bash
 cd backend && ruff check . && ruff format --check .
 git add backend/investigations/thread_elements.py backend/investigations/tests/test_thread_completeness.py
-git commit -m "feat(threads): completeness predicates for fact/claim"
+git commit -m "feat(threads): completeness predicate helpers (unwired)"
 ```
 
 ---
 
-### Task 3: `document_links` sync helper
+### Task 3: `document_links` sync helpers
 
 **Files:**
 - Modify: `backend/investigations/thread_elements.py`
@@ -381,7 +380,7 @@ git commit -m "feat(threads): completeness predicates for fact/claim"
 
 **Interfaces:**
 - Consumes: `ThreadElement`, `ThreadElementCitation`, `FindingDocument` (Task 1).
-- Produces: `ensure_document_link(finding, document)`; `reap_document_link_if_orphaned(finding, document)`. Both keep `Finding.document_links` as the synced compatibility index.
+- Produces: `ensure_document_link(finding, document)`; `reap_document_link_if_orphaned(finding, document)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -481,14 +480,14 @@ git commit -m "feat(threads): document_links sync (ensure/reap, respect legacy)"
 
 ---
 
-### Task 4: Element + citation serializers
+### Task 4: Element + citation serializers (FACT-only citations, constrained backing)
 
 **Files:**
 - Modify: `backend/investigations/serializers.py` (add a "Thread elements" section after the Findings section, ~line 1140)
 - Test: `backend/investigations/tests/test_thread_element_serializers.py`
 
 **Interfaces:**
-- Consumes: `ThreadElement`, `ThreadElementType`, `ThreadElementCitation` (Task 1); `is_complete_claim` (Task 2); `ensure_document_link` (Task 3).
+- Consumes: `ThreadElement`, `ThreadElementType`, `ThreadElementCitation`, `Document` (Task 1); `is_complete_fact` (Task 2); `ensure_document_link` (Task 3).
 - Produces: `serialize_element(element) -> dict`; `ThreadElementCreateSerializer(data, finding)`; `ThreadElementUpdateSerializer(data, instance)`; `ThreadElementCitationSerializer(data, element)`.
 
 - [ ] **Step 1: Write the failing test**
@@ -518,6 +517,12 @@ class ElementSerializerTests(TestCase):
         self.case = Case.objects.create(name="C")
         self.f = Finding.objects.create(case=self.case, rule_id="MANUAL", title="T")
 
+    def _fact(self, pos=0, cited=True):
+        el = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=pos, text="x")
+        if cited:
+            el.citations.create(document=_doc(self.case, str(pos)))
+        return el
+
     def test_create_assigns_next_position(self):
         ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=0)
         s = ThreadElementCreateSerializer(data={"element_type": "CLAIM", "text": "c"}, finding=self.f)
@@ -531,28 +536,42 @@ class ElementSerializerTests(TestCase):
         self.assertIn("element_type", s.errors)
 
     def test_handoff_ready_rejected_on_incomplete_claim(self):
-        claim = ThreadElement.objects.create(
-            finding=self.f, element_type=ThreadElementType.CLAIM, position=0, text="c"
-        )
+        claim = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.CLAIM, position=0, text="c")
         s = ThreadElementUpdateSerializer(data={"handoff_ready": True}, instance=claim)
         self.assertFalse(s.is_valid())
         self.assertIn("handoff_ready", s.errors)
 
     def test_handoff_ready_rejected_on_non_claim(self):
-        fact = ThreadElement.objects.create(
-            finding=self.f, element_type=ThreadElementType.FACT, position=0, text="x"
-        )
+        fact = self._fact()
         s = ThreadElementUpdateSerializer(data={"handoff_ready": True}, instance=fact)
         self.assertFalse(s.is_valid())
 
-    def test_supported_by_ids_must_be_facts(self):
-        fact = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=0)
-        fact.citations.create(document=_doc(self.case))
+    def test_supported_by_requires_claim_or_inference(self):
+        fact = self._fact()
+        other_fact = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=1, text="y")
+        # a FACT may not have supported_by
+        s = ThreadElementUpdateSerializer(data={"supported_by_ids": [str(fact.id)]}, instance=other_fact)
+        self.assertFalse(s.is_valid())
+        self.assertIn("supported_by_ids", s.errors)
+
+    def test_supported_by_rejects_self(self):
+        claim = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.CLAIM, position=0, text="c")
+        s = ThreadElementUpdateSerializer(data={"supported_by_ids": [str(claim.id)]}, instance=claim)
+        self.assertFalse(s.is_valid())
+
+    def test_supported_by_accepts_facts_for_claim(self):
+        fact = self._fact()
         claim = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.CLAIM, position=1, text="c")
         s = ThreadElementUpdateSerializer(data={"supported_by_ids": [str(fact.id)]}, instance=claim)
         self.assertTrue(s.is_valid(), s.errors)
         s.save()
         self.assertEqual(list(claim.supported_by.all()), [fact])
+
+    def test_citation_rejected_on_non_fact(self):
+        claim = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.CLAIM, position=0, text="c")
+        s = ThreadElementCitationSerializer(data={"document_id": str(_doc(self.case).id)}, element=claim)
+        self.assertFalse(s.is_valid())
+        self.assertIn("element", s.errors)
 
     def test_citation_same_case_enforced(self):
         el = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=0)
@@ -562,10 +581,7 @@ class ElementSerializerTests(TestCase):
         self.assertIn("document_id", s.errors)
 
     def test_serialize_shape(self):
-        el = ThreadElement.objects.create(
-            finding=self.f, element_type=ThreadElementType.FACT, position=0, text="x"
-        )
-        el.citations.create(document=_doc(self.case))
+        el = self._fact()
         out = serialize_element(el)
         self.assertEqual(out["element_type"], "FACT")
         self.assertEqual(len(out["citations"]), 1)
@@ -580,14 +596,17 @@ Expected: FAIL — `ImportError: cannot import name 'serialize_element'`.
 
 - [ ] **Step 3: Write the serializers**
 
-In `backend/investigations/serializers.py`, add the imports near the top (with the other model imports):
+In `backend/investigations/serializers.py`, merge into the existing `from .models import ...` block:
 
 ```python
 from .models import ThreadElement, ThreadElementCitation, ThreadElementType, Document
-from .thread_elements import is_complete_fact, is_complete_claim, ensure_document_link
 ```
 
-(Merge into the existing `from .models import ...` block rather than duplicating; add `Document` only if not already imported.)
+(Add `Document` only if not already imported.) And add:
+
+```python
+from .thread_elements import is_complete_fact, is_complete_claim, ensure_document_link
+```
 
 Add a new section after the Findings serializers (~line 1140):
 
@@ -597,6 +616,7 @@ Add a new section after the Findings serializers (~line 1140):
 # ---------------------------------------------------------------------------
 
 _VALID_ELEMENT_TYPES = {c.value for c in ThreadElementType}
+_BACKING_TYPES = {ThreadElementType.CLAIM, ThreadElementType.INFERENCE}
 
 
 def serialize_element(element) -> dict:
@@ -673,8 +693,9 @@ class ThreadElementCreateSerializer:
 class ThreadElementUpdateSerializer:
     """PATCH text / handoff_ready / supported_by_ids on an element.
 
-    Conservative: handoff_ready may flip true only on a complete CLAIM; an
-    element_type change that would invalidate citations/backing is rejected.
+    Constraints: handoff_ready true only on a complete CLAIM; supported_by only
+    on CLAIM/INFERENCE, targets are same-thread FACTs, no self-support; an
+    element_type change that would orphan citations/backing is rejected.
     """
 
     allowed_fields = {"text", "element_type", "handoff_ready", "supported_by_ids"}
@@ -704,7 +725,6 @@ class ThreadElementUpdateSerializer:
         if "text" in self.initial_data:
             self.validated_data["text"] = self.initial_data["text"]
 
-        # element_type change: conservative — reject if it would orphan citations/backing.
         new_type = self.instance.element_type
         if "element_type" in self.initial_data:
             new_type = (self.initial_data["element_type"] or "").strip()
@@ -712,16 +732,21 @@ class ThreadElementUpdateSerializer:
                 self._errors = {"element_type": ["Invalid element_type."]}
                 return False
             if new_type != ThreadElementType.FACT and self.instance.citations.exists():
-                self._errors = {"element_type": ["Change a cited FACT only after removing its citations."]}
+                self._errors = {"element_type": ["Remove citations before changing this FACT's type."]}
                 return False
-            if new_type not in (ThreadElementType.CLAIM, ThreadElementType.INFERENCE) and \
-                    self.instance.supported_by.exists():
+            if new_type not in _BACKING_TYPES and self.instance.supported_by.exists():
                 self._errors = {"element_type": ["Remove supporting facts before changing this type."]}
                 return False
             self.validated_data["element_type"] = new_type
 
         if "supported_by_ids" in self.initial_data:
-            ids = self.initial_data["supported_by_ids"] or []
+            ids = [str(i) for i in (self.initial_data["supported_by_ids"] or [])]
+            if new_type not in _BACKING_TYPES:
+                self._errors = {"supported_by_ids": ["Only CLAIM/INFERENCE may have supporting facts."]}
+                return False
+            if str(self.instance.pk) in ids:
+                self._errors = {"supported_by_ids": ["An element cannot support itself."]}
+                return False
             facts = list(
                 ThreadElement.objects.filter(
                     finding=self.instance.finding, id__in=ids,
@@ -739,15 +764,14 @@ class ThreadElementUpdateSerializer:
                 self._errors = {"handoff_ready": ["Must be a boolean."]}
                 return False
             if want:
-                # Evaluate completeness against the POST-update backing if provided.
                 if new_type != ThreadElementType.CLAIM:
                     self._errors = {"handoff_ready": ["Only a CLAIM can be handoff-ready."]}
                     return False
                 backing = self._supported if self._supported is not None else list(
                     self.instance.supported_by.all()
                 )
-                if not (self.validated_data.get("text", self.instance.text) or "").strip() or \
-                        not any(is_complete_fact(f) for f in backing):
+                has_text = bool((self.validated_data.get("text", self.instance.text) or "").strip())
+                if not has_text or not any(is_complete_fact(f) for f in backing):
                     self._errors = {"handoff_ready": ["Claim must have text and a backing complete FACT."]}
                     return False
             self.validated_data["handoff_ready"] = want
@@ -766,7 +790,7 @@ class ThreadElementUpdateSerializer:
 
 
 class ThreadElementCitationSerializer:
-    """POST a citation onto an element; enforces the same-case guard + syncs document_links."""
+    """POST a citation onto a FACT element; same-case guard + document_links sync."""
 
     def __init__(self, data=None, element=None):
         self.initial_data = data or {}
@@ -786,6 +810,9 @@ class ThreadElementCitationSerializer:
 
     def is_valid(self) -> bool:
         self._errors = {}
+        if self.element.element_type != ThreadElementType.FACT:
+            self._errors = {"element": ["Citations may only attach to FACT elements."]}
+            return False
         doc_id = self.initial_data.get("document_id")
         if not doc_id:
             self._errors = {"document_id": ["document_id is required."]}
@@ -818,14 +845,14 @@ class ThreadElementCitationSerializer:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_thread_element_serializers --keepdb --noinput`
-Expected: PASS (7 tests).
+Expected: PASS (10 tests).
 
 - [ ] **Step 5: Lint + commit**
 
 ```bash
 cd backend && ruff check . && ruff format --check .
 git add backend/investigations/serializers.py backend/investigations/tests/test_thread_element_serializers.py
-git commit -m "feat(threads): element + citation serializers (validation, same-case, handoff gate)"
+git commit -m "feat(threads): element + citation serializers (FACT-only cites, constrained backing)"
 ```
 
 ---
@@ -851,7 +878,6 @@ git commit -m "feat(threads): element + citation serializers (validation, same-c
 Create `backend/investigations/tests/test_thread_element_api.py`:
 
 ```python
-import json
 from django.test import TestCase
 
 from investigations.models import (
@@ -907,8 +933,9 @@ class ThreadElementApiTests(TestCase):
 
     def test_delete_element_cleans_backing_and_links(self):
         fact = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.FACT, position=0)
-        fact.citations.create(document=_doc(self.case))
-        FindingDocument.objects.create(finding=self.f, document=Document.objects.first())
+        doc = _doc(self.case)
+        fact.citations.create(document=doc)
+        FindingDocument.objects.create(finding=self.f, document=doc)
         claim = ThreadElement.objects.create(finding=self.f, element_type=ThreadElementType.CLAIM, position=1)
         claim.supported_by.add(fact)
         r = self.client.delete(f"{self.base}{fact.id}/")
@@ -924,7 +951,7 @@ Expected: FAIL — 404s (routes not registered).
 
 - [ ] **Step 3: Add the views**
 
-In `backend/investigations/views.py`, add imports to the serializers import block (~line 56):
+In `backend/investigations/views.py`, add to the serializers import block (~line 56):
 
 ```python
     ThreadElementCreateSerializer,
@@ -933,14 +960,14 @@ In `backend/investigations/views.py`, add imports to the serializers import bloc
     serialize_element,
 ```
 
-And the helper import near `serialize_finding` (~line 65) / models:
+Add to the model + helper imports (merge into existing blocks):
 
 ```python
 from .thread_elements import reap_document_link_if_orphaned
-from .models import ThreadElement, ThreadElementCitation
+from .models import ThreadElement, ThreadElementCitation, Document
 ```
 
-(Merge into existing model import block.) Then add after `api_case_finding_detail` (~line 3496):
+Add after `api_case_finding_detail` (~line 3496):
 
 ```python
 def _get_case_finding(pk, finding_id):
@@ -981,12 +1008,11 @@ def api_thread_element_detail(request, pk, finding_id, element_id):
     element = get_object_or_404(ThreadElement, pk=element_id, finding=finding)
 
     if request.method == "DELETE":
-        # Cleanup order: citations cascade; clear backing refs; reap orphaned links.
-        docs = list(element.citations.values_list("document_id", flat=True))
-        element.supports_elements.clear()  # remove from others' supported_by
+        doc_ids = list(element.citations.values_list("document_id", flat=True))
+        element.supports_elements.clear()  # remove from other elements' supported_by
         element.delete()
-        for doc_id in docs:
-            reap_document_link_if_orphaned(finding, _document_by_id(doc_id))
+        for doc_id in doc_ids:
+            reap_document_link_if_orphaned(finding, Document.objects.get(pk=doc_id))
         AuditLog.log(
             action=AuditAction.RECORD_DELETED,
             table_name="thread_element",
@@ -1013,9 +1039,9 @@ def api_thread_element_reorder(request, pk, finding_id):
     payload, err = _parse_json_body(request)
     if err:
         return err
-    ordered_ids = payload.get("ordered_ids", [])
-    existing = set(str(i) for i in finding.elements.values_list("id", flat=True))
-    if set(str(i) for i in ordered_ids) != existing:
+    ordered_ids = [str(i) for i in payload.get("ordered_ids", [])]
+    existing = {str(i) for i in finding.elements.values_list("id", flat=True)}
+    if set(ordered_ids) != existing or len(ordered_ids) != len(existing):
         return JsonResponse(
             {"errors": {"ordered_ids": ["Must list exactly this thread's element ids."]}},
             status=400,
@@ -1055,16 +1081,11 @@ def api_thread_element_citation_detail(request, pk, finding_id, element_id, cita
         citation.delete()
         reap_document_link_if_orphaned(finding, document)
     return HttpResponse(status=204)
-
-
-def _document_by_id(doc_id):
-    from .models import Document
-    return Document.objects.get(pk=doc_id)
 ```
 
 - [ ] **Step 4: Register the URLs**
 
-In `backend/investigations/urls.py`, after the `api_case_finding_detail` path (~line 162), add:
+In `backend/investigations/urls.py`, after the `api_case_finding_detail` path (~line 162), add (note `reorder/` before the `<uuid:element_id>/` path):
 
 ```python
     path(
@@ -1094,8 +1115,6 @@ In `backend/investigations/urls.py`, after the `api_case_finding_detail` path (~
         name="api_thread_element_citation_detail",
     ),
 ```
-
-> **Ordering note:** the `reorder/` path is registered before the `<uuid:element_id>/` path so the literal segment is matched first. (UUID converters won't match `reorder`, but explicit ordering keeps intent clear.)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -1150,13 +1169,13 @@ Expected: FAIL — `KeyError: 'elements'`.
 
 - [ ] **Step 3: Add `elements` to `serialize_finding`**
 
-In `serialize_finding` (serializers.py, before the closing `}` of the returned dict, after `document_links`), add:
+In `serialize_finding` (serializers.py), after the `document_links` entry and before the closing `}`, add:
 
 ```python
         "elements": [serialize_element(e) for e in finding.elements.all()],
 ```
 
-In `views.py`, extend the two prefetch sites (`:3433` and `:3468`) to avoid N+1:
+In `views.py`, extend the two prefetch sites (`:3433` and `:3468`):
 
 ```python
 Finding.objects.prefetch_related(
@@ -1180,395 +1199,96 @@ git commit -m "feat(threads): embed elements[] in finding detail"
 
 ---
 
-### Task 7: Tier-1 gate — CONFIRMED requires a complete cited FACT (drop narrative)
+### Task 7: Demote the legacy `add_document_ids` path to `is_legacy=True`
 
 **Files:**
-- Modify: `backend/investigations/serializers.py` (`FindingUpdateSerializer` tie-off block, ~line 1061-1073)
-- Modify: `backend/investigations/tests/test_tie_off_gate.py` (update narrative-based cases)
-- Test: `backend/investigations/tests/test_tie_off_gate_elements.py`
+- Modify: `backend/investigations/serializers.py` (`FindingUpdateSerializer.save()`, the `FindingDocument` create, ~line 1127-1128)
+- Test: `backend/investigations/tests/test_add_document_ids_legacy.py`
 
 **Interfaces:**
-- Consumes: `finding_has_complete_fact` (Task 2).
-- Produces: CONFIRMED gate `unmet` codes now `{"fact", "evidence_weight", "overreach"}` (no `"narrative"`, no bare `"citation"` — a complete FACT subsumes citation).
+- Consumes: `FindingDocument.is_legacy` (Task 1).
+- Produces: rows created via `add_document_ids` carry `is_legacy=True`. **Behavior-preserving** — the tie-off gate and `referral_grade_qs` count `document_links` regardless of `is_legacy`, so this changes no gate outcome.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `backend/investigations/tests/test_tie_off_gate_elements.py`:
+Create `backend/investigations/tests/test_add_document_ids_legacy.py`:
 
 ```python
 from django.test import TestCase
 
-from investigations.models import (
-    Case, Document, Finding, FindingStatus, EvidenceWeight,
-    ThreadElement, ThreadElementType,
-)
+from investigations.models import Case, Document, Finding, FindingDocument, FindingStatus
 from investigations.serializers import FindingUpdateSerializer
 
 
-def _doc(case, s="a"):
-    return Document.objects.create(
-        case=case, filename=f"{s}.pdf", file_path=f"{s}.pdf", sha256_hash=s * 64, file_size=1
-    )
-
-
-class TieOffGateElementTests(TestCase):
-    def setUp(self):
-        self.case = Case.objects.create(name="C")
-
-    def _finding(self):
-        return Finding.objects.create(case=self.case, rule_id="MANUAL", title="T",
-                                      status=FindingStatus.NEW)
-
-    def test_confirm_blocked_without_complete_fact(self):
-        f = self._finding()
-        s = FindingUpdateSerializer(
-            data={"status": "CONFIRMED", "evidence_weight": "DOCUMENTED", "overreach_reviewed": True},
-            instance=f,
+class AddDocumentIdsLegacyTests(TestCase):
+    def test_add_document_ids_creates_legacy_rows(self):
+        case = Case.objects.create(name="C")
+        f = Finding.objects.create(case=case, rule_id="MANUAL", title="T", status=FindingStatus.NEW)
+        doc = Document.objects.create(
+            case=case, filename="d.pdf", file_path="d.pdf", sha256_hash="d" * 64, file_size=1
         )
-        self.assertFalse(s.is_valid())
-        self.assertIn("fact", s.errors["gate"]["unmet"])
-
-    def test_confirm_allowed_with_complete_fact(self):
-        f = self._finding()
-        fact = ThreadElement.objects.create(finding=f, element_type=ThreadElementType.FACT,
-                                            position=0, text="a fact")
-        fact.citations.create(document=_doc(self.case))
-        s = FindingUpdateSerializer(
-            data={"status": "CONFIRMED", "evidence_weight": "DOCUMENTED", "overreach_reviewed": True},
-            instance=f,
-        )
+        s = FindingUpdateSerializer(data={"add_document_ids": [str(doc.id)]}, instance=f)
         self.assertTrue(s.is_valid(), s.errors)
-
-    def test_confirm_unmet_no_longer_lists_narrative(self):
-        f = self._finding()
-        s = FindingUpdateSerializer(data={"status": "CONFIRMED"}, instance=f)
-        self.assertFalse(s.is_valid())
-        self.assertNotIn("narrative", s.errors["gate"]["unmet"])
-        self.assertEqual(sorted(s.errors["gate"]["unmet"]), ["evidence_weight", "fact", "overreach"])
+        s.save()
+        link = FindingDocument.objects.get(finding=f, document=doc)
+        self.assertTrue(link.is_legacy)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_tie_off_gate_elements --keepdb --noinput`
-Expected: FAIL — gate still emits `narrative`/`citation`, not `fact`.
+Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_add_document_ids_legacy --keepdb --noinput`
+Expected: FAIL — `is_legacy` defaults False on the created row.
 
-- [ ] **Step 3: Rewrite the Tier-1 gate block**
+- [ ] **Step 3: Set `is_legacy=True` on the legacy create path**
 
-In `FindingUpdateSerializer.is_valid()` (serializers.py:1061-1073), replace the `unmet` block with:
-
-```python
-            from .thread_elements import finding_has_complete_fact
-
-            unmet = []
-            if not finding_has_complete_fact(self.instance):
-                unmet.append("fact")
-            if post_weight not in (EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED):
-                unmet.append("evidence_weight")
-            if not post_overreach:
-                unmet.append("overreach")
-
-            if unmet:
-                self._errors = {"gate": {"unmet": unmet}}
-                return False
-```
-
-Delete the now-unused `post_docs`/`post_narrative` computations in that block (lines ~1046-1056 and the `citation`/`narrative` appends). Keep `post_weight`/`post_overreach`.
-
-- [ ] **Step 4: Update the existing narrative-based gate tests**
-
-In `backend/investigations/tests/test_tie_off_gate.py`:
-- `test_confirm_with_nothing_lists_all_unmet`: change expected to `["evidence_weight", "fact", "overreach"]`.
-- `test_confirm_with_all_conditions_in_one_payload`: replace the `narrative` + `add_document_ids` setup with a complete FACT element before the PATCH:
+In `FindingUpdateSerializer.save()`, the document-add loop (~line 1127):
 
 ```python
-    def test_confirm_with_all_conditions_in_one_payload(self):
-        f = self._new_finding(status=FindingStatus.NEW)
-        doc = _document(self.case)
-        fact = f.elements.create(element_type="FACT", position=0, text="a fact")
-        fact.citations.create(document=doc)
-        s = FindingUpdateSerializer(
-            data={"status": "CONFIRMED", "evidence_weight": "DOCUMENTED", "overreach_reviewed": True},
-            instance=f,
-        )
-        self.assertTrue(s.is_valid(), s.errors)
+        for document in self._documents_to_add:
+            FindingDocument.objects.get_or_create(
+                finding=self.instance, document=document,
+                defaults={"is_legacy": True},
+            )
 ```
 
-- `test_confirm_emits_signal_confirmed_audit_row` (and any other API-level confirm): add a complete FACT before the PATCH and drop `narrative` from the payload.
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_tie_off_gate investigations.tests.test_tie_off_gate_elements --keepdb --noinput`
-Expected: PASS.
-
-- [ ] **Step 6: Lint + commit**
-
-```bash
-cd backend && ruff check . && ruff format --check .
-git add backend/investigations/serializers.py backend/investigations/tests/test_tie_off_gate.py backend/investigations/tests/test_tie_off_gate_elements.py
-git commit -m "feat(threads): Tier-1 gate requires a complete cited FACT (drops narrative check)"
-```
-
----
-
-### Task 8: Tier-2 gate — referral-grade requires a handoff-ready backed CLAIM
-
-**Files:**
-- Modify: `backend/investigations/referral_grade.py`
-- Test: `backend/investigations/tests/test_referral_grade_elements.py`
-
-**Interfaces:**
-- Consumes: `finding_has_handoff_ready_backed_claim` (Task 2); `ThreadElement`, `ThreadElementType`.
-- Produces: strengthened `is_referral_grade(finding)` + `referral_grade_qs(case)` (both add the handoff-ready-backed-claim condition).
-
-- [ ] **Step 1: Write the failing test**
-
-Create `backend/investigations/tests/test_referral_grade_elements.py`:
-
-```python
-from django.test import TestCase
-
-from investigations.models import (
-    Case, Document, Finding, FindingDocument, FindingStatus, EvidenceWeight,
-    ThreadElement, ThreadElementType,
-)
-from investigations.referral_grade import is_referral_grade, referral_grade_qs
-
-
-def _doc(case, s="a"):
-    return Document.objects.create(
-        case=case, filename=f"{s}.pdf", file_path=f"{s}.pdf", sha256_hash=s * 64, file_size=1
-    )
-
-
-class ReferralGradeElementTests(TestCase):
-    def setUp(self):
-        self.case = Case.objects.create(name="C")
-
-    def _confirmed_base(self):
-        # CONFIRMED + weight + overreach + a cited finding-level doc, but no claim yet.
-        f = Finding.objects.create(
-            case=self.case, rule_id="MANUAL", title="T",
-            status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
-            overreach_reviewed=True,
-        )
-        doc = _doc(self.case)
-        FindingDocument.objects.create(finding=f, document=doc)
-        fact = f.elements.create(element_type=ThreadElementType.FACT, position=0, text="a fact")
-        fact.citations.create(document=doc)
-        return f, fact
-
-    def test_confirmed_without_claim_is_not_referral_grade(self):
-        f, _ = self._confirmed_base()
-        self.assertFalse(is_referral_grade(f))
-        self.assertNotIn(f, referral_grade_qs(self.case))
-
-    def test_handoff_ready_backed_claim_makes_referral_grade(self):
-        f, fact = self._confirmed_base()
-        claim = f.elements.create(element_type=ThreadElementType.CLAIM, position=1,
-                                  text="claim", handoff_ready=True)
-        claim.supported_by.add(fact)
-        self.assertTrue(is_referral_grade(f))
-        self.assertIn(f, referral_grade_qs(self.case))
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_referral_grade_elements --keepdb --noinput`
-Expected: FAIL — `test_confirmed_without_claim_is_not_referral_grade` fails (old predicate returns True).
-
-- [ ] **Step 3: Strengthen both predicate forms**
-
-Rewrite `backend/investigations/referral_grade.py`:
-
-```python
-"""Single source of truth for the referral-grade predicate.
-
-An Angle (Finding) is "referral-grade" iff it is CONFIRMED, has evidence weight
-DOCUMENTED or TRACED, `overreach_reviewed` is True, has at least one cited
-document, AND has at least one handoff_ready CLAIM element backed by a complete
-cited FACT. Used by readiness, credibility counts, and the referral PDF filter
-so the definition never drifts.
-"""
-
-from django.db.models import Count, Exists, OuterRef
-
-from .models import (
-    EvidenceWeight, Finding, FindingStatus, ThreadElement, ThreadElementType,
-    ThreadElementCitation,
-)
-from .thread_elements import finding_has_handoff_ready_backed_claim
-
-REFERRAL_WEIGHTS = [EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED]
-
-
-def referral_grade_qs(case):
-    """Queryset of referral-grade Angles for a case (a single SQL statement)."""
-    # A complete FACT = a FACT element with >=1 citation.
-    complete_fact = ThreadElement.objects.filter(
-        finding=OuterRef("supported_claim__finding"),
-    )
-    # handoff_ready CLAIM backed by a cited FACT, scoped to the outer finding.
-    cited_fact = ThreadElementCitation.objects.filter(element=OuterRef("pk"))
-    backing_fact = ThreadElement.objects.filter(
-        element_type=ThreadElementType.FACT,
-        supports_elements=OuterRef("pk"),
-    ).filter(Exists(cited_fact))
-    handoff_claim = ThreadElement.objects.filter(
-        finding=OuterRef("pk"),
-        element_type=ThreadElementType.CLAIM,
-        handoff_ready=True,
-    ).filter(Exists(backing_fact))
-
-    return (
-        Finding.objects.filter(
-            case=case,
-            status=FindingStatus.CONFIRMED,
-            evidence_weight__in=REFERRAL_WEIGHTS,
-            overreach_reviewed=True,
-        )
-        .annotate(_citation_count=Count("document_links"))
-        .filter(_citation_count__gt=0)
-        .filter(Exists(handoff_claim))
-    )
-
-
-def is_referral_grade(finding) -> bool:
-    """True iff a single Finding instance meets every referral-grade condition."""
-    return bool(
-        finding.status == FindingStatus.CONFIRMED
-        and finding.evidence_weight in REFERRAL_WEIGHTS
-        and finding.overreach_reviewed
-        and finding.document_links.exists()
-        and finding_has_handoff_ready_backed_claim(finding)
-    )
-```
-
-> If the `OuterRef` chaining in `referral_grade_qs` proves awkward, the equivalent
-> correct form is two nested `Exists()` subqueries: outer = handoff_ready CLAIM on
-> the finding; inner = a FACT in `claim.supported_by` that has a citation. The
-> parity test (Task 9) is the gate that proves the queryset matches `is_referral_grade`.
+(If the existing call is `FindingDocument.objects.get_or_create(finding=..., document=document)` without defaults, add the `defaults={"is_legacy": True}`. Do not change the gate logic above it.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_referral_grade_elements --keepdb --noinput`
-Expected: PASS (2 tests).
+Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_add_document_ids_legacy investigations.tests.test_tie_off_gate --keepdb --noinput`
+Expected: PASS — including the existing `test_tie_off_gate` suite unchanged (proves behavior preserved).
 
 - [ ] **Step 5: Lint + commit**
 
 ```bash
 cd backend && ruff check . && ruff format --check .
-git add backend/investigations/referral_grade.py backend/investigations/tests/test_referral_grade_elements.py
-git commit -m "feat(threads): Tier-2 referral-grade requires handoff-ready backed claim"
+git add backend/investigations/serializers.py backend/investigations/tests/test_add_document_ids_legacy.py
+git commit -m "feat(threads): legacy add_document_ids path writes is_legacy=True"
 ```
 
 ---
 
-### Task 9: Parity test (instance ⇔ queryset)
+### Task 8: Data migration — narrative → NOTE (idempotent), flag legacy docs
 
 **Files:**
-- Test: `backend/investigations/tests/test_referral_grade_parity.py`
-
-**Interfaces:**
-- Consumes: `is_referral_grade`, `referral_grade_qs` (Task 8).
-
-- [ ] **Step 1: Write the parity test**
-
-Create `backend/investigations/tests/test_referral_grade_parity.py`:
-
-```python
-from django.test import TestCase
-
-from investigations.models import (
-    Case, Document, Finding, FindingDocument, FindingStatus, EvidenceWeight,
-    ThreadElementType,
-)
-from investigations.referral_grade import is_referral_grade, referral_grade_qs
-
-
-def _doc(case, s="a"):
-    return Document.objects.create(
-        case=case, filename=f"{s}.pdf", file_path=f"{s}.pdf", sha256_hash=s * 64, file_size=1
-    )
-
-
-class ReferralGradeParityTests(TestCase):
-    """The instance predicate and the queryset must agree across a fixture matrix."""
-
-    def setUp(self):
-        self.case = Case.objects.create(name="C")
-
-    def _mk(self, *, status, weight, overreach, cite_doc, with_claim):
-        f = Finding.objects.create(
-            case=self.case, rule_id="MANUAL", title="T",
-            status=status, evidence_weight=weight, overreach_reviewed=overreach,
-        )
-        if cite_doc:
-            doc = _doc(self.case, str(Finding.objects.count()))
-            FindingDocument.objects.create(finding=f, document=doc)
-            fact = f.elements.create(element_type=ThreadElementType.FACT, position=0, text="x")
-            fact.citations.create(document=doc)
-            if with_claim:
-                claim = f.elements.create(
-                    element_type=ThreadElementType.CLAIM, position=1, text="c", handoff_ready=True
-                )
-                claim.supported_by.add(fact)
-        return f
-
-    def test_parity_across_matrix(self):
-        combos = [
-            dict(status=FindingStatus.CONFIRMED, weight=EvidenceWeight.DOCUMENTED, overreach=True, cite_doc=True, with_claim=True),
-            dict(status=FindingStatus.CONFIRMED, weight=EvidenceWeight.DOCUMENTED, overreach=True, cite_doc=True, with_claim=False),
-            dict(status=FindingStatus.CONFIRMED, weight=EvidenceWeight.SPECULATIVE, overreach=True, cite_doc=True, with_claim=True),
-            dict(status=FindingStatus.CONFIRMED, weight=EvidenceWeight.TRACED, overreach=False, cite_doc=True, with_claim=True),
-            dict(status=FindingStatus.NEW, weight=EvidenceWeight.TRACED, overreach=True, cite_doc=True, with_claim=True),
-            dict(status=FindingStatus.CONFIRMED, weight=EvidenceWeight.TRACED, overreach=True, cite_doc=False, with_claim=False),
-        ]
-        findings = [self._mk(**c) for c in combos]
-        qs_ids = set(referral_grade_qs(self.case).values_list("id", flat=True))
-        for f in findings:
-            self.assertEqual(
-                is_referral_grade(f), f.id in qs_ids,
-                msg=f"mismatch for finding {f.id}",
-            )
-        # exactly the first combo qualifies
-        self.assertEqual(len(qs_ids), 1)
-        self.assertIn(findings[0].id, qs_ids)
-```
-
-- [ ] **Step 2: Run the parity test**
-
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_referral_grade_parity --keepdb --noinput`
-Expected: PASS. If it fails, the queryset (Task 8 Step 3) diverges from the instance predicate — fix the `Exists()` subqueries until parity holds. **Do not weaken the test.**
-
-- [ ] **Step 3: Commit**
-
-```bash
-cd backend && ruff check . && ruff format --check .
-git add backend/investigations/tests/test_referral_grade_parity.py
-git commit -m "test(threads): referral-grade instance/queryset parity matrix"
-```
-
----
-
-### Task 10: Data migration — narrative → NOTE, flag legacy docs
-
-**Files:**
-- Create: `backend/investigations/migrations/00YY_migrate_narrative_to_note.py` (via `makemigrations --empty`)
+- Create: `backend/investigations/migrations/_phase4_narrative_backfill.py` (importable helper)
+- Create: `backend/investigations/migrations/0038_migrate_narrative_to_note.py` (via `makemigrations --empty`)
 - Test: `backend/investigations/tests/test_narrative_migration.py`
 
 **Interfaces:**
 - Consumes: models from Task 1.
-- Produces: every Finding with non-empty `narrative` gains one `NOTE` element at position 0; every pre-existing `FindingDocument` flagged `is_legacy=True`.
+- Produces: every Finding with non-empty `narrative` gains one `NOTE` element at the **next free position** (idempotent; original narrative retained); every pre-existing `FindingDocument` flagged `is_legacy=True`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `backend/investigations/tests/test_narrative_migration.py`. This test exercises the migration's data functions directly (importing the forwards function), so it does not depend on migration replay:
+Create `backend/investigations/tests/test_narrative_migration.py`:
 
 ```python
+from django.apps import apps
 from django.test import TestCase
 
 from investigations.models import (
-    Case, Document, Finding, FindingDocument, ThreadElementType,
+    Case, Document, Finding, FindingDocument, ThreadElement, ThreadElementType,
 )
 
 
@@ -1580,9 +1300,7 @@ def _doc(case, s="a"):
 
 class NarrativeMigrationTests(TestCase):
     def test_forwards_converts_narrative_and_flags_docs(self):
-        # Import the migration module's forwards helper.
         from investigations.migrations import _phase4_narrative_backfill as mig
-        from django.apps import apps
 
         case = Case.objects.create(name="C")
         f = Finding.objects.create(case=case, rule_id="MANUAL", title="T", narrative="legacy text")
@@ -1592,13 +1310,24 @@ class NarrativeMigrationTests(TestCase):
 
         note = f.elements.get(element_type=ThreadElementType.NOTE)
         self.assertEqual(note.text, "legacy text")
-        self.assertEqual(note.position, 0)
+        self.assertEqual(f.narrative, "legacy text")  # original retained
         self.assertTrue(FindingDocument.objects.filter(finding=f, is_legacy=True).exists())
-```
 
-> The migration delegates its forward logic to a small importable helper module
-> `investigations/migrations/_phase4_narrative_backfill.py` so it is unit-testable
-> without replaying migrations. The migration file just calls `forwards`.
+    def test_forwards_is_idempotent_and_collision_safe(self):
+        from investigations.migrations import _phase4_narrative_backfill as mig
+
+        case = Case.objects.create(name="C2")
+        f = Finding.objects.create(case=case, rule_id="MANUAL", title="T", narrative="n")
+        # Pre-existing element already occupies position 0.
+        ThreadElement.objects.create(finding=f, element_type=ThreadElementType.FACT, position=0, text="x")
+
+        mig.forwards(apps, schema_editor=None)
+        mig.forwards(apps, schema_editor=None)  # rerun must not duplicate or collide
+
+        notes = f.elements.filter(element_type=ThreadElementType.NOTE)
+        self.assertEqual(notes.count(), 1)
+        self.assertNotEqual(notes.first().position, 0)  # appended after the existing element
+```
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1610,12 +1339,15 @@ Expected: FAIL — `ModuleNotFoundError: investigations.migrations._phase4_narra
 Create `backend/investigations/migrations/_phase4_narrative_backfill.py`:
 
 ```python
-"""Importable forward logic for the Phase 4 narrative→NOTE data migration.
+"""Importable forward logic for the Phase 4 narrative->NOTE data migration.
 
-Kept separate from the migration file so it is unit-testable without a
-migration replay. Uses the live ORM models (safe: this only runs forward on
-fields that exist by the time it runs).
+Separate from the migration file so it is unit-testable without a migration
+replay. Idempotent + collision-safe: appends the NOTE at the next free position
+and skips when an equivalent NOTE already exists. Leaves Finding.narrative in
+place (the legacy PDF still reads it until 4C).
 """
+
+from django.db.models import Max
 
 
 def forwards(apps, schema_editor):
@@ -1626,25 +1358,29 @@ def forwards(apps, schema_editor):
     # 1) Flag every existing citation as legacy (preserved, never reaped).
     FindingDocument.objects.update(is_legacy=True)
 
-    # 2) Convert non-empty narrative into a single NOTE element at position 0.
+    # 2) Convert non-empty narrative into a single NOTE element.
     for finding in Finding.objects.exclude(narrative="").exclude(narrative__isnull=True):
-        already = ThreadElement.objects.filter(finding=finding, position=0).exists()
-        if already:
+        existing_note = ThreadElement.objects.filter(
+            finding=finding, element_type="NOTE", text=finding.narrative
+        ).exists()
+        if existing_note:
             continue
+        max_pos = ThreadElement.objects.filter(finding=finding).aggregate(m=Max("position"))["m"]
+        next_pos = 0 if max_pos is None else max_pos + 1
         ThreadElement.objects.create(
             finding=finding,
             element_type="NOTE",
             text=finding.narrative,
-            position=0,
+            position=next_pos,
             handoff_ready=False,
         )
 ```
 
-Generate an empty migration and wire it:
+Generate the migration:
 
 Run: `docker exec catalyst_backend python manage.py makemigrations investigations --empty -n migrate_narrative_to_note`
 
-Edit the generated file to:
+Edit the generated file:
 
 ```python
 from django.db import migrations
@@ -1663,113 +1399,87 @@ def backwards(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("investigations", "00XX_thread_elements"),  # the Task 1 migration name
+        ("investigations", "0037_thread_elements"),  # the Task 1 migration name
     ]
     operations = [migrations.RunPython(forwards, backwards)]
 ```
 
-> The test calls the helper with the live `apps` registry; the migration calls it with
-> the historical registry. Both work because the helper only touches fields present
-> after the Task 1 schema migration.
-
-- [ ] **Step 4: Run tests + apply migrations**
+- [ ] **Step 4: Apply migrations + run tests**
 
 Run: `docker exec catalyst_backend python manage.py migrate investigations --noinput`
 Then: `docker exec catalyst_backend python manage.py test investigations.tests.test_narrative_migration --keepdb --noinput`
-Expected: PASS.
-
-- [ ] **Step 5: Add the "stays CONFIRMED but drops out of referral-grade" test**
-
-Append to `backend/investigations/tests/test_narrative_migration.py`:
-
-```python
-    def test_confirmed_legacy_finding_stays_confirmed_but_not_referral_grade(self):
-        from django.apps import apps
-        from investigations.migrations import _phase4_narrative_backfill as mig
-        from investigations.models import FindingStatus, EvidenceWeight
-        from investigations.referral_grade import is_referral_grade
-
-        case = Case.objects.create(name="C2")
-        f = Finding.objects.create(
-            case=case, rule_id="MANUAL", title="T", narrative="old proof",
-            status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
-            overreach_reviewed=True,
-        )
-        FindingDocument.objects.create(finding=f, document=_doc(case, "x"))
-        mig.forwards(apps, schema_editor=None)
-        f.refresh_from_db()
-        self.assertEqual(f.status, FindingStatus.CONFIRMED)   # status unchanged
-        self.assertFalse(is_referral_grade(f))                # but no handoff-ready claim
-```
-
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_narrative_migration --keepdb --noinput`
 Expected: PASS (2 tests).
 
-- [ ] **Step 6: Lint + commit**
+- [ ] **Step 5: Lint + commit**
 
 ```bash
 cd backend && ruff check . && ruff format --check .
 git add backend/investigations/migrations backend/investigations/tests/test_narrative_migration.py
-git commit -m "feat(threads): data migration narrative->NOTE + flag legacy citations"
+git commit -m "feat(threads): idempotent data migration narrative->NOTE + flag legacy citations"
 ```
 
 ---
 
-### Task 11: `seed_demo` builds real elements (demo stays referral-grade)
+### Task 9: `seed_demo` builds real elements AND retains legacy narrative
 
 **Files:**
 - Modify: `backend/investigations/management/commands/seed_demo.py`
-- Test: `backend/investigations/tests/test_seed_demo_referral_grade.py`
+- Test: `backend/investigations/tests/test_seed_demo_elements.py`
 
 **Interfaces:**
-- Consumes: models (Task 1); `referral_grade_qs` (Task 8).
-- Produces: at least one demo thread that is referral-grade under the strengthened gate (a complete FACT + a handoff_ready CLAIM backed by it).
+- Consumes: models (Task 1).
+- Produces: the demo's flagship confirmed thread has a complete FACT + a `handoff_ready` CLAIM backed by it (so it is referral-grade-shaped once 4B flips the gate), **and** retains its `narrative` text + a legacy `FindingDocument` row (so the current PDF/UI keep working pre-4C).
+
+> This task does **not** assert referral-grade (that predicate isn't strengthened until 4B). It asserts the demo has the *element shape* the future gate needs, plus retained legacy narrative.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `backend/investigations/tests/test_seed_demo_referral_grade.py`:
+Create `backend/investigations/tests/test_seed_demo_elements.py`:
 
 ```python
 from django.core.management import call_command
 from django.test import TestCase
 
-from investigations.models import Case
-from investigations.referral_grade import referral_grade_qs
+from investigations.models import Case, Finding, FindingStatus, ThreadElementType
+from investigations.thread_elements import finding_has_handoff_ready_backed_claim
 
 
-class SeedDemoReferralGradeTests(TestCase):
-    def test_seed_demo_has_a_referral_grade_thread(self):
+class SeedDemoElementsTests(TestCase):
+    def test_seed_demo_flagship_thread_has_backed_claim_and_keeps_narrative(self):
         call_command("seed_demo")
-        case = Case.objects.order_by("created_at").first()
-        self.assertIsNotNone(case)
-        self.assertGreaterEqual(
-            referral_grade_qs(case).count(), 1,
-            "seed_demo must produce at least one referral-grade thread under the Phase 4 gate",
+        confirmed = Finding.objects.filter(status=FindingStatus.CONFIRMED).order_by("created_at").first()
+        self.assertIsNotNone(confirmed, "seed_demo should create a CONFIRMED thread")
+        self.assertTrue(
+            finding_has_handoff_ready_backed_claim(confirmed),
+            "flagship confirmed thread must have a handoff_ready CLAIM backed by a complete FACT",
         )
+        self.assertTrue(confirmed.narrative.strip(), "legacy narrative must be retained for pre-4C PDF")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_seed_demo_referral_grade --keepdb --noinput`
-Expected: FAIL — 0 referral-grade threads (demo confirmations have no handoff-ready claim).
+Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_seed_demo_elements --keepdb --noinput`
+Expected: FAIL — the confirmed demo thread has no backed handoff-ready claim.
 
-- [ ] **Step 3: Add elements to the demo's strongest confirmed finding**
+- [ ] **Step 3: Add elements to the demo's confirmed thread (keep its narrative)**
 
-In `seed_demo.py`, locate where the demo's CONFIRMED finding is created (search for `CONFIRMED` / `overreach_reviewed`). After it is created and has a cited document, add real elements. Example (adapt variable names to the command's locals):
+In `seed_demo.py`, find where the demo's CONFIRMED finding is created (search `CONFIRMED` / `overreach_reviewed`). Confirm it still sets a non-empty `narrative` (leave that line in place). After it exists and has a cited document, add:
 
 ```python
         from investigations.models import ThreadElement, ThreadElementType
 
-        # Phase 4: give the flagship confirmed thread structured, gated elements
-        # so the demo case remains referral-grade under the strengthened gate.
+        # Phase 4: structured elements so the flagship thread is referral-grade-shaped
+        # under the future (4B) gate. The narrative + legacy FindingDocument rows are
+        # intentionally retained so the pre-4C PDF/UI still render.
         fact = ThreadElement.objects.create(
             finding=confirmed_finding,
             element_type=ThreadElementType.FACT,
             position=0,
             text="Org purchased 1420 Elm St for $410,000 on 2021-03-09.",
         )
-        fact.citations.create(document=deed_doc, page_reference="p.2",
-                              context_note="Recorded sale price.")
+        fact.citations.create(
+            document=deed_doc, page_reference="p.2", context_note="Recorded sale price.",
+        )
         claim = ThreadElement.objects.create(
             finding=confirmed_finding,
             element_type=ThreadElementType.CLAIM,
@@ -1780,48 +1490,38 @@ In `seed_demo.py`, locate where the demo's CONFIRMED finding is created (search 
         claim.supported_by.add(fact)
 ```
 
-> `confirmed_finding`, `deed_doc` are placeholders for the command's actual locals —
-> use the existing confirmed finding and one of its already-cited demo documents so
-> the same-case guard holds.
+> `confirmed_finding` and `deed_doc` are placeholders for the command's actual locals — use the existing confirmed finding and one of its already-cited demo documents (same case, so the citation guard holds). Do **not** delete the finding's `narrative` assignment.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_seed_demo_referral_grade --keepdb --noinput`
+Run: `docker exec catalyst_backend python manage.py test investigations.tests.test_seed_demo_elements --keepdb --noinput`
 Expected: PASS.
 
 - [ ] **Step 5: Lint + commit**
 
 ```bash
 cd backend && ruff check . && ruff format --check .
-git add backend/investigations/management/commands/seed_demo.py backend/investigations/tests/test_seed_demo_referral_grade.py
-git commit -m "feat(threads): seed_demo builds gated elements so demo stays referral-grade"
+git add backend/investigations/management/commands/seed_demo.py backend/investigations/tests/test_seed_demo_elements.py
+git commit -m "feat(threads): seed_demo builds backed claim elements, retains legacy narrative"
 ```
 
 ---
 
-### Task 12: Full-suite regression sweep
+### Task 10: Full-suite regression sweep (prove nothing changed) + PR
 
 **Files:** none (verification only).
 
 - [ ] **Step 1: Run the full backend suite (CI-equivalent)**
 
 Run: `docker exec catalyst_backend python manage.py test investigations --exclude-tag=eval --keepdb --noinput`
-Expected: all green. Likely fallout to fix in this task:
-- `test_credibility.py` / Case Map tests asserting referral-grade counts on fixtures that lack handoff-ready claims → update those fixtures to add a complete FACT + handoff_ready CLAIM where the test intends a referral-grade thread, or assert the new (lower) count where it intends to show the gap.
-- `test_referral_pdf.py` — if it asserts on `narrative`-derived output, it still reads the legacy field (4C rewrites it); only fix outright breakage (e.g. a fixture that relied on confirm-without-fact). Do **not** rewrite the PDF here — that is Phase 4C.
-- Any other confirm-a-finding helper across the suite that relied on `narrative` → give it a complete FACT instead.
+Expected: **all green, with no edits to existing tests.** Because 4A-additive does not touch the tie-off gate or `referral_grade.py`, `test_tie_off_gate`, `test_credibility`, `test_referral_pdf`, and the Case Map tests should pass unchanged. If any existing test fails, that means this slice accidentally changed behavior — **find and remove that behavior change** (do not edit the existing test; the whole point of 4A-additive is that those tests keep passing as-is).
 
-Fix each failure by adjusting the **test fixture** to the new gate (not by weakening production predicates).
+- [ ] **Step 2: Confirm migrations are clean**
 
-- [ ] **Step 2: Commit the regression fixes**
+Run: `docker exec catalyst_backend python manage.py makemigrations --check --dry-run`
+Expected: "No changes detected" (the models match the committed migrations).
 
-```bash
-cd backend && ruff check . && ruff format --check .
-git add backend/investigations/tests
-git commit -m "test(threads): align existing fixtures with the two-tier Phase 4 gate"
-```
-
-- [ ] **Step 3: Push + open the 4A PR (confirm with Tyler first)**
+- [ ] **Step 3: Push + open the 4A-additive PR (confirm with Tyler first)**
 
 Per CLAUDE.md, pushing + opening the PR is an outward-facing step — confirm before running:
 
@@ -1830,24 +1530,23 @@ git push -u origin feature/case-map-phase-4-thread-builder
 gh pr create --fill --base main
 ```
 
-Then validate on the Railway PR preview (live API-shape on the new endpoints) before merge.
+PR description must state: **this slice is additive and changes no existing behavior; the gate flip + UI ship in 4B.** Validate on the Railway PR preview (exercise the new `/elements/` endpoints + confirm the existing tie-off UI still works) before merge.
 
 ---
 
 ## Self-Review
 
-**Spec coverage:**
-- §3 data model → Task 1. ✅
-- §3 completeness predicates → Task 2. ✅
-- §3 invariants (handoff_ready rejection, element_type change, delete cleanup) → Tasks 4 (serializer) + 5 (delete view). ✅
-- §3 same-case guard (serializer + clean) → Task 1 (`clean`) + Task 4 (serializer). ✅
-- §4 document_links synced union + reap/legacy → Task 3, exercised in Task 5. ✅
-- §5 Tier-1 gate → Task 7; Tier-2 predicate (instance + queryset) → Task 8; parity → Task 9. ✅
-- §6 migration (narrative→NOTE, is_legacy, stays-CONFIRMED/drops-referral-grade) → Task 10; seed_demo → Task 11. ✅
-- §7 API surface (CRUD + reorder + citations) → Task 5; finding embeds elements → Task 6. ✅
-- §7 backend test plan items → distributed across Tasks 1-11; full sweep → Task 12. ✅
-- Out of scope here (correct): 4B frontend, 4C PDF rewrite — separate plans.
+**Spec coverage (4A-additive scope):**
+- §3 models (`ThreadElement`, `ThreadElementCitation`, `supported_by`, `is_legacy`) → Task 1. ✅
+- §3 completeness helpers (unwired) → Task 2. ✅
+- §3 invariants: handoff_ready rejection + element_type change + citation-FACT-only + supported_by CLAIM/INFERENCE + no self-support → Task 4; delete cleanup → Task 5. ✅
+- §3 same-case guard (serializer authoritative + `clean()` defense) → Task 1 (`clean`) + Task 4 (serializer). ✅
+- §4 document_links sync (ensure/reap/legacy) → Task 3, exercised in Task 5; `add_document_ids`→legacy → Task 7. ✅
+- §6 migration (idempotent narrative→NOTE, flag legacy, retain narrative) → Task 8; seed (elements + retained narrative) → Task 9. ✅
+- §7 API (CRUD + reorder + citations) → Task 5; elements embed → Task 6. ✅
+- §7 "regression sweep proving no existing behavior changed" → Task 10. ✅
+- **Deliberately NOT here (4B):** Tier-1/Tier-2 gate wiring, parity test, gate/credibility fixture rework — they ship with the `ThreadBuilder` UI. The helpers they need exist + are tested (Task 2). ✅
 
-**Placeholder scan:** No "TBD/TODO". The two intentional adaptation points (`seed_demo` locals in Task 11; the `OuterRef` fallback note in Task 8) are flagged as adapt-to-local-names with the correct target behavior and a parity test that proves correctness — not placeholders.
+**Placeholder scan:** No "TBD/TODO". The two adapt-to-local-names points (`seed_demo` locals in Task 9; the `add_document_ids` get_or_create shape in Task 7) are flagged with the exact target behavior and a test that proves it — not placeholders.
 
-**Type consistency:** `serialize_element` shape (Task 4) is consumed by Task 6; `finding_has_complete_fact`/`finding_has_handoff_ready_backed_claim` (Task 2) consumed by Tasks 7/8; `ensure_document_link`/`reap_document_link_if_orphaned` (Task 3) consumed by Tasks 4/5; gate `unmet` codes (`fact`/`evidence_weight`/`overreach`) consistent between Task 7 production and tests. ✅
+**Type consistency:** `serialize_element` shape (Task 4) consumed by Task 6; `is_complete_fact` (Task 2) consumed by Task 4's `handoff_ready` validation; `ensure_document_link`/`reap_document_link_if_orphaned` (Task 3) consumed by Tasks 4/5; `_phase4_narrative_backfill.forwards(apps, schema_editor)` signature consistent between the helper (Task 8 Step 3), the migration call, and the test (Task 8 Step 1). `FindingDocument.is_legacy` (Task 1) consumed by Tasks 3/7/8. ✅
