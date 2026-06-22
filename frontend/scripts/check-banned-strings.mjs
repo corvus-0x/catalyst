@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Banned-strings gate — fails if any user-visible source string exposes a
  * model/vendor name we never show in the UI (CLAUDE.md "Banned strings").
