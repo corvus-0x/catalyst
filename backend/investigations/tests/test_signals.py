@@ -1615,6 +1615,8 @@ class SerializeFindingTests(TestCase):
             "ai_run_id",
             "entity_links",
             "document_links",
+            "gate_version",
+            "elements",
             "created_at",
             "updated_at",
         }
