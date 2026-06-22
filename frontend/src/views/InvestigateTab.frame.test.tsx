@@ -16,6 +16,7 @@ vi.mock("../api", () => ({
   fetchEntityDetail: vi.fn().mockResolvedValue({ id: "a", entity_type: "person", name: "Jay", related_documents: [], related_findings: [] }),
   fetchNotes: vi.fn().mockResolvedValue({ results: [] }),
   createNote: vi.fn().mockResolvedValue({}),
+  fetchAngles: vi.fn().mockResolvedValue({ count: 0, results: [], limit: 100, offset: 0, next_offset: null, previous_offset: null }),
   runAiPatternAnalysis: vi.fn(), reevaluateSignals: vi.fn(),
 }));
 

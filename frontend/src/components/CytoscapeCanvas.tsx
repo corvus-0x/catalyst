@@ -86,7 +86,12 @@ export const STYLESHEET = [
       "z-index": 999,
     },
   },
-  /* Dimmed (reserved for Phase 3 Thread Path Mode) */
+  /* ── Phase 3 — Thread Path Mode ───────────────────────────────────────────
+     ORDERING MATTERS (equal-specificity rules: later wins): `.dimmed` must stay BEFORE
+     `.thread-path-edge*` and `.thread-path-subject` so the path rules win on any element
+     that briefly holds both classes. applyThreadPathMode also removes `.dimmed` imperatively
+     before adding a path class, but the stylesheet order is the safety net — do not reorder. */
+  /* Dimmed — everything not on the selected thread's path */
   { selector: ".dimmed", style: { opacity: 0.1 } },
   /* Summary edges — neutral grey, width from strength level */
   {
@@ -103,6 +108,20 @@ export const STYLESHEET = [
   {
     selector: "edge.material",
     style: { "line-color": "#94a3b8", opacity: 0.85 },
+  },
+  /* Path edge — emphasis width, neutral by default (LOW/INFORMATIONAL stay here) */
+  {
+    selector: ".thread-path-edge",
+    style: { width: 5, opacity: 1, "line-color": "#94a3b8" },
+  },
+  /* Severity color on the path edge only — never on subjects */
+  { selector: ".thread-path-edge--critical", style: { "line-color": "#f87171" } },
+  { selector: ".thread-path-edge--high", style: { "line-color": "#fbbf24" } },
+  { selector: ".thread-path-edge--medium", style: { "line-color": "#60a5fa" } },
+  /* Participating subject — neutral amber ring, NOT an accusation */
+  {
+    selector: ".thread-path-subject",
+    style: { opacity: 1, "outline-width": 3, "outline-color": "#fbbf24", "outline-offset": 2 },
   },
 ];
 

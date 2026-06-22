@@ -67,6 +67,7 @@ vi.mock("../api", () => ({
   runAiPatternAnalysis: vi.fn(),
   reevaluateSignals: vi.fn(),
   fetchAngle: vi.fn().mockResolvedValue({ id: "t1", title: "Insider swap", status: "NEEDS_EVIDENCE", severity: "HIGH", narrative: "", evidence_weight: "SPECULATIVE", overreach_reviewed: false, document_links: [] }),
+  fetchAngles: vi.fn().mockResolvedValue({ count: 0, results: [], limit: 100, offset: 0, next_offset: null, previous_offset: null }),
   updateAngle: vi.fn().mockResolvedValue({}),
 }));
 
