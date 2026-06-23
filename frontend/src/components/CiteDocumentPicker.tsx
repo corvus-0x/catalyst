@@ -191,6 +191,14 @@ export default function CiteDocumentPicker({
       const selectedDocs = available.filter((doc) => selectedIds.has(doc.id));
 
       if (element) {
+        // Element mode requires a finding id (prop or from `finding`). Guard against a
+        // caller that enters element mode without one — otherwise addCitation would fire
+        // with an empty finding id and fail as an opaque network error.
+        if (!findingId) {
+          console.error("CiteDocumentPicker: findingId is required in element mode");
+          setSaving(false);
+          return;
+        }
         // Element mode: write ThreadElementCitations — do NOT touch the narrative.
         for (const doc of selectedDocs) {
           await addCitation(caseId, findingId, element.id, {
