@@ -54,6 +54,12 @@ export {
   updateReferralTarget,
   deleteReferralTarget,
   fetchReferralReadiness,
+  createElement,
+  updateElement,
+  deleteElement,
+  reorderElements,
+  addCitation,
+  removeCitation,
 } from "./cases";
 
 // Param types exported from cases.ts

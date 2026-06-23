@@ -17,6 +17,7 @@ const baseFinding: FindingItem = {
   evidence_snapshot: {}, trigger_doc_id: null, trigger_doc_filename: null,
   trigger_entity_id: null, created_at: "", updated_at: "",
   entity_links: [], document_links: [{ document_id: "d", document_filename: "d.pdf", page_reference: "", context_note: "" }],
+  elements: [], gate_version: "ASSERTION_V1",
 };
 
 function setup(overrides: Partial<FindingItem> = {}) {

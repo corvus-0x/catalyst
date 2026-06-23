@@ -832,6 +832,34 @@ export type AutoEvidenceSnapshot = Record<string, unknown>;
  *   source === "AI"     → AiEvidenceSnapshot (doc_refs, doc_ref_resolution, rationale, suggested_action)
  *   source === "MANUAL" → usually empty object {}
  */
+// ---------------------------------------------------------------------------
+// Thread Elements (Phase 4A/4B)
+// ---------------------------------------------------------------------------
+
+export type ThreadElementTypeT = "ASSERTION" | "QUESTION" | "NOTE";
+export type ElementRole = "fact" | "analysis" | "claim" | "question" | "note";
+export type GateVersion = "LEGACY_NARRATIVE" | "ASSERTION_V1";
+
+export interface ThreadElementCitation {
+  id: UUID;
+  document_id: UUID;
+  document_filename: string;
+  page_reference: string;
+  context_note: string;
+}
+
+export interface ThreadElement {
+  id: UUID;
+  finding_id: UUID;
+  element_type: ThreadElementTypeT;
+  /** Derived server-side from evidence + handoff_ready; never sent on write. */
+  role: ElementRole;
+  text: string;
+  position: number;
+  handoff_ready: boolean;
+  citations: ThreadElementCitation[];
+}
+
 export interface FindingItem {
   id: UUID;
   /**
@@ -879,6 +907,10 @@ export interface FindingItem {
   entity_links: FindingEntityLink[];
   /** Source documents cited by this finding. May be empty []. */
   document_links: FindingDocumentLink[];
+  /** Ordered structured assertions (Phase 4). Empty [] for un-built threads. */
+  elements: ThreadElement[];
+  /** Which referral gate applies. New threads default ASSERTION_V1. */
+  gate_version: GateVersion;
 }
 
 /**

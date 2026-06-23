@@ -10,6 +10,7 @@
  */
 
 import { fetchApi } from "./base";
+import type { ThreadElement, ThreadElementTypeT } from "../types";
 import type {
   CaseListResponse,
   CaseListItem,
@@ -278,6 +279,85 @@ export async function deleteAngle(
 /** Fetch a single Angle (Finding) by ID. */
 export async function fetchAngle(caseId: string, findingId: string): Promise<FindingItem> {
   return fetchApi<FindingItem>(`/api/cases/${caseId}/findings/${findingId}/`);
+}
+
+// ---------------------------------------------------------------------------
+// Thread Elements (Phase 4A/4B)
+// ---------------------------------------------------------------------------
+
+const elBase = (caseId: string, findingId: string) =>
+  `/api/cases/${caseId}/findings/${findingId}/elements`;
+
+/** Create a new thread element (ASSERTION, QUESTION, or NOTE) on a finding. */
+export async function createElement(
+  caseId: string,
+  findingId: string,
+  body: { element_type: ThreadElementTypeT; text: string },
+): Promise<ThreadElement> {
+  return fetchApi<ThreadElement>(`${elBase(caseId, findingId)}/`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Update a thread element's text, type, or handoff_ready flag. */
+export async function updateElement(
+  caseId: string,
+  findingId: string,
+  elementId: string,
+  body: Partial<{ text: string; element_type: ThreadElementTypeT; handoff_ready: boolean }>,
+): Promise<ThreadElement> {
+  return fetchApi<ThreadElement>(`${elBase(caseId, findingId)}/${elementId}/`, {
+    method: "PATCH",
+    body,
+  });
+}
+
+/** Delete a thread element permanently. Returns undefined (204). */
+export async function deleteElement(
+  caseId: string,
+  findingId: string,
+  elementId: string,
+): Promise<void> {
+  return fetchApi<void>(`${elBase(caseId, findingId)}/${elementId}/`, { method: "DELETE" });
+}
+
+/** Reorder thread elements by supplying the full ordered list of IDs. */
+export async function reorderElements(
+  caseId: string,
+  findingId: string,
+  orderedIds: string[],
+): Promise<ThreadElement[]> {
+  return fetchApi<ThreadElement[]>(`${elBase(caseId, findingId)}/reorder/`, {
+    method: "POST",
+    body: { ordered_ids: orderedIds },
+  });
+}
+
+/** Add a document citation to an ASSERTION element. Returns the updated element. */
+export async function addCitation(
+  caseId: string,
+  findingId: string,
+  elementId: string,
+  body: { document_id: string; page_reference: string; context_note: string },
+): Promise<ThreadElement> {
+  return fetchApi<ThreadElement>(`${elBase(caseId, findingId)}/${elementId}/citations/`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Remove a citation from an ASSERTION element. Returns undefined (204). */
+export async function removeCitation(
+  caseId: string,
+  findingId: string,
+  elementId: string,
+  citationId: string,
+): Promise<void> {
+  return fetchApi<void>(
+    `${elBase(caseId, findingId)}/${elementId}/citations/${citationId}/`,
+    { method: "DELETE" },
+  );
 }
 
 /** Re-run all signal rules against a case, creating new Angles for new hits. */

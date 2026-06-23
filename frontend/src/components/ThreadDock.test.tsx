@@ -12,7 +12,7 @@ function thread(over: Partial<FindingItem>): FindingItem {
     investigator_note: "", legal_refs: [], evidence_snapshot: {},
     trigger_doc_id: null, trigger_doc_filename: null, trigger_entity_id: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
-    entity_links: [], document_links: [],
+    entity_links: [], document_links: [], elements: [], gate_version: "ASSERTION_V1",
     ...over,
   };
 }

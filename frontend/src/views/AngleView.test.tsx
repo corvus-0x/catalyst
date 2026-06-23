@@ -78,6 +78,8 @@ function makeFinding(overrides: Partial<FindingItem> = {}): FindingItem {
     updated_at: "2024-01-01T00:00:00Z",
     entity_links: [],
     document_links: [],
+    elements: [],
+    gate_version: "ASSERTION_V1",
     ...overrides,
   };
 }
