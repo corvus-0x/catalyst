@@ -591,7 +591,7 @@ export default function AngleView({
   // Modal callbacks
   // ---------------------------------------------------------------------------
 
-  async function handleCited(_newDocIds: string[]) {
+  async function handleCited(_newDocIds?: string[]) {
     // Re-fetch the finding so document_links and narrative reflect the update
     try {
       const updated = await fetchAngle(caseId, angleId);
