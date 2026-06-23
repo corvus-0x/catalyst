@@ -14,6 +14,7 @@
 import { useState, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Check, FileText } from "lucide-react";
+import { toast } from "sonner";
 import { updateAngle, addCitation } from "../api";
 import type { FindingItem, DocumentItem, DocType } from "../types";
 
@@ -224,6 +225,12 @@ export default function CiteDocumentPicker({
       });
       onCited?.(Array.from(selectedIds));
       onClose();
+    } catch {
+      // A citation/save failure must not be silent: keep the picker open (do NOT
+      // call onCited/onClose) and tell the user so they can retry. In element mode
+      // a mid-loop failure may leave earlier docs cited; the parent refresh on the
+      // next successful attempt reconciles the displayed state.
+      toast.error("Couldn't save the citation. Check your connection and try again.");
     } finally {
       setSaving(false);
     }

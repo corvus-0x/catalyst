@@ -145,7 +145,11 @@ export default function ThreadBuilder({
   useEffect(() => {
     fetchNotes(caseId)
       .then((resp) => setNotes(resp.results.filter((n) => n.target_id === angleId)))
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // Don't swallow silently: an empty Observations panel must not be
+        // indistinguishable from a failed fetch.
+        console.error("[ThreadBuilder] fetchNotes failed", err);
+      });
   }, [caseId, angleId]);
 
   // ---------------------------------------------------------------------------
@@ -161,22 +165,33 @@ export default function ThreadBuilder({
     setNarrative(updated.narrative ?? "");
   }, [caseId, angleId]);
 
-  async function mutateElement(_id: string, op: () => Promise<unknown>) {
+  // A mutation has two phases: the write (op) and the read-back (refresh).
+  // A write failure means the change did NOT happen — show an error. A refresh
+  // failure means the change DID happen but the view is stale — say so, don't
+  // claim the mutation failed.
+  async function runMutation(op: () => Promise<unknown>, failMsg: string) {
     try {
       await op();
+    } catch {
+      toast.error(failMsg);
+      return;
+    }
+    try {
       await refresh();
     } catch {
-      toast.error("Could not update assertion.");
+      toast.error("Saved — reload the thread to see the latest state.");
     }
   }
 
+  async function mutateElement(op: () => Promise<unknown>) {
+    await runMutation(op, "Could not update assertion.");
+  }
+
   async function addElement(type: ThreadElementTypeT) {
-    try {
-      await createElement(caseId, angleId, { element_type: type, text: "" });
-      await refresh();
-    } catch {
-      toast.error("Could not add assertion.");
-    }
+    await runMutation(
+      () => createElement(caseId, angleId, { element_type: type, text: "" }),
+      "Could not add assertion.",
+    );
   }
 
   async function reorder(from: number, to: number) {
@@ -184,12 +199,10 @@ export default function ThreadBuilder({
     const ids = finding.elements.map((e) => e.id);
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
-    try {
-      await reorderElements(caseId, angleId, ids);
-      await refresh();
-    } catch {
-      toast.error("Could not reorder assertions.");
-    }
+    await runMutation(
+      () => reorderElements(caseId, angleId, ids),
+      "Could not reorder assertions.",
+    );
   }
 
   function openCitePickerFor(elementId: string) {
@@ -202,10 +215,13 @@ export default function ThreadBuilder({
   // ---------------------------------------------------------------------------
 
   async function handleCited() {
+    // The citation already succeeded (CiteDocumentPicker wrote it); this refresh
+    // only pulls the updated element. A refresh failure means stale view, not a
+    // lost citation — surface it as an error so the user knows to reload.
     try {
       await refresh();
     } catch {
-      toast("Document cited. Reload to see updated citations.");
+      toast.error("Citation saved — reload the thread to see it.");
     }
     setShowCitePicker(false);
     setActiveElementId(null);
@@ -480,24 +496,24 @@ export default function ThreadBuilder({
                   key={el.id}
                   element={el}
                   onEditText={(t) =>
-                    mutateElement(el.id, () => updateElement(caseId, angleId, el.id, { text: t }))
+                    mutateElement(() => updateElement(caseId, angleId, el.id, { text: t }))
                   }
                   onToggleHandoff={(next) =>
-                    mutateElement(el.id, () =>
+                    mutateElement(() =>
                       updateElement(caseId, angleId, el.id, { handoff_ready: next })
                     )
                   }
                   onChangeType={(ty) =>
-                    mutateElement(el.id, () =>
+                    mutateElement(() =>
                       updateElement(caseId, angleId, el.id, { element_type: ty })
                     )
                   }
                   onAddCitation={() => openCitePickerFor(el.id)}
                   onRemoveCitation={(cid) =>
-                    mutateElement(el.id, () => removeCitation(caseId, angleId, el.id, cid))
+                    mutateElement(() => removeCitation(caseId, angleId, el.id, cid))
                   }
                   onDelete={() =>
-                    mutateElement(el.id, () => deleteElement(caseId, angleId, el.id))
+                    mutateElement(() => deleteElement(caseId, angleId, el.id))
                   }
                   onMoveUp={() => i > 0 && reorder(i, i - 1)}
                   onMoveDown={() => i < finding.elements.length - 1 && reorder(i, i + 1)}

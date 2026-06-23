@@ -9,6 +9,8 @@ vi.mock("../api", () => ({
   addCitation: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
 afterEach(() => vi.restoreAllMocks());
 
 const docs = [{ id: "d1", filename: "deed.pdf", display_name: "deed.pdf", doc_type: "DEED" }] as any;
@@ -46,6 +48,30 @@ describe("CiteDocumentPicker element mode", () => {
     );
     expect(api.updateAngle).not.toHaveBeenCalled();
     expect(onCited).toHaveBeenCalled();
+  });
+
+  it("on a citation failure, surfaces an error and keeps the picker open (no onCited/onClose)", async () => {
+    const { toast } = await import("sonner");
+    (api.addCitation as any) = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const onCited = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <CiteDocumentPicker
+        caseId="c1"
+        findingId="f1"
+        documents={docs}
+        element={{ id: "el1" }}
+        onCited={onCited}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/deed\.pdf/i));
+    fireEvent.click(screen.getByRole("button", { name: /cite selected/i }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(onCited).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
