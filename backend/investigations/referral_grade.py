@@ -23,18 +23,25 @@ REFERRAL_WEIGHTS = [EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED]
 
 
 def referral_grade_qs(case):
-    """Queryset of referral-grade Angles for a case (a single SQL statement)."""
+    """Queryset of referral-grade Findings for a case (one correlated SQL SELECT).
+
+    Branches on ``gate_version``: LEGACY_NARRATIVE uses the base predicate alone
+    (grandfathered); ASSERTION_V1 additionally requires a cited assertion AND a
+    handoff_ready assertion. ``text__regex=r"\\S"`` (any non-whitespace char)
+    mirrors the instance-side ``bool(text.strip())`` exactly, so the queryset and
+    ``is_referral_grade`` stay in parity even on whitespace-only text.
+    """
     cited_assertion = ThreadElement.objects.filter(
         finding=OuterRef("pk"),
         element_type=ThreadElementType.ASSERTION,
         citations__isnull=False,
-        text__gt="",
+        text__regex=r"\S",
     )
     handoff_assertion = ThreadElement.objects.filter(
         finding=OuterRef("pk"),
         element_type=ThreadElementType.ASSERTION,
         handoff_ready=True,
-        text__gt="",
+        text__regex=r"\S",
     )
     base = (
         Finding.objects.filter(

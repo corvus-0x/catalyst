@@ -104,6 +104,27 @@ class ReferralGradeTests(TestCase):
             referral_grade_qs(self.case).values_list("id", flat=True),
         )
 
+    def test_v1_whitespace_only_text_assertion_excluded_by_both_predicates(self):
+        """Parity: whitespace-only text must be excluded by both predicates. The qs uses
+        text__regex=r"\\S" to mirror the instance-side bool(text.strip()) — text__gt="" alone
+        would wrongly admit "   " (it sorts greater than "")."""
+        f = self._confirmed()
+        doc = _document(self.case, suffix="w")
+        FindingDocument.objects.create(finding=f, document=doc)
+        el = ThreadElement.objects.create(
+            finding=f,
+            element_type=ThreadElementType.ASSERTION,
+            text="   ",
+            position=0,
+            handoff_ready=True,
+        )
+        ThreadElementCitation.objects.create(element=el, document=doc, context_note="p.1")
+        self.assertFalse(is_referral_grade(f))
+        self.assertNotIn(
+            f.id,
+            referral_grade_qs(self.case).values_list("id", flat=True),
+        )
+
     # --- LEGACY_NARRATIVE (grandfathered) ---
     def test_legacy_doc_only_is_grade(self):
         f = self._confirmed(gate_version=GateVersion.LEGACY_NARRATIVE)
@@ -131,7 +152,16 @@ class ReferralGradeTests(TestCase):
         _cited_handoff_assertion(g1, self.case, suffix="b")
         g2 = self._confirmed(gate_version=GateVersion.LEGACY_NARRATIVE)
         FindingDocument.objects.create(finding=g2, document=_document(self.case, suffix="c"))
-        cases += [g1, g2]
+        # Asymmetric case: handoff_ready assertion but NO citation. Passes the handoff leg,
+        # fails the cited leg — both predicates must agree it is NOT grade (guards against the
+        # two Exists() legs being accidentally ORed).
+        g3 = self._confirmed()
+        FindingDocument.objects.create(finding=g3, document=_document(self.case, suffix="d"))
+        ThreadElement.objects.create(
+            finding=g3, element_type=ThreadElementType.ASSERTION,
+            text="Accusation without a source.", position=0, handoff_ready=True,
+        )
+        cases += [g1, g2, g3]
         qs_ids = set(referral_grade_qs(self.case).values_list("id", flat=True))
         for f in cases:
             self.assertEqual(is_referral_grade(f), f.id in qs_ids, f"mismatch for {f.id}")
