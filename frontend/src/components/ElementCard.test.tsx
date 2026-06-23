@@ -38,4 +38,34 @@ describe("ElementCard", () => {
     rerender(<ElementCard element={{ ...el, text: "Insider payment of $500k" }} {...noopProps} />);
     expect(screen.getByDisplayValue("Insider payment of $500k")).toBeInTheDocument();
   });
+
+  it("fires onChangeType with the selected value", () => {
+    const onChangeType = vi.fn();
+    render(<ElementCard element={el} {...noopProps} onChangeType={onChangeType} />);
+    fireEvent.change(screen.getByLabelText(/element type/i), { target: { value: "QUESTION" } });
+    expect(onChangeType).toHaveBeenCalledWith("QUESTION");
+  });
+
+  it("fires onRemoveCitation with the citation id when the chip remove is clicked", () => {
+    const onRemoveCitation = vi.fn();
+    render(<ElementCard element={el} {...noopProps} onRemoveCitation={onRemoveCitation} />);
+    fireEvent.click(screen.getByRole("button", { name: /remove citation/i }));
+    expect(onRemoveCitation).toHaveBeenCalledWith("c1");
+  });
+
+  it("disables the handoff toggle when text is empty", () => {
+    const empty = { ...el, text: "", role: "analysis" as const, citations: [] };
+    render(<ElementCard element={empty} {...noopProps} />);
+    expect(screen.getByRole("button", { name: /handoff/i })).toBeDisabled();
+  });
+
+  it("hides citations + handoff toggle for a QUESTION (assertion-only sections)", () => {
+    const q = {
+      id: "q1", finding_id: "f1", element_type: "QUESTION" as const, role: "question" as const,
+      text: "Who signed it?", position: 1, handoff_ready: false, citations: [],
+    };
+    render(<ElementCard element={q} {...noopProps} />);
+    expect(screen.queryByRole("button", { name: /handoff/i })).toBeNull();
+    expect(screen.queryByText(/cite source/i)).toBeNull();
+  });
 });

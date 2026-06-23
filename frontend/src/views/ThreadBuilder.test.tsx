@@ -10,18 +10,30 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import ThreadBuilder from "./ThreadBuilder";
 import * as api from "../api";
 
 vi.mock("../api");
 
+const element = (over: Record<string, unknown>) => ({
+  finding_id: "f1", element_type: "ASSERTION", role: "analysis",
+  handoff_ready: false, citations: [], ...over,
+});
+
 const thread = {
   id: "f1", rule_id: "MANUAL", title: "Insider deal", status: "ACTIVE",
   evidence_weight: "DOCUMENTED", overreach_reviewed: false, gate_version: "ASSERTION_V1",
   document_links: [], entity_links: [], elements: [
-    { id: "e1", finding_id: "f1", element_type: "ASSERTION", role: "analysis",
-      text: "Payment to LLC", position: 0, handoff_ready: false, citations: [] },
+    element({ id: "e1", text: "Payment to LLC", position: 0 }),
+  ],
+} as any;
+
+const twoElementThread = {
+  ...thread,
+  elements: [
+    element({ id: "e1", text: "First", position: 0 }),
+    element({ id: "e2", text: "Second", position: 1 }),
   ],
 } as any;
 
@@ -49,5 +61,30 @@ describe("ThreadBuilder", () => {
     (api.fetchAngle as any) = vi.fn(async () => ({ ...thread, gate_version: "LEGACY_NARRATIVE" }));
     render(<ThreadBuilder {...props} />);
     await waitFor(() => expect(screen.getByText(/convert to structured assertions/i)).toBeInTheDocument());
+  });
+
+  it("reorder: moving the first element down calls reorderElements with transposed ids", async () => {
+    (api.fetchAngle as any) = vi.fn(async () => twoElementThread);
+    (api.reorderElements as any) = vi.fn(async () => twoElementThread.elements);
+    render(<ThreadBuilder {...props} />);
+    await waitFor(() => expect(screen.getByText("First")).toBeInTheDocument());
+    // The first element's "Move down" should swap e1 and e2.
+    fireEvent.click(screen.getAllByRole("button", { name: /move down/i })[0]);
+    await waitFor(() =>
+      expect(api.reorderElements).toHaveBeenCalledWith("c1", "f1", ["e2", "e1"]),
+    );
+  });
+
+  it("add: clicking + Assertion calls createElement with an empty ASSERTION", async () => {
+    (api.createElement as any) = vi.fn(async () => element({ id: "new", text: "" }));
+    render(<ThreadBuilder {...props} />);
+    await waitFor(() => expect(screen.getByText("Payment to LLC")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Assertion" }));
+    await waitFor(() =>
+      expect(api.createElement).toHaveBeenCalledWith("c1", "f1", {
+        element_type: "ASSERTION",
+        text: "",
+      }),
+    );
   });
 });

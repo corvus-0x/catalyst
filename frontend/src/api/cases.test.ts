@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createElement, reorderElements, addCitation } from "./cases";
+import {
+  createElement,
+  reorderElements,
+  addCitation,
+  updateElement,
+  deleteElement,
+  removeCitation,
+} from "./cases";
 
 describe("thread element clients", () => {
   beforeEach(() => {
@@ -36,5 +43,27 @@ describe("thread element clients", () => {
     const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("/api/cases/case1/findings/find1/elements/el1/citations/");
     expect(opts.method).toBe("POST");
+  });
+
+  it("updateElement PATCHes the element with the given body", async () => {
+    await updateElement("case1", "find1", "el1", { handoff_ready: true });
+    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/cases/case1/findings/find1/elements/el1/");
+    expect(opts.method).toBe("PATCH");
+    expect(JSON.parse(opts.body as string)).toEqual({ handoff_ready: true });
+  });
+
+  it("deleteElement DELETEs the element", async () => {
+    await deleteElement("case1", "find1", "el1");
+    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/cases/case1/findings/find1/elements/el1/");
+    expect(opts.method).toBe("DELETE");
+  });
+
+  it("removeCitation DELETEs the nested citation route", async () => {
+    await removeCitation("case1", "find1", "el1", "c9");
+    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/cases/case1/findings/find1/elements/el1/citations/c9/");
+    expect(opts.method).toBe("DELETE");
   });
 });
