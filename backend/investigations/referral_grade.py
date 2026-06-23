@@ -28,11 +28,13 @@ def referral_grade_qs(case):
         finding=OuterRef("pk"),
         element_type=ThreadElementType.ASSERTION,
         citations__isnull=False,
+        text__gt="",
     )
     handoff_assertion = ThreadElement.objects.filter(
         finding=OuterRef("pk"),
         element_type=ThreadElementType.ASSERTION,
         handoff_ready=True,
+        text__gt="",
     )
     base = (
         Finding.objects.filter(
