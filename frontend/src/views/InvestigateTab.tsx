@@ -41,7 +41,7 @@ import ThreadDock from "../components/ThreadDock";
 /* ─── Lazy panel + modal imports ─────────────────────────────────────────────── */
 const ProfilePanel = lazy(() => import("./ProfilePanel"));
 const ConnectionReviewPanel = lazy(() => import("./ConnectionReviewPanel"));
-const AngleView = lazy(() => import("./AngleView"));
+const AngleView = lazy(() => import("./ThreadBuilder"));
 const DocumentView = lazy(() => import("./DocumentView"));
 const ConnectKnotsModal = lazy(() => import("../components/ConnectKnotsModal"));
 const RelationshipSummaryPanel = lazy(() => import("../components/RelationshipSummaryPanel"));
