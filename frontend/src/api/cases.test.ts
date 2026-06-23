@@ -33,7 +33,8 @@ describe("thread element clients", () => {
 
   it("addCitation POSTs to the element's citations collection", async () => {
     await addCitation("case1", "find1", "el1", { document_id: "d1", page_reference: "p3", context_note: "" });
-    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toContain("/elements/el1/citations/");
+    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/cases/case1/findings/find1/elements/el1/citations/");
+    expect(opts.method).toBe("POST");
   });
 });
