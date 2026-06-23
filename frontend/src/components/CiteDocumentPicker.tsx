@@ -1,11 +1,13 @@
 /**
- * CiteDocumentPicker.tsx — Step 11 of the frontend build sequence.
+ * CiteDocumentPicker.tsx — pick documents from the case and cite them. Two modes:
  *
- * Lets an investigator pick documents from the case and add them to an angle's
- * citations. Selecting documents appends [Doc-N] references to the angle's
- * narrative via updateAngle (PATCH /api/cases/:id/findings/:id/).
+ *   - Element mode (Phase 4B, primary): given an `element` + `findingId`, writes a
+ *     ThreadElementCitation per selected document via addCitation. Does NOT touch the
+ *     narrative. Used by ThreadBuilder for per-assertion citations.
+ *   - Legacy narrative mode: given a `finding`, appends [Doc-N] references to the
+ *     Finding narrative via updateAngle (PATCH /api/cases/:id/findings/:id/).
  *
- * Vocabulary:
+ * Vocabulary (code-internal names, not user-visible):
  *   Angle  = Finding (the narrative unit of investigation)
  *   Knot   = Person or Organization node (not used here)
  *   Intake = extraction pipeline (not "AI")
@@ -280,7 +282,7 @@ export default function CiteDocumentPicker({
             {alreadyCited.length > 0 && (
               <section aria-label="Already cited">
                 <p className="panel-section__title">
-                  Already cited in this angle ({alreadyCited.length})
+                  Already cited in this thread ({alreadyCited.length})
                 </p>
                 <ul className="cite-list" role="list">
                   {alreadyCited.map((doc) => {

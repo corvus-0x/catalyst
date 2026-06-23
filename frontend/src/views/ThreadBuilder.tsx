@@ -1,19 +1,13 @@
 /**
  * ThreadBuilder.tsx — Full-width thread detail surface (Phase 4B)
  *
- * Replaces AngleView as the `frame.kind === "angle"` renderer.
- * Keeps AngleView's exact prop contract (AngleViewProps, AngleView.tsx:48).
+ * The `frame.kind === "angle"` renderer (the frame kind is an internal identifier,
+ * not user-visible — see CLAUDE.md). Replaced the former AngleView in Phase 4B.
  *
- * Changes from AngleView:
- *   - Body: narrative textarea + flat cited-doc list → ordered ElementCard list
+ *   - Body: ordered ElementCard list (ASSERTION_V1) with add controls
  *   - Header: readiness line (threadReadiness) + optional convert prompt
- *   - ASSERTION_V1 threads: assertion list with add controls
  *   - LEGACY_NARRATIVE threads: narrative shown read-only under the convert prompt
- *
- * Reused from AngleView:
- *   - Same prop contract (caseId, angleId, documents, onDocumentClick, onBack, onAngleTiedOff)
- *   - fetchAngle load effect + notes panel + delete flow + TieOffModal + AngleSplitModal
- *   - Status/weight/entity-pill header rows
+ *   - Wraps: fetchAngle load effect, notes panel, delete flow, TieOffModal, AngleSplitModal
  *
  * Vocabulary (CLAUDE.md):
  *   Thread = Finding  |  Subject = Person / Organization  |  Substantiated = CONFIRMED
@@ -54,10 +48,11 @@ import type {
 } from "../types";
 
 // ---------------------------------------------------------------------------
-// Props — identical to AngleViewProps (AngleView.tsx:48)
+// Props (the `angle` frame contract — internal identifiers are intentionally
+// unchanged; see CLAUDE.md frontend-vocabulary note).
 // ---------------------------------------------------------------------------
 
-interface AngleViewProps {
+interface ThreadBuilderProps {
   caseId: string;
   angleId: string;
   /** All documents for the case — used to resolve doc_type per cited link */
@@ -97,7 +92,7 @@ export default function ThreadBuilder({
   onDocumentClick: _onDocumentClick,
   onBack,
   onAngleTiedOff,
-}: AngleViewProps) {
+}: ThreadBuilderProps) {
   const [finding, setFinding] = useState<FindingItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

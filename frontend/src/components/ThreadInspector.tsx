@@ -3,16 +3,16 @@
  * (Finding) is selected from a RelationshipSummaryPanel thread_ref row.
  *
  * This is a BRIDGE component: it gives a quick summary of the thread and surfaces
- * the "Open full Thread" action, which takes the investigator to the full AngleView
- * (where substantiation, tie-off, and narrative editing live).
+ * the "Open full Thread" action, which takes the investigator to the full ThreadBuilder
+ * (where substantiation, tie-off, and assertion editing live).
  *
  * Actions:
- *   - Cite source  → DEFERRED (citing lives in the full AngleView via Open full Thread;
+ *   - Cite source  → DEFERRED (citing lives in the full ThreadBuilder via Open full Thread;
  *                    CiteDocumentPicker is not wired in this rail surface)
  *   - Set aside    → updateAngle(status:"DISMISSED"), un-gated (tie-off gate only
  *                    governs transitions INTO CONFIRMED, not OUT via DISMISSED);
  *                    re-fetches the thread so the status badge updates immediately.
- *   - Open full Thread → onOpenThread() — parent dispatches openThread → AngleView
+ *   - Open full Thread → onOpenThread() — parent dispatches openThread → ThreadBuilder
  *
  * Props: { caseId, threadId, onOpenThread, onClear, onChanged }
  */

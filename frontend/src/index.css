@@ -564,7 +564,7 @@ body {
 .quick-capture-item__text { flex: 1; font-size: 12px; color: var(--text-2); line-height: 1.4; }
 .quick-capture-item__actions { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
 
-/* ─── Angle view ─────────────────────────────────────────────────────────────── */
+/* ─── Thread Builder / angle-view base classes ───────────────────────────────── */
 
 .angle-view {
   display: flex;
@@ -1630,7 +1630,7 @@ body {
   100% { background-position: -200% 0; }
 }
 
-/* ─── AngleView supplemental classes ─────────────────────────────────────────── */
+/* ─── Thread Builder supplemental classes ────────────────────────────────────── */
 
 .angle-view__title {
   font-weight: 600;
