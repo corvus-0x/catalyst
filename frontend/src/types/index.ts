@@ -836,8 +836,13 @@ export type AutoEvidenceSnapshot = Record<string, unknown>;
 // Thread Elements (Phase 4A/4B)
 // ---------------------------------------------------------------------------
 
-export type ThreadElementTypeT = "ASSERTION" | "QUESTION" | "NOTE";
+export type ThreadElementType = "ASSERTION" | "QUESTION" | "NOTE";
 export type ElementRole = "fact" | "analysis" | "claim" | "question" | "note";
+/**
+ * Mirrors backend `GateVersion` TextChoices (`models.py`). The backend model
+ * default is `ASSERTION_V1`; `threadReadiness.ts` defaults an absent value to
+ * `ASSERTION_V1` to match. A backend default change must be reflected here.
+ */
 export type GateVersion = "LEGACY_NARRATIVE" | "ASSERTION_V1";
 
 export interface ThreadElementCitation {
@@ -848,17 +853,25 @@ export interface ThreadElementCitation {
   context_note: string;
 }
 
-export interface ThreadElement {
+interface ThreadElementBase {
   id: UUID;
   finding_id: UUID;
-  element_type: ThreadElementTypeT;
-  /** Derived server-side from evidence + handoff_ready; never sent on write. */
-  role: ElementRole;
   text: string;
   position: number;
   handoff_ready: boolean;
   citations: ThreadElementCitation[];
 }
+
+/**
+ * A thread assertion/question/note. `role` is derived server-side from evidence +
+ * `handoff_ready` and is `readonly` (never sent on write). The discriminated union
+ * enforces the `element_type` ↔ `role` correlation, so an incoherent state like
+ * `{ element_type: "QUESTION", role: "fact" }` is not representable.
+ */
+export type ThreadElement =
+  | (ThreadElementBase & { element_type: "ASSERTION"; readonly role: "fact" | "analysis" | "claim" })
+  | (ThreadElementBase & { element_type: "QUESTION"; readonly role: "question" })
+  | (ThreadElementBase & { element_type: "NOTE"; readonly role: "note" });
 
 export interface FindingItem {
   id: UUID;

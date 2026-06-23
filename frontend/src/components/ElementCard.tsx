@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ThreadElement, ElementRole, ThreadElementTypeT } from "../types";
+import type { ThreadElement, ElementRole, ThreadElementType } from "../types";
 
 // ---------------------------------------------------------------------------
 // Role label map — user-visible plain words (no model names)
@@ -23,7 +23,7 @@ interface Props {
   onToggleHandoff: (next: boolean) => void;
   onAddCitation: () => void;
   onRemoveCitation: (citationId: string) => void;
-  onChangeType: (type: ThreadElementTypeT) => void;
+  onChangeType: (type: ThreadElementType) => void;
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -68,7 +68,7 @@ export default function ElementCard({
         <select
           className="element-card__type-select"
           value={el.element_type}
-          onChange={(e) => onChangeType(e.target.value as ThreadElementTypeT)}
+          onChange={(e) => onChangeType(e.target.value as ThreadElementType)}
           aria-label="Element type"
         >
           <option value="ASSERTION">Assertion</option>

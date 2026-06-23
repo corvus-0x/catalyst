@@ -44,7 +44,7 @@ import type {
   DocumentItem,
   FindingItem,
   InvestigatorNote,
-  ThreadElementTypeT,
+  ThreadElementType,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@ export default function ThreadBuilder({
     await runMutation(op, "Could not update assertion.");
   }
 
-  async function addElement(type: ThreadElementTypeT) {
+  async function addElement(type: ThreadElementType) {
     await runMutation(
       () => createElement(caseId, angleId, { element_type: type, text: "" }),
       "Could not add assertion.",

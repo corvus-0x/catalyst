@@ -78,17 +78,11 @@ function docLabel(doc: DocumentItem): string {
 // Props
 // ---------------------------------------------------------------------------
 
-interface CiteDocumentPickerProps {
+/** Shared props for both modes. */
+interface CiteDocumentPickerCommon {
   /** Controls the dialog open state. Defaults to true when omitted (element mode). */
   open?: boolean;
   caseId: string;
-  /**
-   * Legacy narrative mode: pass the full FindingItem.
-   * Element mode: omit finding and pass findingId instead.
-   */
-  finding?: FindingItem;
-  /** Required when finding is omitted (element mode). */
-  findingId?: string;
   /** All documents belonging to this case. */
   documents: DocumentItem[];
   onClose: () => void;
@@ -97,12 +91,28 @@ interface CiteDocumentPickerProps {
    * Element mode: called with no arguments after all citations are written.
    */
   onCited?: (newDocIds?: string[]) => void;
-  /**
-   * Element mode only. When provided, confirming a selection writes
-   * ThreadElementCitations via addCitation — the legacy narrative path is skipped.
-   */
-  element?: { id: string };
 }
+
+/** Legacy narrative mode: append [Doc-N] refs to the Finding narrative. */
+interface CiteDocumentPickerLegacyProps extends CiteDocumentPickerCommon {
+  finding: FindingItem;
+  findingId?: never;
+  element?: never;
+}
+
+/** Element mode: write a ThreadElementCitation per selected doc (Phase 4B). */
+interface CiteDocumentPickerElementProps extends CiteDocumentPickerCommon {
+  finding?: never;
+  findingId: string;
+  element: { id: string };
+}
+
+/**
+ * Discriminated union: a caller is in EITHER legacy mode (`finding`) OR element mode
+ * (`findingId` + `element`), never both/neither. This makes "element mode without a
+ * findingId" unrepresentable — no runtime guard needed.
+ */
+type CiteDocumentPickerProps = CiteDocumentPickerLegacyProps | CiteDocumentPickerElementProps;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -194,15 +204,8 @@ export default function CiteDocumentPicker({
       const selectedDocs = available.filter((doc) => selectedIds.has(doc.id));
 
       if (element) {
-        // Element mode requires a finding id (prop or from `finding`). Guard against a
-        // caller that enters element mode without one — otherwise addCitation would fire
-        // with an empty finding id and fail as an opaque network error.
-        if (!findingId) {
-          console.error("CiteDocumentPicker: findingId is required in element mode");
-          setSaving(false);
-          return;
-        }
         // Element mode: write ThreadElementCitations — do NOT touch the narrative.
+        // The props union guarantees findingId is present here, so no runtime guard.
         for (const doc of selectedDocs) {
           await addCitation(caseId, findingId, element.id, {
             document_id: doc.id,

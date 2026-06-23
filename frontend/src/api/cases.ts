@@ -10,7 +10,7 @@
  */
 
 import { fetchApi } from "./base";
-import type { ThreadElement, ThreadElementTypeT } from "../types";
+import type { ThreadElement, ThreadElementType } from "../types";
 import type {
   CaseListResponse,
   CaseListItem,
@@ -292,7 +292,7 @@ const elBase = (caseId: string, findingId: string) =>
 export async function createElement(
   caseId: string,
   findingId: string,
-  body: { element_type: ThreadElementTypeT; text: string },
+  body: { element_type: ThreadElementType; text: string },
 ): Promise<ThreadElement> {
   return fetchApi<ThreadElement>(`${elBase(caseId, findingId)}/`, {
     method: "POST",
@@ -305,7 +305,7 @@ export async function updateElement(
   caseId: string,
   findingId: string,
   elementId: string,
-  body: Partial<{ text: string; element_type: ThreadElementTypeT; handoff_ready: boolean }>,
+  body: Partial<{ text: string; element_type: ThreadElementType; handoff_ready: boolean }>,
 ): Promise<ThreadElement> {
   return fetchApi<ThreadElement>(`${elBase(caseId, findingId)}/${elementId}/`, {
     method: "PATCH",
