@@ -34,9 +34,10 @@ export function threadReadiness(
   if (f.status !== "CONFIRMED") gaps.push("Not yet substantiated");
 
   // ASSERTION_V1-only gaps — mirrors referral_grade.py is_referral_grade() ASSERTION_V1 branch.
-  // gate_version defaults to ASSERTION_V1 (the backend default for new threads); when absent
-  // treat as LEGACY_NARRATIVE so callers that pre-date Phase 4B are not broken.
-  if ((f.gate_version ?? "LEGACY_NARRATIVE") === "ASSERTION_V1") {
+  // Absent gate_version defaults to ASSERTION_V1 to match the backend model default (the strict
+  // path): never show a thread as "ready" when the server gate would block it. Real pre-4A threads
+  // carry LEGACY_NARRATIVE explicitly from the backfill migration, so they take the lenient branch.
+  if ((f.gate_version ?? "ASSERTION_V1") === "ASSERTION_V1") {
     const elements = f.elements ?? [];
     const hasCited = elements.some(
       (e) => e.element_type === "ASSERTION" && e.text.trim() !== "" && e.citations.length > 0,

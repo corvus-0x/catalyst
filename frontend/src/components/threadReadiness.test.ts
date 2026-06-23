@@ -1,20 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { threadReadiness } from "./threadReadiness";
 
+// Base-gap fixture: LEGACY_NARRATIVE so the base-gap path is tested in isolation
+// (no element checks). Mirrors a grandfathered, doc-only-can-be-ready thread.
 const base = {
   status: "CONFIRMED" as const,
   evidence_weight: "DOCUMENTED" as const,
   overreach_reviewed: true,
   document_links: [{ document_id: "d1", document_filename: "x", page_reference: "", context_note: "" }],
+  gate_version: "LEGACY_NARRATIVE" as const,
 };
 
-// gate_version-aware helpers (Phase 4B)
-const baseV1 = {
-  status: "CONFIRMED" as const,
-  evidence_weight: "DOCUMENTED" as const,
-  overreach_reviewed: true,
-  document_links: [{}] as any,
-};
+// gate_version-aware helpers (Phase 4B). Inherits base's typed document_links; each
+// ASSERTION_V1 test overrides gate_version + elements explicitly.
+const baseV1 = { ...base };
 const assertion = (over: Partial<any> = {}) => ({
   element_type: "ASSERTION", text: "x", handoff_ready: false, citations: [], ...over,
 });
@@ -117,5 +116,16 @@ describe("threadReadiness", () => {
     } as any);
     expect(r.ready).toBe(false);
     expect(r.gaps).toContain("Not yet substantiated");
+  });
+
+  it("absent gate_version defaults to the strict ASSERTION_V1 path (never falsely ready)", () => {
+    // Omit gate_version + elements entirely: must take the strict branch and report
+    // the assertion gaps, matching the backend ASSERTION_V1 model default.
+    const r = threadReadiness({
+      status: "CONFIRMED", evidence_weight: "DOCUMENTED", overreach_reviewed: true,
+      document_links: [{ document_id: "d1", document_filename: "x", page_reference: "", context_note: "" }],
+    });
+    expect(r.ready).toBe(false);
+    expect(r.gaps).toEqual(["No cited assertion", "No handoff-ready claim"]);
   });
 });
