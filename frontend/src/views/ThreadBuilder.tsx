@@ -21,7 +21,7 @@
  *   Intake = extraction pipeline (never show model name)
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 const CiteDocumentPicker = lazy(() => import("../components/CiteDocumentPicker"));
 const TieOffModal = lazy(() => import("../components/TieOffModal"));
@@ -104,7 +104,6 @@ export default function ThreadBuilder({
 
   // Legacy narrative local state (read-only display for LEGACY_NARRATIVE threads)
   const [narrative, setNarrative] = useState("");
-  const [savedFlash] = useState(false);
 
   // Modal visibility
   const [showCitePicker, setShowCitePicker] = useState(false);
@@ -124,10 +123,6 @@ export default function ThreadBuilder({
   const [showCapture, setShowCapture] = useState(false);
   const [savingCapture, setSavingCapture] = useState(false);
 
-  // Narrative save state (for LEGACY_NARRATIVE threads only)
-  const [narrativeSaveFailed] = useState(false);
-  const savedNarrativeRef = useRef("");
-
   // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
@@ -140,7 +135,6 @@ export default function ThreadBuilder({
       .then((data) => {
         setFinding(data);
         setNarrative(data.narrative ?? "");
-        savedNarrativeRef.current = data.narrative ?? "";
       })
       .catch((err: unknown) => {
         setLoadError(err instanceof Error ? err.message : "Failed to load thread");
@@ -165,7 +159,6 @@ export default function ThreadBuilder({
     const updated = await fetchAngle(caseId, angleId);
     setFinding(updated);
     setNarrative(updated.narrative ?? "");
-    savedNarrativeRef.current = updated.narrative ?? "";
   }, [caseId, angleId]);
 
   async function mutateElement(_id: string, op: () => Promise<unknown>) {
@@ -263,7 +256,6 @@ export default function ThreadBuilder({
   function handleTiedOff(updated: FindingItem) {
     setFinding(updated);
     setNarrative(updated.narrative ?? "");
-    savedNarrativeRef.current = updated.narrative ?? "";
     onAngleTiedOff();
   }
 
@@ -347,9 +339,6 @@ export default function ThreadBuilder({
             {WEIGHT_LABEL[finding.evidence_weight] ?? finding.evidence_weight}
           </span>
 
-          {savedFlash && (
-            <span className="angle-view__saved-flash">✓ Saved</span>
-          )}
         </div>
 
         {/* Entity pills row */}
@@ -375,16 +364,11 @@ export default function ThreadBuilder({
           {readiness.ready
             ? <span className="thread-builder__readiness--ok">Referral-grade ✓</span>
             : (
-              <>
-                <span className="thread-builder__readiness--gap">Referral-grade: {readiness.gaps[0]}</span>
-                {readiness.gaps.length > 1 && (
-                  <ul className="thread-builder__readiness-gaps" aria-label="Referral-grade gaps">
-                    {readiness.gaps.map((g) => (
-                      <li key={g}>{g}</li>
-                    ))}
-                  </ul>
-                )}
-              </>
+              <ul className="thread-builder__readiness-gaps" aria-label="Referral-grade gaps">
+                {readiness.gaps.map((g) => (
+                  <li key={g} className="thread-builder__readiness--gap">{g}</li>
+                ))}
+              </ul>
             )
           }
         </div>
@@ -477,11 +461,6 @@ export default function ThreadBuilder({
             <div className="panel-section">
               <p className="panel-section__title">NARRATIVE (READ-ONLY)</p>
               <div className="thread-builder__legacy-narrative">{narrative}</div>
-              {narrativeSaveFailed && (
-                <p className="angle-narrative-error" role="alert">
-                  Couldn't save the narrative — your changes are unsaved.
-                </p>
-              )}
             </div>
           )}
 
@@ -627,20 +606,6 @@ export default function ThreadBuilder({
             documents={documents}
             element={{ id: activeElementId }}
             onClose={() => { setShowCitePicker(false); setActiveElementId(null); }}
-            onCited={handleCited}
-          />
-        </Suspense>
-      )}
-
-      {/* Legacy narrative CiteDocumentPicker — for LEGACY_NARRATIVE threads */}
-      {finding && showCitePicker && !activeElementId && (
-        <Suspense fallback={null}>
-          <CiteDocumentPicker
-            open={showCitePicker}
-            caseId={caseId}
-            finding={finding}
-            documents={documents}
-            onClose={() => setShowCitePicker(false)}
             onCited={handleCited}
           />
         </Suspense>
