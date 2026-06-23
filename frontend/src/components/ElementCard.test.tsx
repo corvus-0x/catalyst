@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ElementCard from "./ElementCard";
 
+const noopProps = {
+  onEditText: vi.fn(), onToggleHandoff: vi.fn(), onAddCitation: vi.fn(),
+  onRemoveCitation: vi.fn(), onChangeType: vi.fn(), onDelete: vi.fn(),
+  onMoveUp: vi.fn(), onMoveDown: vi.fn(),
+};
+
 const el = {
   id: "e1", finding_id: "f1", element_type: "ASSERTION" as const, role: "fact" as const,
   text: "Insider payment", position: 0, handoff_ready: false,
@@ -23,5 +29,13 @@ describe("ElementCard", () => {
       onDelete={vi.fn()} onMoveUp={vi.fn()} onMoveDown={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /handoff/i }));
     expect(onToggle).toHaveBeenCalledWith(true);
+  });
+
+  it("re-syncs the textarea when the element.text prop changes (reorder/refresh)", () => {
+    const { rerender } = render(<ElementCard element={el} {...noopProps} />);
+    expect(screen.getByDisplayValue("Insider payment")).toBeInTheDocument();
+    // Parent replaces the element prop (same id) with updated text — e.g. after a refresh.
+    rerender(<ElementCard element={{ ...el, text: "Insider payment of $500k" }} {...noopProps} />);
+    expect(screen.getByDisplayValue("Insider payment of $500k")).toBeInTheDocument();
   });
 });

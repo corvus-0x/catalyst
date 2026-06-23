@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThreadElement, ElementRole, ThreadElementTypeT } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,13 @@ export default function ElementCard({
   onMoveDown,
 }: Props) {
   const [text, setText] = useState(el.text);
+  // Re-sync local edit state when the parent replaces the element prop (ThreadBuilder
+  // refreshes the whole thread after each mutation, reusing the same key={el.id} instance).
+  // Without this, the textarea would show stale text and blur could re-fire onEditText
+  // with the previous value after a reorder/refresh.
+  useEffect(() => {
+    setText(el.text);
+  }, [el.text]);
   const isAssertion = el.element_type === "ASSERTION";
 
   return (
