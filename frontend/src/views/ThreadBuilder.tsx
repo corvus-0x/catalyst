@@ -97,9 +97,6 @@ export default function ThreadBuilder({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Legacy narrative local state (read-only display for LEGACY_NARRATIVE threads)
-  const [narrative, setNarrative] = useState("");
-
   // Modal visibility
   const [showCitePicker, setShowCitePicker] = useState(false);
   const [showTieOff, setShowTieOff] = useState(false);
@@ -129,7 +126,6 @@ export default function ThreadBuilder({
     fetchAngle(caseId, angleId)
       .then((data) => {
         setFinding(data);
-        setNarrative(data.narrative ?? "");
       })
       .catch((err: unknown) => {
         setLoadError(err instanceof Error ? err.message : "Failed to load thread");
@@ -157,7 +153,6 @@ export default function ThreadBuilder({
   const refresh = useCallback(async () => {
     const updated = await fetchAngle(caseId, angleId);
     setFinding(updated);
-    setNarrative(updated.narrative ?? "");
   }, [caseId, angleId]);
 
   // A mutation has two phases: the write (op) and the read-back (refresh).
@@ -266,7 +261,6 @@ export default function ThreadBuilder({
 
   function handleTiedOff(updated: FindingItem) {
     setFinding(updated);
-    setNarrative(updated.narrative ?? "");
     onAngleTiedOff();
   }
 
@@ -468,10 +462,10 @@ export default function ThreadBuilder({
           )}
 
           {/* LEGACY: narrative read-only display */}
-          {isLegacy && narrative && (
+          {isLegacy && finding.narrative && (
             <div className="panel-section">
               <p className="panel-section__title">NARRATIVE (READ-ONLY)</p>
-              <div className="thread-builder__legacy-narrative">{narrative}</div>
+              <div className="thread-builder__legacy-narrative">{finding.narrative}</div>
             </div>
           )}
 
@@ -608,7 +602,7 @@ export default function ThreadBuilder({
       {/* ── Modals ── */}
 
       {/* CiteDocumentPicker — element mode (passes findingId + element) */}
-      {finding && showCitePicker && activeElementId && (
+      {showCitePicker && activeElementId && (
         <Suspense fallback={null}>
           <CiteDocumentPicker
             open={showCitePicker}
@@ -622,7 +616,7 @@ export default function ThreadBuilder({
         </Suspense>
       )}
 
-      {finding && showTieOff && (
+      {showTieOff && (
         <Suspense fallback={null}>
           <TieOffModal
             open={showTieOff}
@@ -634,7 +628,7 @@ export default function ThreadBuilder({
         </Suspense>
       )}
 
-      {finding && showSplit && (
+      {showSplit && (
         <Suspense fallback={null}>
           <AngleSplitModal
             open={showSplit}
