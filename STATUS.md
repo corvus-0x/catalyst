@@ -891,7 +891,27 @@ In rough priority order. Subject to change as the rebuild progresses.
 4. ~~**Inline notes on entities**~~ — **DONE.** Sticky notes on documents, entities, and findings.
 5. ~~**Frontend consuming async job 202 + poll**~~ — **DONE (Session 36).** Research tab consumes the async contract via `useAsyncJob`; reattaches to live jobs on mount.
 6. **Saved searches** — recurring queries on the entity browser.
-7. ~~**Document annotation**~~ — **Partially addressed.** Document workspace with sticky notes replaces the need for in-app PDF annotation for now.
+7. **Evaluate OpenDataLoader PDF for the scanned-document intake path (spike, not committed).**
+   [opendataloader-project/opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf)
+   (Apache 2.0, PDF Association + veraPDF backed). **Target documents: scanned county-recorder deeds
+   and surveys** — the messy, image-only, skewed, rubber-stamped PDFs Tesseract struggles with. The
+   990s are explicitly NOT the target (they arrive as clean XML from IRS TEOS — already solved).
+   *What it buys us:* layout-aware OCR (hybrid mode = local Docling + SmolVLM, no cloud/API key, runs
+   100% on-prem — matters for sensitive referral material) and **per-element bounding boxes**, which
+   would upgrade citations from "page 2" to "the legal-description block on page 2."
+   *Integration shape:* it's a **Java CLI** wrapped by a thin Python package (`pip install
+   opendataloader-pdf`, needs **JDK 11+ in the Dockerfile**); each `convert()` spawns a JVM and writes
+   JSON files to an output dir — slow per call, but fine inside a Django-Q2 job (extraction already
+   lives in `jobs.py`, off the request path). **Monolith stays a monolith** — no microservice needed;
+   the worker is already the concurrency boundary.
+   *Decision posture:* additive, not a PyPDF2/Tesseract rip-out — route only the hard scanned docs
+   through it, keep the simple path for text-layer PDFs. Benchmarks ("#1 / 0.907") are **self-reported**
+   — verify on our *actual* worst-case deeds before committing. **Next action (do on desktop, needs
+   real case PDFs):** branch → add JDK + the pip dep → write a throwaway script diffing `extraction.py`
+   output vs. OpenDataLoader on 3–4 of the ugliest scanned deeds/surveys → keep the branch and wire it
+   into `jobs.py` if the bounding boxes/tables genuinely beat Tesseract, else delete the branch. Credit
+   them in the README under Apache 2.0 (preserve LICENSE/NOTICE) if adopted.
+8. ~~**Document annotation**~~ — **Partially addressed.** Document workspace with sticky notes replaces the need for in-app PDF annotation for now.
 8. ~~**ODNR parcel API recovery**~~ — **RECOVERED (2026-06-04).** ODNR ArcGIS is returning parcels locally; `aud_link` now populated for Beacon/Schneider-hosted county portals (added `.schneidercorp.com` to SEC-037 allowlist). Railway status unverified — test after next deploy.
 
 ---
