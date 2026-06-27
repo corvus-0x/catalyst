@@ -70,8 +70,8 @@ interface ThreadBuilderProps {
 const STATUS_LABEL: Record<string, string> = {
   NEW: "Untriaged",
   NEEDS_EVIDENCE: "Active",
-  CONFIRMED: "Confirmed",
-  DISMISSED: "Exhausted",
+  CONFIRMED: "Substantiated",
+  DISMISSED: "Set Aside",
 };
 
 const WEIGHT_LABEL: Record<string, string> = {
@@ -111,6 +111,7 @@ export default function ThreadBuilder({
 
   // Quick captures (observations on this thread)
   const [notes, setNotes] = useState<InvestigatorNote[]>([]);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [captureText, setCaptureText] = useState("");
   const [showCapture, setShowCapture] = useState(false);
   const [savingCapture, setSavingCapture] = useState(false);
@@ -134,12 +135,13 @@ export default function ThreadBuilder({
   }, [caseId, angleId]);
 
   useEffect(() => {
+    setNotesError(null);
     fetchNotes(caseId)
       .then((resp) => setNotes(resp.results.filter((n) => n.target_id === angleId)))
       .catch((err: unknown) => {
-        // Don't swallow silently: an empty Observations panel must not be
-        // indistinguishable from a failed fetch.
         console.error("[ThreadBuilder] fetchNotes failed", err);
+        setNotesError("Failed to load observations.");
+        toast.error("Failed to load observations.");
       });
   }, [caseId, angleId]);
 
@@ -541,6 +543,7 @@ export default function ThreadBuilder({
           {/* Observations (quick captures on this thread) */}
           <div className="panel-section">
             <p className="panel-section__title">OBSERVATIONS</p>
+            {notesError && <p className="thread-builder__notes-error">{notesError}</p>}
             {notes.map((n) => (
               <div key={n.id} className="quick-capture-item">
                 <div className="quick-capture-item__row">

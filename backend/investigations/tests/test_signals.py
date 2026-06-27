@@ -1712,8 +1712,8 @@ class FindingUpdateSerializerTests(TestCase):
         )
 
     def test_confirm_finding(self):
-        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
-        # non-empty narrative, overreach_reviewed=True, AND (ASSERTION_V1) ≥1 cited assertion.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         document = self._document()
         FindingDocument.objects.create(finding=self.finding, document=document)
         _cited_assertion(self.finding, self.case)
@@ -1774,8 +1774,8 @@ class FindingUpdateSerializerTests(TestCase):
         self.assertIn("add_document_ids", s.errors)
 
     def test_escalate_finding(self):
-        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
-        # non-empty narrative, overreach_reviewed=True, AND (ASSERTION_V1) ≥1 cited assertion.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         document = self._document(suffix="e")
         FindingDocument.objects.create(finding=self.finding, document=document)
         _cited_assertion(self.finding, self.case, suffix="esc")
@@ -2169,8 +2169,8 @@ class FindingDetailApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_patch_returns_updated_finding(self):
-        # Gate requires: ≥1 cited document, DOCUMENTED/TRACED weight, narrative,
-        # overreach_reviewed=True, AND (ASSERTION_V1) ≥1 cited assertion.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         doc = _make_document(self.case, filename="return-evidence.pdf")
         FindingDocument.objects.create(finding=self.finding, document=doc)
         _cited_assertion(self.finding, self.case, suffix="ret")
