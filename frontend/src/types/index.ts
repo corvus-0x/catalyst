@@ -832,6 +832,47 @@ export type AutoEvidenceSnapshot = Record<string, unknown>;
  *   source === "AI"     → AiEvidenceSnapshot (doc_refs, doc_ref_resolution, rationale, suggested_action)
  *   source === "MANUAL" → usually empty object {}
  */
+// ---------------------------------------------------------------------------
+// Thread Elements (Phase 4A/4B)
+// ---------------------------------------------------------------------------
+
+export type ThreadElementType = "ASSERTION" | "QUESTION" | "NOTE";
+export type ElementRole = "fact" | "analysis" | "claim" | "question" | "note";
+/**
+ * Mirrors backend `GateVersion` TextChoices (`models.py`). The backend model
+ * default is `ASSERTION_V1`; `threadReadiness.ts` defaults an absent value to
+ * `ASSERTION_V1` to match. A backend default change must be reflected here.
+ */
+export type GateVersion = "LEGACY_NARRATIVE" | "ASSERTION_V1";
+
+export interface ThreadElementCitation {
+  id: UUID;
+  document_id: UUID;
+  document_filename: string;
+  page_reference: string;
+  context_note: string;
+}
+
+interface ThreadElementBase {
+  id: UUID;
+  finding_id: UUID;
+  text: string;
+  position: number;
+  handoff_ready: boolean;
+  citations: ThreadElementCitation[];
+}
+
+/**
+ * A thread assertion/question/note. `role` is derived server-side from evidence +
+ * `handoff_ready` and is `readonly` (never sent on write). The discriminated union
+ * enforces the `element_type` ↔ `role` correlation, so an incoherent state like
+ * `{ element_type: "QUESTION", role: "fact" }` is not representable.
+ */
+export type ThreadElement =
+  | (ThreadElementBase & { element_type: "ASSERTION"; readonly role: "fact" | "analysis" | "claim" })
+  | (ThreadElementBase & { element_type: "QUESTION"; readonly role: "question" })
+  | (ThreadElementBase & { element_type: "NOTE"; readonly role: "note" });
+
 export interface FindingItem {
   id: UUID;
   /**
@@ -879,6 +920,10 @@ export interface FindingItem {
   entity_links: FindingEntityLink[];
   /** Source documents cited by this finding. May be empty []. */
   document_links: FindingDocumentLink[];
+  /** Ordered structured assertions (Phase 4). Empty [] for un-built threads. */
+  elements: ThreadElement[];
+  /** Which referral gate applies. New threads default ASSERTION_V1. */
+  gate_version: GateVersion;
 }
 
 /**

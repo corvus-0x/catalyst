@@ -1,8 +1,10 @@
 """Thread-element predicates + document_links sync helpers.
 
-NOTE: the predicates here are built in 4A-additive but are NOT wired into any
-gate (FindingUpdateSerializer / referral_grade.py) until 4B. Single definition
-of the softened gate ingredients.
+These predicates are the single definition of the softened gate ingredients.
+As of Phase 4B they are wired into both gates: ``finding_has_cited_assertion``
+gates the Tier-1 tie-off (``FindingUpdateSerializer``) and, together with
+``finding_has_handoff_ready_assertion``, the Tier-2 referral-grade predicate
+(``referral_grade.py``).
 """
 
 from .models import ThreadElementType

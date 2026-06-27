@@ -27,6 +27,9 @@ from investigations.models import (
     Property,
     PropertyTransaction,
     Relationship,
+    ThreadElement,
+    ThreadElementCitation,
+    ThreadElementType,
 )
 
 
@@ -360,10 +363,20 @@ class ThreadAttachmentTests(TestCase):
             evidence_weight=EvidenceWeight.DOCUMENTED,
             overreach_reviewed=True,
         )
+        doc_q = _doc(self.case, "q")
         FindingDocument.objects.create(
             finding=f,
-            document=_doc(self.case, "q"),
-        )  # makes is_referral_grade True -> handoff_ready
+            document=doc_q,
+        )
+        # ASSERTION_V1 Tier-2: cited+handoff_ready assertion makes is_referral_grade True
+        el = ThreadElement.objects.create(
+            finding=f,
+            element_type=ThreadElementType.ASSERTION,
+            text="Insider payment of $500k.",
+            position=0,
+            handoff_ready=True,
+        )
+        ThreadElementCitation.objects.create(element=el, document=doc_q)
         self._link(f, self.insider, "person")
         self._link(f, self.org, "organization")
         result = build_case_map(self.case)

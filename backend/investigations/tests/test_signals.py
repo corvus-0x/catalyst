@@ -38,6 +38,9 @@ from ..models import (
     Property,
     ScheduleLTransaction,
     Severity,
+    ThreadElement,
+    ThreadElementCitation,
+    ThreadElementType,
 )
 from ..serializers import FindingUpdateSerializer, serialize_finding
 from ..signal_rules import (
@@ -142,6 +145,34 @@ def _make_finding(case, rule_id="SR-003", severity=Severity.CRITICAL, status=Fin
         status=status,
         source=FindingSource.AUTO,
     )
+
+
+def _cited_assertion(finding, case, suffix="sig"):
+    """Add one ASSERTION with a ThreadElementCitation + FindingDocument compat row.
+
+    The ASSERTION_V1 tie-off gate requires ≥1 cited assertion.  The bare
+    ThreadElementCitation.create does NOT sync document_links, so we also
+    write the FindingDocument row that the gate's post_docs check reads.
+    """
+    import hashlib
+
+    sha = hashlib.sha256(f"cited-{suffix}".encode()).hexdigest()
+    doc = Document.objects.create(
+        case=case,
+        filename=f"cited-{suffix}.pdf",
+        file_path=f"cases/t/cited-{suffix}.pdf",
+        sha256_hash=sha,
+        file_size=10,
+    )
+    el = ThreadElement.objects.create(
+        finding=finding,
+        element_type=ThreadElementType.ASSERTION,
+        text="Documented assertion for tie-off gate.",
+        position=0,
+    )
+    ThreadElementCitation.objects.create(element=el, document=doc, context_note="p.1")
+    FindingDocument.objects.get_or_create(finding=finding, document=doc)
+    return el
 
 
 # ---------------------------------------------------------------------------
@@ -1681,10 +1712,11 @@ class FindingUpdateSerializerTests(TestCase):
         )
 
     def test_confirm_finding(self):
-        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
-        # non-empty narrative, and overreach_reviewed=True.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         document = self._document()
         FindingDocument.objects.create(finding=self.finding, document=document)
+        _cited_assertion(self.finding, self.case)
         s = FindingUpdateSerializer(
             data={
                 "status": "CONFIRMED",
@@ -1742,10 +1774,11 @@ class FindingUpdateSerializerTests(TestCase):
         self.assertIn("add_document_ids", s.errors)
 
     def test_escalate_finding(self):
-        # Gate requires: ≥1 cited document, evidence_weight ∈ {DOCUMENTED,TRACED},
-        # non-empty narrative, and overreach_reviewed=True.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         document = self._document(suffix="e")
         FindingDocument.objects.create(finding=self.finding, document=document)
+        _cited_assertion(self.finding, self.case, suffix="esc")
         s = FindingUpdateSerializer(
             data={
                 "status": "CONFIRMED",
@@ -1830,7 +1863,8 @@ class FindingUpdateSerializerTests(TestCase):
         )
         document = _make_document(self.case, filename="legacy-evidence.pdf")
         s = FindingUpdateSerializer(
-            data={"add_document_ids": [str(document.id)]}, instance=finding,
+            data={"add_document_ids": [str(document.id)]},
+            instance=finding,
         )
         self.assertTrue(s.is_valid(), s.errors)
         self.assertEqual(s.validated_data["status"], "DRAFT")
@@ -2063,18 +2097,20 @@ class FindingDetailApiTests(TestCase):
 
     def test_patch_confirms_finding(self):
         # Gate requires: ≥1 cited document, DOCUMENTED/TRACED weight, narrative,
-        # and overreach_reviewed=True. Pre-cite a document, then supply the rest
-        # in the same PATCH so the post-update state satisfies all conditions.
+        # overreach_reviewed=True, AND (ASSERTION_V1) ≥1 cited assertion.
         doc = _make_document(self.case, filename="confirm-evidence.pdf")
         FindingDocument.objects.create(finding=self.finding, document=doc)
+        _cited_assertion(self.finding, self.case, suffix="conf")
         response = self.client.patch(
             self.url,
-            data=json.dumps({
-                "status": "CONFIRMED",
-                "evidence_weight": "DOCUMENTED",
-                "narrative": "Confirmed: zero-consideration transfer documented by deed.",
-                "overreach_reviewed": True,
-            }),
+            data=json.dumps(
+                {
+                    "status": "CONFIRMED",
+                    "evidence_weight": "DOCUMENTED",
+                    "narrative": "Confirmed: zero-consideration transfer documented by deed.",
+                    "overreach_reviewed": True,
+                }
+            ),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -2133,19 +2169,21 @@ class FindingDetailApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_patch_returns_updated_finding(self):
-        # Gate requires: ≥1 cited document, DOCUMENTED/TRACED weight, narrative,
-        # and overreach_reviewed=True. Pre-cite a document, then satisfy the gate
-        # in the PATCH so the response body contains the updated finding.
+        # ASSERTION_V1 gate requires: ≥1 cited document, evidence_weight ∈
+        # {DOCUMENTED,TRACED}, overreach_reviewed=True, and ≥1 cited assertion.
         doc = _make_document(self.case, filename="return-evidence.pdf")
         FindingDocument.objects.create(finding=self.finding, document=doc)
+        _cited_assertion(self.finding, self.case, suffix="ret")
         response = self.client.patch(
             self.url,
-            data=json.dumps({
-                "status": "CONFIRMED",
-                "evidence_weight": "DOCUMENTED",
-                "narrative": "Finding confirmed after documentary review.",
-                "overreach_reviewed": True,
-            }),
+            data=json.dumps(
+                {
+                    "status": "CONFIRMED",
+                    "evidence_weight": "DOCUMENTED",
+                    "narrative": "Finding confirmed after documentary review.",
+                    "overreach_reviewed": True,
+                }
+            ),
             content_type="application/json",
         )
         data = response.json()
@@ -2308,7 +2346,7 @@ class SR025ScheduleLContradictionTests(TestCase):
             document=self.doc,
             tax_year=2022,
             ein="82-0045001",
-            related_party_disclosed=False,   # org said "No" to Part IV Line 28
+            related_party_disclosed=False,  # org said "No" to Part IV Line 28
             source="IRS_TEOS_XML",
             raw_extraction={
                 "governance": {"schedule_l_required": False},
@@ -2336,8 +2374,12 @@ class SR025ScheduleLContradictionTests(TestCase):
         sr025 = [t for t in triggers if t.rule_id == "SR-025"]
         self.assertGreaterEqual(len(sr025), 1)
         contradiction = next(
-            (t for t in sr025 if "contradiction" in t.detected_summary.lower()
-             or "Schedule L" in t.detected_summary),
+            (
+                t
+                for t in sr025
+                if "contradiction" in t.detected_summary.lower()
+                or "Schedule L" in t.detected_summary
+            ),
             None,
         )
         self.assertIsNotNone(contradiction, "Expected a Schedule L contradiction trigger")
@@ -2352,8 +2394,9 @@ class SR025ScheduleLContradictionTests(TestCase):
         self._make_txn(24000)
         triggers = evaluate_xml_financial_snapshots(self.case)
         sr025_contr = [
-            t for t in triggers if t.rule_id == "SR-025"
-            and "contradiction" in t.detected_summary.lower()
+            t
+            for t in triggers
+            if t.rule_id == "SR-025" and "contradiction" in t.detected_summary.lower()
         ]
         self.assertEqual(sr025_contr, [])
 
@@ -2361,8 +2404,7 @@ class SR025ScheduleLContradictionTests(TestCase):
         # No ScheduleLTransaction rows — no contradiction to detect
         triggers = evaluate_xml_financial_snapshots(self.case)
         sr025_contr = [
-            t for t in triggers if t.rule_id == "SR-025"
-            and "Schedule L" in t.detected_summary
+            t for t in triggers if t.rule_id == "SR-025" and "Schedule L" in t.detected_summary
         ]
         self.assertEqual(sr025_contr, [])
 
@@ -2447,12 +2489,14 @@ class SR028ScheduleOEnrichmentTests(TestCase):
         )
 
     def test_sr028_includes_schedule_o_text_in_evidence(self):
-        self._make_snap(schedule_o_explanations=[
-            {
-                "form_line_reference": "Part VI Line 5",
-                "explanation_text": "The organization became aware of a $50,000 diversion.",
-            }
-        ])
+        self._make_snap(
+            schedule_o_explanations=[
+                {
+                    "form_line_reference": "Part VI Line 5",
+                    "explanation_text": "The organization became aware of a $50,000 diversion.",
+                }
+            ]
+        )
         triggers = evaluate_xml_financial_snapshots(self.case)
         sr028 = [t for t in triggers if t.rule_id == "SR-028"]
         self.assertEqual(len(sr028), 1)
@@ -2469,12 +2513,14 @@ class SR028ScheduleOEnrichmentTests(TestCase):
         self.assertNotIn("schedule_o_explanation", ev)
 
     def test_sr028_summary_quotes_schedule_o_when_available(self):
-        self._make_snap(schedule_o_explanations=[
-            {
-                "form_line_reference": "Part VI Line 5",
-                "explanation_text": "Unauthorized withdrawal detected.",
-            }
-        ])
+        self._make_snap(
+            schedule_o_explanations=[
+                {
+                    "form_line_reference": "Part VI Line 5",
+                    "explanation_text": "Unauthorized withdrawal detected.",
+                }
+            ]
+        )
         triggers = evaluate_xml_financial_snapshots(self.case)
         sr028 = [t for t in triggers if t.rule_id == "SR-028"]
         self.assertIn("Schedule O states", sr028[0].detected_summary)

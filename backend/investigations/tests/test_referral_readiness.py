@@ -17,7 +17,22 @@ from ..models import (
     ReferralTarget,
     SearchJob,
     Severity,
+    ThreadElement,
+    ThreadElementCitation,
+    ThreadElementType,
 )
+
+
+def _add_cited_handoff_assertion(finding, document):
+    """Add a cited+handoff_ready assertion so a CONFIRMED finding meets ASSERTION_V1 Tier-2."""
+    el = ThreadElement.objects.create(
+        finding=finding,
+        element_type=ThreadElementType.ASSERTION,
+        text="Referral-grade assertion.",
+        position=0,
+        handoff_ready=True,
+    )
+    ThreadElementCitation.objects.create(element=el, document=document)
 
 
 class ReferralReadinessTests(TestCase):
@@ -118,8 +133,10 @@ class ReferralReadinessTests(TestCase):
             title="Directional angle",
             evidence_weight=EvidenceWeight.DIRECTIONAL,
         )
-        FindingDocument.objects.create(finding=documented, document=self._document("a"))
+        doc_a = self._document("a")
+        FindingDocument.objects.create(finding=documented, document=doc_a)
         FindingDocument.objects.create(finding=directional, document=self._document("b"))
+        _add_cited_handoff_assertion(documented, doc_a)  # ASSERTION_V1 Tier-2
 
         payload = self._get_readiness()
 
@@ -131,7 +148,9 @@ class ReferralReadinessTests(TestCase):
     def test_readiness_warns_for_pending_review_items(self):
         self._target()
         finding = self._confirmed_finding(overreach_reviewed=True)
-        FindingDocument.objects.create(finding=finding, document=self._document())
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
         FuzzyMatchCandidate.objects.create(
             case=self.case,
             entity_type="person",
@@ -191,7 +210,9 @@ class ReferralReadinessTests(TestCase):
         finding = self._confirmed_finding(
             evidence_weight=EvidenceWeight.TRACED, overreach_reviewed=True
         )
-        FindingDocument.objects.create(finding=finding, document=self._document())
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
 
         payload = self._get_readiness()
 
@@ -207,7 +228,9 @@ class ReferralReadinessTests(TestCase):
         finding = self._confirmed_finding(
             evidence_weight=EvidenceWeight.TRACED, overreach_reviewed=True
         )
-        FindingDocument.objects.create(finding=finding, document=self._document())
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
 
         readiness = self._get_readiness()
         dashboard = self._get_dashboard()

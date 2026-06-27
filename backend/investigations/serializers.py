@@ -12,12 +12,13 @@ from .models import (
     FindingDocument,
     FindingSource,
     FindingStatus,
+    GateVersion,
     Severity,
     ThreadElement,
     ThreadElementCitation,
     ThreadElementType,
 )
-from .thread_elements import ensure_document_link
+from .thread_elements import ensure_document_link, finding_has_cited_assertion
 
 
 def _serialize_datetime(value):
@@ -1031,8 +1032,12 @@ class FindingUpdateSerializer:
                 unmet.append("citation")
             if post_weight not in (EvidenceWeight.DOCUMENTED, EvidenceWeight.TRACED):
                 unmet.append("evidence_weight")
-            if not (post_narrative or "").strip():
-                unmet.append("narrative")
+            if self.instance.gate_version == GateVersion.LEGACY_NARRATIVE:
+                if not (post_narrative or "").strip():
+                    unmet.append("narrative")
+            else:  # ASSERTION_V1 — the dead narrative check becomes a cited-assertion check
+                if not finding_has_cited_assertion(self.instance):
+                    unmet.append("cited_assertion")
             if not post_overreach:
                 unmet.append("overreach")
 

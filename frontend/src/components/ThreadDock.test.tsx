@@ -12,7 +12,7 @@ function thread(over: Partial<FindingItem>): FindingItem {
     investigator_note: "", legal_refs: [], evidence_snapshot: {},
     trigger_doc_id: null, trigger_doc_filename: null, trigger_entity_id: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
-    entity_links: [], document_links: [],
+    entity_links: [], document_links: [], elements: [], gate_version: "ASSERTION_V1",
     ...over,
   };
 }
@@ -21,7 +21,14 @@ const THREADS = [
   thread({ id: "med", title: "Overpayment", severity: "MEDIUM", status: "DISMISSED" }),
   thread({ id: "crit", title: "990 contradiction", severity: "CRITICAL", status: "CONFIRMED",
     evidence_weight: "DOCUMENTED", overreach_reviewed: true,
-    document_links: [{ document_id: "d", document_filename: "x", page_reference: "", context_note: "" }] }),
+    document_links: [{ document_id: "d", document_filename: "x", page_reference: "", context_note: "" }],
+    // ASSERTION_V1 referral-grade also needs a cited + handoff-ready assertion (one element
+    // satisfies both legs). Mirrors referral_grade.py / threadReadiness.
+    elements: [{
+      id: "el1", finding_id: "crit", element_type: "ASSERTION", role: "claim",
+      text: "The 990 contradicts the audit.", position: 0, handoff_ready: true,
+      citations: [{ id: "c1", document_id: "d", document_filename: "x", page_reference: "", context_note: "" }],
+    }] }),
   thread({ id: "high", title: "Insider swap", severity: "HIGH", status: "NEEDS_EVIDENCE" }),
 ];
 

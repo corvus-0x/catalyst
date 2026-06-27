@@ -29,7 +29,22 @@ from ..models import (
     PersonDocument,
     ReferralTarget,
     Severity,
+    ThreadElement,
+    ThreadElementCitation,
+    ThreadElementType,
 )
+
+
+def _add_cited_handoff_assertion(finding, document):
+    """Add a cited+handoff_ready assertion so a CONFIRMED finding meets ASSERTION_V1 Tier-2."""
+    el = ThreadElement.objects.create(
+        finding=finding,
+        element_type=ThreadElementType.ASSERTION,
+        text="Referral-grade assertion.",
+        position=0,
+        handoff_ready=True,
+    )
+    ThreadElementCitation.objects.create(element=el, document=document)
 
 
 class ReferralPdfTests(TestCase):
@@ -79,6 +94,7 @@ class ReferralPdfTests(TestCase):
             document=self.document,
             page_reference="p. 1",
         )
+        _add_cited_handoff_assertion(self.finding, self.document)  # ASSERTION_V1 Tier-2
 
     def _url(self) -> str:
         return reverse("api_case_referral_pdf", kwargs={"pk": self.case.pk})
@@ -164,6 +180,7 @@ class ReferralPdfTests(TestCase):
             narrative="This angle passes all referral-grade criteria.",
         )
         FindingDocument.objects.create(finding=good, document=shared_doc, page_reference="p. 1")
+        _add_cited_handoff_assertion(good, shared_doc)  # ASSERTION_V1 Tier-2
 
         # Confirmed + documented + cited but overreach_reviewed=False — must be excluded
         excluded_doc = Document.objects.create(

@@ -34,6 +34,11 @@ const BASE_THREAD = {
   evidence_weight: "SPECULATIVE" as const,
   overreach_reviewed: false,
   document_links: [DOC_LINK, DOC_LINK_2],
+  // These tests encode the pre-4B single-tier readiness rule (base conditions →
+  // ready). Under Phase 4B that is the LEGACY_NARRATIVE predicate; the dual-version
+  // ASSERTION_V1 logic is covered in threadReadiness.test.ts.
+  gate_version: "LEGACY_NARRATIVE" as const,
+  elements: [],
 };
 
 beforeEach(() => vi.clearAllMocks());

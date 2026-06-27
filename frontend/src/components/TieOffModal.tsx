@@ -1,19 +1,24 @@
 /**
  * TieOffModal.tsx — Step 12 of the frontend build sequence.
  *
- * Lets an investigator finalize (tie off) an angle by choosing:
+ * Lets an investigator finalize (tie off) a thread by choosing:
  *   - Evidence weight: Speculative / Directional / Documented / Traced
  *   - Outcome: Confirmed (send to referral package) or Exhausted (dead end, dismiss)
- *   - Overreach acknowledgement (required gate condition for confirmed angles)
+ *   - Overreach acknowledgement (required gate condition for confirmed threads)
+ *
+ * Gate versions:
+ *   ASSERTION_V1  — requires a cited assertion + a handoff-ready claim (in addition to
+ *                   the base conditions: ≥1 cited source, weight ≥ Documented, overreach).
+ *   LEGACY_NARRATIVE — base conditions only (narrative-era grandfathered threads).
  *
  * Calls PATCH /api/cases/:id/findings/:id/ via updateAngle().
  * Sends overreach_reviewed when confirming; renders server gate errors on 400.
  *
  * Vocabulary:
- *   Angle    = Finding (the narrative unit of investigation)
- *   Knot     = Person or Organization node
- *   Intake   = extraction pipeline (never "AI")
- *   Lead     = AI-generated finding (never "AI", "Claude", "Sonnet")
+ *   Thread   = Finding (the narrative unit of investigation)
+ *   Subject  = Person or Organization node
+ *   Intake   = extraction pipeline (never model names)
+ *   Lead     = pattern-analysis finding (never model names)
  */
 
 import { useState } from "react";
@@ -21,6 +26,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Check } from "lucide-react";
 import { updateAngle } from "../api";
 import type { FindingItem, EvidenceWeight } from "../types";
+import { threadReadiness } from "./threadReadiness";
 
 // ---------------------------------------------------------------------------
 // Evidence weight options (display order matches severity progression)
@@ -80,19 +86,21 @@ export default function TieOffModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Local gate preview — compute unmet conditions
+  // Local gate preview — mirrors the server's dual-version referral-grade predicate.
+  // Synthesise a readiness input from the current form values so the user sees
+  // live feedback as they toggle weight / overreach.  elements + document_links
+  // come from the finding (can't change inside the modal).
   // ---------------------------------------------------------------------------
 
-  const hasCitation = finding.document_links.length > 0;
-  const hasNarrative = (finding.narrative || "").trim().length > 0;
-  const hasWeight = evidenceWeight === "DOCUMENTED" || evidenceWeight === "TRACED";
-  const localUnmet = [
-    !hasCitation ? "citation" : null,
-    !hasWeight ? "evidence_weight" : null,
-    !hasNarrative ? "narrative" : null,
-    !overreachAck ? "overreach" : null,
-  ].filter((x): x is string => x !== null);
-  const confirmBlocked = outcome === "confirmed" && localUnmet.length > 0;
+  const localReadiness = threadReadiness({
+    status: "CONFIRMED",            // We compute for the "confirmed" path.
+    evidence_weight: evidenceWeight, // Controlled by the form.
+    overreach_reviewed: overreachAck, // Controlled by the form.
+    document_links: finding.document_links,
+    gate_version: finding.gate_version,
+    elements: finding.elements,
+  });
+  const confirmBlocked = outcome === "confirmed" && !localReadiness.ready;
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -169,7 +177,7 @@ export default function TieOffModal({
         <Dialog.Content className="dialog-content">
           {/* Header */}
           <div className="dialog-header">
-            <Dialog.Title className="dialog-title">Tie off this angle</Dialog.Title>
+            <Dialog.Title className="dialog-title">Tie off this thread</Dialog.Title>
             <button
               type="button"
               className="icon-btn"
@@ -182,8 +190,8 @@ export default function TieOffModal({
 
           {/* Body */}
           <div className="dialog-body">
-            {/* Angle identity */}
-            <section className="tieoff-identity" aria-label="Angle summary">
+            {/* Thread identity */}
+            <section className="tieoff-identity" aria-label="Thread summary">
               <p className="tieoff-angle-title">{finding.title}</p>
               {entitySummary && (
                 <p className="tieoff-entity-pairs">{entitySummary}</p>
@@ -335,7 +343,7 @@ export default function TieOffModal({
                       setDismissalRationale(e.target.value);
                       if (e.target.value.trim()) setRationaleError(false);
                     }}
-                    placeholder="Why is this angle being closed without a referral?"
+                    placeholder="Why is this thread being closed without a referral?"
                     aria-required="true"
                     aria-invalid={rationaleError}
                     aria-describedby={rationaleError ? "rationale-error" : undefined}
@@ -352,7 +360,7 @@ export default function TieOffModal({
             {/* Gate feedback */}
             {confirmBlocked && (
               <p className="tieoff-error" role="status">
-                Needs: {localUnmet.join(", ")} before this angle is referral-grade.
+                {localReadiness.summary}
               </p>
             )}
             {serverUnmet && (
@@ -378,7 +386,7 @@ export default function TieOffModal({
               disabled={saving || confirmBlocked}
               onClick={handleConfirm}
             >
-              {saving ? "Saving…" : "Confirm angle"}
+              {saving ? "Saving…" : "Confirm thread"}
             </button>
           </div>
         </Dialog.Content>

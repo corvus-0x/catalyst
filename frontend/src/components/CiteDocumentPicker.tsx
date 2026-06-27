@@ -1,11 +1,13 @@
 /**
- * CiteDocumentPicker.tsx — Step 11 of the frontend build sequence.
+ * CiteDocumentPicker.tsx — pick documents from the case and cite them. Two modes:
  *
- * Lets an investigator pick documents from the case and add them to an angle's
- * citations. Selecting documents appends [Doc-N] references to the angle's
- * narrative via updateAngle (PATCH /api/cases/:id/findings/:id/).
+ *   - Element mode (Phase 4B, primary): given an `element` + `findingId`, writes a
+ *     ThreadElementCitation per selected document via addCitation. Does NOT touch the
+ *     narrative. Used by ThreadBuilder for per-assertion citations.
+ *   - Legacy narrative mode: given a `finding`, appends [Doc-N] references to the
+ *     Finding narrative via updateAngle (PATCH /api/cases/:id/findings/:id/).
  *
- * Vocabulary:
+ * Vocabulary (code-internal names, not user-visible):
  *   Angle  = Finding (the narrative unit of investigation)
  *   Knot   = Person or Organization node (not used here)
  *   Intake = extraction pipeline (not "AI")
@@ -14,7 +16,8 @@
 import { useState, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Check, FileText } from "lucide-react";
-import { updateAngle } from "../api";
+import { toast } from "sonner";
+import { updateAngle, addCitation } from "../api";
 import type { FindingItem, DocumentItem, DocType } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -75,37 +78,70 @@ function docLabel(doc: DocumentItem): string {
 // Props
 // ---------------------------------------------------------------------------
 
-interface CiteDocumentPickerProps {
-  open: boolean;
+/** Shared props for both modes. */
+interface CiteDocumentPickerCommon {
+  /** Controls the dialog open state. Defaults to true when omitted (element mode). */
+  open?: boolean;
   caseId: string;
-  finding: FindingItem;
   /** All documents belonging to this case. */
   documents: DocumentItem[];
   onClose: () => void;
-  /** Called with the IDs of newly cited documents after a successful PATCH. */
-  onCited: (newDocIds: string[]) => void;
+  /**
+   * Legacy mode: called with the IDs of newly cited documents after a successful PATCH.
+   * Element mode: called with no arguments after all citations are written.
+   */
+  onCited?: (newDocIds?: string[]) => void;
 }
+
+/** Legacy narrative mode: append [Doc-N] refs to the Finding narrative. */
+interface CiteDocumentPickerLegacyProps extends CiteDocumentPickerCommon {
+  finding: FindingItem;
+  findingId?: never;
+  element?: never;
+}
+
+/** Element mode: write a ThreadElementCitation per selected doc (Phase 4B). */
+interface CiteDocumentPickerElementProps extends CiteDocumentPickerCommon {
+  finding?: never;
+  findingId: string;
+  element: { id: string };
+}
+
+/**
+ * Discriminated union: a caller is in EITHER legacy mode (`finding`) OR element mode
+ * (`findingId` + `element`), never both/neither. This makes "element mode without a
+ * findingId" unrepresentable — no runtime guard needed.
+ */
+type CiteDocumentPickerProps = CiteDocumentPickerLegacyProps | CiteDocumentPickerElementProps;
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function CiteDocumentPicker({
-  open,
+  open = true,
   caseId,
   finding,
+  findingId: findingIdProp,
   documents,
   onClose,
   onCited,
+  element,
 }: CiteDocumentPickerProps) {
   const [filter, setFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
+  // Resolve the finding id: explicit prop (element mode) or from the finding object (legacy).
+  const findingId = findingIdProp ?? finding?.id ?? "";
+
   // Already-cited document IDs (from document_links on the finding).
+  // In element mode (no finding), treat as empty — all docs are available.
+  const documentLinks = finding?.document_links ?? [];
+
   const alreadyCitedIds = useMemo(
-    () => new Set(finding.document_links.map((l) => l.document_id)),
-    [finding.document_links],
+    () => new Set(documentLinks.map((l) => l.document_id)),
+    [documentLinks],
   );
 
   // Split documents into already-cited and available groups, applying the filter.
@@ -132,16 +168,17 @@ export default function CiteDocumentPicker({
   );
 
   // Compute Doc-N index for already-cited docs (1-based, by document_links order).
+  // Only meaningful in legacy mode where document_links exists.
   const citedIndexMap = useMemo(() => {
     const map = new Map<string, number>();
-    finding.document_links.forEach((link, i) => {
+    documentLinks.forEach((link, i) => {
       map.set(link.document_id, i + 1);
     });
     return map;
-  }, [finding.document_links]);
+  }, [documentLinks]);
 
   // Compute starting index for available docs (after all existing links).
-  const nextIndex = finding.document_links.length + 1;
+  const nextIndex = documentLinks.length + 1;
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -165,17 +202,40 @@ export default function CiteDocumentPicker({
     setSaving(true);
     try {
       const selectedDocs = available.filter((doc) => selectedIds.has(doc.id));
+
+      if (element) {
+        // Element mode: write ThreadElementCitations — do NOT touch the narrative.
+        // The props union guarantees findingId is present here, so no runtime guard.
+        for (const doc of selectedDocs) {
+          await addCitation(caseId, findingId, element.id, {
+            document_id: doc.id,
+            page_reference: "",
+            context_note: "",
+          });
+        }
+        onCited?.();
+        onClose();
+        return;
+      }
+
+      // Legacy narrative mode: append [Doc-N] refs and PATCH the Finding.
       const updatedNarrative = appendDocRefs(
-        finding.narrative,
+        finding!.narrative,
         selectedDocs,
-        finding.document_links,
+        finding!.document_links,
       );
-      await updateAngle(caseId, finding.id, {
+      await updateAngle(caseId, finding!.id, {
         narrative: updatedNarrative,
         add_document_ids: Array.from(selectedIds),
       });
-      onCited(Array.from(selectedIds));
+      onCited?.(Array.from(selectedIds));
       onClose();
+    } catch {
+      // A citation/save failure must not be silent: keep the picker open (do NOT
+      // call onCited/onClose) and tell the user so they can retry. In element mode
+      // a mid-loop failure may leave earlier docs cited; the parent refresh on the
+      // next successful attempt reconciles the displayed state.
+      toast.error("Couldn't save the citation. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -197,7 +257,7 @@ export default function CiteDocumentPicker({
           {/* Header */}
           <div className="dialog-header">
             <Dialog.Title className="dialog-title">
-              Cite a document in: {finding.title}
+              {finding ? `Cite a document in: ${finding.title}` : "Cite a document"}
             </Dialog.Title>
             <button
               type="button"
@@ -225,7 +285,7 @@ export default function CiteDocumentPicker({
             {alreadyCited.length > 0 && (
               <section aria-label="Already cited">
                 <p className="panel-section__title">
-                  Already cited in this angle ({alreadyCited.length})
+                  Already cited in this thread ({alreadyCited.length})
                 </p>
                 <ul className="cite-list" role="list">
                   {alreadyCited.map((doc) => {
