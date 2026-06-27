@@ -1,19 +1,21 @@
 # Catalyst — System Architecture
 
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-06-27 (Session 53 — Phase 4B merged)
 **Status:** Living document — update at end of each session
 
 ---
 
 ## Architecture Overview
 
-Catalyst is a Django monolith with a React SPA frontend. The decision to use a monolith (rather than microservices) is intentional: it keeps deployment simple, avoids inter-service complexity, and is the right choice for a single-developer project at this scale. The codebase is organized into logical modules that could be extracted into services later if needed, but there is no plan to do so.
+Catalyst is a Django monolith with a React SPA frontend. The decision to use a monolith (rather than
+microservices) is intentional: it keeps deployment simple, avoids inter-service complexity, and is
+the right choice for a single-developer project at this scale.
 
 ```
                     ┌─────────────────────────────┐
                     │      React SPA (Vite)        │
                     │      TypeScript + CSS         │
-                    │      Port 5173 (dev)          │
+                    │      Port 5174 (dev)          │
                     └──────────┬──────────────────┘
                                │ HTTP (JSON API)
                                ▼
@@ -23,9 +25,9 @@ Catalyst is a Django monolith with a React SPA frontend. The decision to use a m
                     │                               │
                     │  ┌─────────┐ ┌────────────┐  │
                     │  │ Views / │ │ Middleware  │  │
-                    │  │ API     │ │ (CSRF,Rate)│  │
-                    │  └────┬────┘ └────────────┘  │
-                    │       │                       │
+                    │  │ API     │ │ (CSRF,Rate,│  │
+                    │  └────┬────┘ │  Auth)     │  │
+                    │       │      └────────────┘  │
                     │  ┌────┴──────────────────┐    │
                     │  │  Processing Pipeline   │   │
                     │  │  extract → classify →  │   │
@@ -33,16 +35,22 @@ Catalyst is a Django monolith with a React SPA frontend. The decision to use a m
                     │  └────┬──────────────────┘   │
                     │       │                       │
                     │  ┌────┴──────────────────┐    │
+                    │  │  Django-Q2 Worker      │   │
+                    │  │  (async research jobs) │   │
+                    │  └────┬──────────────────┘   │
+                    │       │                       │
+                    │  ┌────┴──────────────────┐    │
                     │  │  External Connectors   │   │
-                    │  │  (ProPublica, IRS,     │   │
-                    │  │   Ohio SOS/AOS/County) │   │
+                    │  │  (IRS, Ohio SOS/AOS/   │   │
+                    │  │   County Rec/Auditor)  │   │
                     │  └───────────────────────┘   │
                     └──────────┬──────────────────┘
                                │
                                ▼
                     ┌─────────────────────────────┐
-                    │   PostgreSQL 16 (Docker)      │
-                    │   Port 5432                   │
+                    │   PostgreSQL (Docker/Railway) │
+                    │   Port 5432 (Docker)          │
+                    │   Port 5433 (native dev)      │
                     └─────────────────────────────┘
 ```
 
@@ -50,49 +58,52 @@ Catalyst is a Django monolith with a React SPA frontend. The decision to use a m
 
 ## Backend Structure
 
-The entire backend lives in one Django app: `investigations`. This app contains 5 logical tiers:
+The entire backend lives in one Django app: `investigations`. This app contains logical tiers:
 
 ### Tier 1: Stateless Utilities (No Django dependency)
 
-These modules are pure Python — no Django imports, no database access. They can be used in CLI scripts, background jobs, or tested without Django setup.
-
 | Module | Purpose |
 |--------|---------|
-| `extraction.py` | PDF text extraction (PyMuPDF direct + Tesseract OCR fallback) |
+| `extraction.py` | PDF text extraction (PyPDF2 + Tesseract OCR fallback) |
 | `classification.py` | Rule-based document type classification by keyword scoring |
-| `entity_extraction.py` | Regex-based entity candidate extraction (persons, orgs, dates, amounts, parcels) |
+| `entity_extraction.py` | Regex-based entity candidate extraction (persons, orgs, dates, amounts) |
 | `entity_normalization.py` | Canonical form normalization (uninvert names, strip designators) |
-| `propublica_connector.py` | ProPublica Nonprofit Explorer API (search orgs, fetch 990 filings) |
-| `irs_connector.py` | IRS Pub78 + EO BMF bulk download (tax-exempt org status) |
+| `irs_connector.py` | IRS TEOS 990 XML pipeline — full filing download + parse |
 | `ohio_sos_connector.py` | Ohio Secretary of State bulk CSV (business entity filings) |
-| `county_auditor_connector.py` | ODNR ArcGIS parcel API + county auditor portal URL builder |
-| `county_recorder_connector.py` | County recorder URL builder + deed/mortgage document parser |
-| `ohio_aos_connector.py` | Ohio Auditor of State audit report HTML scraper |
+| `county_auditor_connector.py` | ODNR ArcGIS parcel API + Beacon/Schneider auditor URLs |
+| `county_recorder_connector.py` | 88 Ohio county recorder portals — deed/mortgage documents |
+| `ohio_aos_connector.py` | Ohio Auditor of State audit report scraper |
 
 ### Tier 2: Pipeline Integration (Needs Django ORM)
 
-| Module | Purpose | DB Access |
-|--------|---------|-----------|
-| `entity_resolution.py` | Exact match upsert + fuzzy candidate surfacing | Writes Person/Org records |
-| `signal_rules.py` | Evaluates 16 fraud signal rules (SR-001 through SR-016) | Reads entities, writes Signals |
+| Module | Purpose |
+|--------|---------|
+| `entity_resolution.py` | Exact match upsert + fuzzy candidate surfacing |
+| `signal_rules.py` | 15 active fraud signal rules (SR-001 through SR-028; some gaps/retired) |
+| `referral_grade.py` | Single source of truth for referral-grade predicate (dual-version since 4B) |
+| `case_map.py` | Case Map builder — summarized subject-pair edges + strength scoring |
+| `thread_elements.py` | Thread assertion completeness + document_links sync helpers |
+| `ai_extraction.py` | Claude AI entity/financial extraction |
+| `ai_proxy.py` | Claude API wrapper with caching |
+| `ai_pattern_augmentation.py` | AI pattern analysis → Findings |
+| `form990_parser.py` | IRS 990 text parser (Part IV/VI/VII) |
+| `jobs.py` | Async task functions for Django-Q2 worker |
+| `data_quality.py` | Data validation + audit logging |
 
 ### Tier 3: Django Infrastructure
 
 | Module | Purpose |
 |--------|---------|
-| `models.py` | 21 ORM models + choice enums (see Data Models below) |
+| `models.py` | ORM models + choice enums (38+ migrations as of Phase 4B) |
 | `serializers.py` | Request validation + JSON response shaping (no DRF) |
-| `views.py` | 35 API endpoints + HTML views (~2600 lines) |
+| `views.py` | API endpoints + HTML views (~6000+ lines) |
 | `urls.py` | URL routing for all endpoints |
-| `admin.py` | Django admin with full ModelAdmin classes |
-| `middleware.py` | CSRF handling + sliding-window rate limiting |
-| `forms.py` | Django form classes for HTML views |
+| `middleware.py` | CSRF handling + sliding-window rate limiting + auth |
+| `admin.py` | Django admin with ModelAdmin classes |
 
 ---
 
 ## Document Processing Pipeline
-
-The core pipeline runs automatically on every document upload:
 
 ```
 Upload PDF
@@ -101,8 +112,8 @@ Upload PDF
 Stage 0: SHA-256 hash on original bytes (chain of custody)
     │
     ▼
-Stage 1: Text extraction (PyMuPDF direct → OCR fallback if sparse)
-    │        Files > 30MB stay PENDING for async handling
+Stage 1: Text extraction (PyPDF2 direct → Tesseract OCR fallback if sparse)
+    │
     ▼
 Stage 2: Document classification (keyword scoring → doc_type)
     │
@@ -116,135 +127,191 @@ Stage 4: Entity normalization (canonical form for comparison)
 Stage 5: Entity resolution (exact match → upsert; fuzzy → flag for review)
     │
     ▼
-Stage 6: Signal detection (evaluate document + case against 16 rules)
+Stage 6: Signal detection (evaluate document + case against 15 active rules)
     │
     ▼
-Stage 7: Financial extraction (for IRS 990 forms → FinancialSnapshot)
+Stage 7: Financial extraction (for IRS 990 → FinancialSnapshot)
     │
     ▼
 Extraction status recorded: COMPLETED / PARTIAL / FAILED / SKIPPED
 ```
 
-Each stage is best-effort — a failure in entity extraction never blocks the upload. Extraction status tracks which stages succeeded.
+Each stage is best-effort — a failure never blocks the upload.
 
 ---
 
-## Data Models (21 models, 15 migrations)
+## Data Models (key models — see `docs/team/backend-engineer.md` for full reference)
 
 ### Core Models
 - **Case** — Investigation container (UUID PK, status, referral_ref)
-- **Document** — Uploaded file with hash chain-of-custody (SHA-256, OCR status, extraction status)
+- **Document** — Uploaded file with SHA-256 chain-of-custody, OCR + extraction status
 - **Person** — Identified individual with role tags and aliases
 - **Organization** — Identified entity with type, EIN, status
 - **Property** — Parcel record with assessed/purchase values and computed delta
 - **FinancialInstrument** — UCC filings, loans, liens with anomaly flags
 
 ### Analysis Models
-- **Signal** — Automated detection of suspicious patterns (16 rule types)
-- **Detection** — Confirmed anomalies (auto or manual, with evidence snapshot)
-- **Finding** — Investigator-curated findings from detections
+- **Finding** — Investigator-curated thread (maps to "Thread" in UI vocabulary).
+  Key fields: `status`, `evidence_weight`, `overreach_reviewed`, `gate_version`
+  (`LEGACY_NARRATIVE` | `ASSERTION_V1`). Referral-grade predicate in `referral_grade.py`.
+- **ThreadElement** — Structured assertion on a Finding (type: ASSERTION/QUESTION/NOTE).
+  Role (fact/analysis/claim) is **derived from evidence**, not stored.
+- **ThreadElementCitation** — Source document for an ASSERTION. Source of truth for
+  citations; `Finding.document_links` (`FindingDocument`) is a synced compatibility index.
+- **Signal** — Automated detection of suspicious patterns (15 active rule types)
 - **FinancialSnapshot** — Extracted IRS Form 990 financial data
+- **SearchJob** — Async job tracker for research connector calls
 
 ### Linking Models
-- **PersonDocument**, **OrgDocument** — Entity-to-document links with page references
-- **PersonOrganization** — Person-to-org role relationships with date ranges
+- **PersonDocument**, **OrgDocument** — Entity-to-document links
+- **PersonOrganization** — Person-to-org role relationships
 - **PropertyTransaction** — Property transfer records
 - **FindingEntity**, **FindingDocument** — Finding evidence links
-- **EntitySignal** — Signal-to-entity links
+  (`FindingDocument.is_legacy` marks rows written by `add_document_ids` vs citation sync)
 
 ### Operational Models
-- **AuditLog** — Append-only audit trail (action, before/after state, SHA-256, IP)
-- **GovernmentReferral** — Referral tracking with immutable filing dates
-- **InvestigatorNote** — Free-form notes attachable to any entity
-
-### Key Enums
-- **16 SignalTypes**: DECEASED_SIGNER, SELF_DEALING, VALUATION_DELTA, UCC_LOOP, PHANTOM_OFFICER, etc.
-- **21 DocumentTypes**: DEED, MORTGAGE, IRS_990, COURT_FILING, DEATH_RECORD, etc.
-- **18 PersonRoles**: BOARD_MEMBER, OFFICER, REGISTERED_AGENT, GRANTOR, DECEASED, etc.
+- **AuditLog** — Append-only audit trail (NEVER UPDATE OR DELETE)
+- **InvestigatorNote** — Free-form observations attachable to any entity or finding
 
 ---
 
-## External Connectors (6 total)
+## Async Jobs (Django-Q2)
 
-All connectors are stateless, have no Django dependency, and return structured dataclass results. None write to the database — results are presented to the investigator for review.
+Research connector calls are async: the frontend POSTs to a research endpoint, receives a
+`202 + job_id`, then polls `GET /api/jobs/<uuid>/` every 2 seconds. The Django-Q2 worker runs
+in-container (ORM broker, no Redis). Job results are stored in `SearchJob.result`.
 
-| Connector | Source | Auth | Strategy |
-|-----------|--------|------|----------|
-| ProPublica | ProPublica Nonprofit Explorer API | None | Direct API calls |
-| IRS | IRS Pub78 + EO BMF bulk files | None | Bulk download + local search |
-| Ohio SOS | Ohio SOS monthly CSV exports | None | Bulk download + local search |
-| County Auditor | ODNR ArcGIS REST API + portal URLs | None | Automated query + URL builder |
-| County Recorder | 88 county portals | None | URL builder + document parser (no scraping) |
-| Ohio AOS | Ohio Auditor of State search | None | HTML scraper |
+---
 
-All include staleness warnings (LOW/MEDIUM/HIGH) to alert investigators when data may be outdated.
+## External Connectors
+
+| Connector | Source | Status |
+|-----------|--------|--------|
+| IRS TEOS XML | IRS 990 XML pipeline | ✅ Working |
+| County Recorder | 88 OH counties | ✅ Working |
+| Ohio AOS | OH Auditor of State | ✅ Working |
+| Ohio SOS | OH Secretary of State (CSV upload) | ✅ Working (manual CSV) |
+| County Auditor | ODNR parcel API | ✅ Working |
+
+ProPublica connector was deleted (superseded by IRS TEOS XML pipeline).
 
 ---
 
 ## Frontend Structure
 
-React SPA built with Vite + TypeScript. Shell + Views architecture with React Router v6.
+React SPA (Vite + TypeScript). Persistent Case Map canvas + right inspector architecture
+driven by a focus reducer. Cytoscape.js for the graph (NOT D3 force simulation).
+D3 is used ONLY for the Timeline brush.
 
 ### Routes
+
 | Route | View | Status |
 |-------|------|--------|
-| `/` | DashboardView | Working |
-| `/cases` | CasesListView | Working |
-| `/cases/:caseId` | CaseDetailView | BROKEN (truncated) |
-| `/cases/:caseId/documents` | DocumentsTab | BROKEN (truncated) |
-| `/cases/:caseId/signals` | SignalsTab | Working |
-| `/cases/:caseId/detections` | DetectionsTab | Working |
-| `/cases/:caseId/referrals` | ReferralsTab | Working |
-| `/cases/:caseId/financials` | FinancialsTab | Working |
-| `/entities` | EntityBrowserView | Working |
-| `/entities/:type/:id` | EntityDetailView | Working |
-| `/triage` | TriageView | Working |
-| `/referrals` | ReferralsView | Working |
-| `/search` | SearchView | Working |
-| `/settings` | SettingsView | Working |
+| `/` | Dashboard | ✅ Working |
+| `/cases` | CasesList | ✅ Working |
+| `/cases/:id` | CaseDetail (6 tabs) | ✅ Working |
+| `/search` | Search | ✅ Working |
+| `/settings` | Settings | ✅ Working |
 
-### Frontend File Counts
-- 9 view components (src/views/)
-- 26 reusable components (src/components/)
-- 1 layout (AppShell.tsx)
-- 1 API layer (api.ts — 25+ endpoint functions)
-- 1 type definitions file (types.ts)
-- 1 context (ShellContext.tsx)
-- 1 custom hook (useKeyboardShortcuts.ts)
-- 2 utility files (format.ts, queryParams.ts)
+CaseDetail tabs: **Investigate · Research · Financials · Timeline · Referrals · Replay**
 
-### Known Frontend Issues (as of 2026-04-01)
-- **4 truncated files prevent compilation**: types.ts, CaseDetailView.tsx, DocumentsTab.tsx, PdfViewer.tsx
-- **Missing API function**: `fetchDocumentDetail()` imported but not defined in api.ts
-- **No connector UI**: All 6 external connectors are backend-only, no frontend integration
-- **No relationship graph**: Entity connections exist in the database but have no visual representation
+### Investigate Tab Architecture (Case Map — Phases 1A–4B)
+
+The Investigate tab is a persistent **Case Map** (Cytoscape canvas) + right inspector.
+Selection drives inspector state; navigation is a breadcrumb history (focus reducer).
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TOOLBAR: [+ Subject] [+ Thread] [Fit] [Pending N]          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│              CYTOSCAPE CANVAS (Case Map)                    │
+│                                                             │
+│   ● Sarah Mitchell ─── ● Bright Future Found.              │
+│          └──────────── ● EH Construction ───┘              │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  THREAD DOCK (canvas-width, collapsible, sortable)          │
+│  [Thread title · severity · readiness · status]            │
+└──────────────────────────────────────┬──────────────────────┘
+                                       │  RIGHT INSPECTOR
+                                       │  (selection-driven)
+                                       ▼
+                          SubjectInspector | RelationshipSummaryPanel
+                          ThreadInspector  | ThreadBuilder
+```
+
+**Frame types** (focus reducer `Frame.kind`):
+- `"web"` — default canvas + toolbar
+- `"subject"` — subject detail in right inspector
+- `"angle"` — `ThreadBuilder` (full-width, replaces canvas — Phase 4B)
+- `"relationship"` — `RelationshipSummaryPanel`
+
+**Thread Path Mode** (Phase 3): selecting a thread emphasizes its relationships (severity-colored
+edges) and dims the rest. Implemented via imperative Cytoscape class-toggle — no relayout.
+
+**ThreadBuilder** (Phase 4B): ordered list of `ElementCard` assertion cards (derived-role badge,
+inline text edit, citation chips, `handoff_ready` toggle) backed by element CRUD/citation/reorder
+endpoints. Replaces the old freeform narrative `AngleView` (deleted).
+
+### Node Visual Encoding (Case Map)
+
+| Type | Shape | Color |
+|------|-------|-------|
+| Person | Circle | Blue `#3b82f6` |
+| Organization | Square | Teal/amber/violet/red by subtype |
+| Selected | Gold border ring | `#fbbf24` |
+| Substantiated thread present | Green border | `#22c55e` |
+| Active thread present | Amber dot | `#f59e0b` |
+| Status unknown | Dashed border | neutral gray |
+
+### Edge Visual Encoding (Case Map)
+
+Edges come from `/api/cases/:id/case-map/` (one summarized edge per Subject pair).
+Thickness scales with `strength.level` (observed/documented/repeated/material).
+Thread Path Mode adds severity-colored classes (`.thread-path-edge--{critical,high,medium}`).
 
 ---
 
-## Security Infrastructure
+## Security
 
-- SHA-256 hash computed on original bytes before any processing (chain of custody)
+- SHA-256 hash on original bytes before any processing (chain of custody)
 - CSRF protection (cookie + X-CSRFToken header for SPA)
 - Sliding-window rate limiting (200 reads/min, 30 writes/min per IP)
+- Auth middleware (`CATALYST_REQUIRE_AUTH` — on in prod via `RAILWAY_ENVIRONMENT`)
 - PDF magic bytes validation before processing
 - URL domain allowlists on all external connector responses
-- Chunked downloads with size caps and deadlines (IRS connector)
-- Path traversal prevention on file uploads
-- Audit logging on all data changes
-- `ExtractionStatus` enum tracking pipeline success/failure per document
+- Append-only AuditLog (NEVER UPDATE OR DELETE)
+- Banned strings in user-visible text: "Haiku", "Sonnet", "Opus", "Claude", "AI assistant",
+  "LLM", "GPT" — enforced by CI gate (`scripts/check-banned-strings.mjs`)
 
 ---
 
-## Test Coverage
+## Test Suite
 
-| Test File | Count | Runner | Coverage |
-|-----------|-------|--------|----------|
-| tests.py | 46+ | Django (requires DB) | API endpoints, upload pipeline, entity resolution |
-| tests_propublica.py | 29 | unittest (no DB) | All HTTP mocked |
-| tests_ohio_sos.py | 59 | unittest (no DB) | All HTTP mocked |
-| tests_irs.py | 104 | unittest (no DB) | All HTTP mocked |
-| tests_county_recorder.py | 191 | unittest (no DB) | No HTTP (connector has none) |
-| tests_county_auditor.py | 126 | unittest (no DB) | All HTTP mocked |
-| **Total** | **555+** | | |
+| Suite | Count | Runner |
+|-------|-------|--------|
+| Backend (Docker, CI-equiv, `--exclude-tag=eval`) | **1064** | Django test runner |
+| Frontend (Vitest) | **154** | Vitest |
+| API smoke test | 30/30 checks | `tests/api_health_check.py` |
 
-No frontend tests exist currently.
+Run backend suite (requires running Docker stack):
+```
+docker exec catalyst_backend python manage.py test investigations --exclude-tag=eval --keepdb --noinput
+```
+
+Run frontend suite:
+```
+cd frontend && npx vitest run && npx tsc --noEmit
+```
+
+---
+
+## Deployment
+
+- **Platform:** Railway (monorepo — backend + frontend as one service via `railway.json`)
+- **Production URL:** set in `memory/catalyst_railway_url.md`
+- **PR preview environments:** enabled (base = production DB — read-safe verifies only)
+- **CI:** GitHub Actions — Backend Lint, Backend Tests, Frontend Lint/Test/Build, Secret Scan,
+  claude-review. All required green before merge.
+- **Merge strategy:** squash merge to `main`. Branch deleted after merge.
