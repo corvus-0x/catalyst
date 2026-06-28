@@ -261,11 +261,11 @@ assertions vs. open questions and decides whether to act.
 
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
-| 1 | Mapping function + unit tests | Predicate-injectable `element → section` decision-tree fn | pending | - | - | - |
-| 2 | Legacy branch split | Extract legacy rendering into its own helper behind `gate_version`; regression test (extracted text) | pending | - | 1 | - |
-| 3 | ASSERTION_V1 renderer + styles | New per-thread render path + styles + escaping + token strip | pending | - | 2 | - |
-| 4 | Acceptance + integration tests | No-legacy-narrative ASSERTION_V1 export; no-Doc-N; full suite green | pending | - | 3 | - |
-| 5 | Follow-up issue (exec summary counts) | File the deferred Executive Summary evidentiary-counts issue | pending | - | 4 | - |
+| 1 | Mapping function + unit tests | Predicate-injectable `element → section` decision-tree fn | complete | - | - | commit `19bd60d` |
+| 2 | Legacy branch split | Extract legacy rendering into its own helper behind `gate_version`; regression test (extracted text) | complete | - | 1 | commit `0020667` |
+| 3 | ASSERTION_V1 renderer + styles | New per-thread render path + styles + escaping + token strip | complete | - | 2 | commit `abd6bfa` |
+| 4 | Acceptance + integration tests | No-legacy-narrative ASSERTION_V1 export; no-Doc-N; full suite green | complete | - | 3 | commit `abd6bfa` (1094 green) |
+| 5 | Follow-up issue (exec summary counts) | File the deferred Executive Summary evidentiary-counts issue | complete | - | 4 | issue [#20](https://github.com/corvus-0x/catalyst/issues/20) |
 
 ### Phase Details
 
