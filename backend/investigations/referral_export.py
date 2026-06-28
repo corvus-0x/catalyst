@@ -17,6 +17,7 @@ Structure:
 """
 
 from datetime import datetime
+from enum import Enum
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -32,6 +33,50 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+from .models import ThreadElementType
+from .thread_elements import assertion_is_cited
+
+
+class ReferralSection(str, Enum):
+    """The fixed evidentiary buckets an ASSERTION_V1 thread renders into (Phase 4C).
+
+    Order of appearance in the PDF is Documented Facts -> Analysis ->
+    Referral Assertions -> Open Questions. OMIT means the element is not rendered
+    in the government-facing package (NOTE / legacy context).
+    """
+
+    DOCUMENTED_FACTS = "documented_facts"
+    ANALYSIS = "analysis"
+    REFERRAL_ASSERTIONS = "referral_assertions"
+    OPEN_QUESTIONS = "open_questions"
+    OMIT = "omit"
+
+
+def map_thread_element_to_referral_section(element, is_cited=assertion_is_cited):
+    """Decide which referral section a ThreadElement belongs to — bucket only.
+
+    Deterministic and total: every element maps to exactly one section. The
+    citation predicate is injected (defaults to the gate's ``assertion_is_cited``)
+    so the PDF and the tie-off gate agree on "cited" and so the decision tree is
+    unit-testable without the database.
+
+    Precedence for ASSERTIONs: ``handoff_ready`` dominates (-> Referral
+    Assertions, regardless of citation; the documented/needs-source marker is a
+    rendering concern, not a bucket decision); otherwise cited -> Documented
+    Facts, uncited -> Analysis. QUESTION -> Open Questions; everything else
+    (NOTE, unknown) -> OMIT.
+    """
+    etype = element.element_type
+    if etype == ThreadElementType.QUESTION:
+        return ReferralSection.OPEN_QUESTIONS
+    if etype == ThreadElementType.ASSERTION:
+        if element.handoff_ready:
+            return ReferralSection.REFERRAL_ASSERTIONS
+        if is_cited(element):
+            return ReferralSection.DOCUMENTED_FACTS
+        return ReferralSection.ANALYSIS
+    return ReferralSection.OMIT
 
 
 class ReferralPDFGenerator:
