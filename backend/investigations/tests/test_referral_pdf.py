@@ -292,3 +292,139 @@ class LegacyNarrativeRenderingTests(TestCase):
         self.assertIn("Legacy False Disclosure", text)
         self.assertIn("Disclosed zero related-party transactions", text)
         self.assertIn("legacy_deed.pdf", text)
+
+
+class AssertionV1RenderingTests(TestCase):
+    """Phase 4C-3/4: an ASSERTION_V1 thread renders structured assertions by
+    derived evidentiary role — Documented Facts / Analysis / Referral Assertions /
+    Open Questions — with per-assertion citations, NOTE + legacy narrative omitted,
+    and no inline [Doc-N] tokens. This is the spec's acceptance bar.
+    """
+
+    def setUp(self):
+        self.client = Client(enforce_csrf_checks=False)
+        self.case = Case.objects.create(name="Assertion V1 Case")
+        ReferralTarget.objects.create(
+            case=self.case, agency_name="Ohio AG", complaint_type="Charitable fraud"
+        )
+        self.document = Document.objects.create(
+            case=self.case,
+            filename="bank_statement.pdf",
+            file_path="cases/doc/bank_statement.pdf",
+            sha256_hash="d" * 64,
+            file_size=1024,
+            doc_type=DocumentType.DEED,
+            ocr_status=OcrStatus.COMPLETED,
+        )
+        self.finding = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-028",
+            title="Material Diversion",
+            severity=Severity.CRITICAL,
+            status=FindingStatus.CONFIRMED,
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=True,
+            narrative="LEGACY NARRATIVE THAT MUST NOT APPEAR.",
+            gate_version=GateVersion.ASSERTION_V1,
+        )
+        # Base predicate needs document_links > 0 even for ASSERTION_V1.
+        FindingDocument.objects.create(
+            finding=self.finding, document=self.document, page_reference="p. 2"
+        )
+
+        # 1) cited, non-handoff -> Documented Facts (also exercises [Doc-N] strip)
+        fact = ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.ASSERTION,
+            text="Paid $50,000 to a related party. [Doc-9]",
+            position=0,
+            handoff_ready=False,
+        )
+        ThreadElementCitation.objects.create(
+            element=fact,
+            document=self.document,
+            page_reference="Schedule L, line 2",
+            context_note="related-party transfer",
+        )
+        # 2) uncited, non-handoff -> Analysis
+        ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.ASSERTION,
+            text="The timing suggests coordination.",
+            position=1,
+            handoff_ready=False,
+        )
+        # 3) cited, handoff -> Referral Assertions (Documented)
+        claim_cited = ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.ASSERTION,
+            text="The foundation diverted charitable assets.",
+            position=2,
+            handoff_ready=True,
+        )
+        ThreadElementCitation.objects.create(element=claim_cited, document=self.document)
+        # 4) uncited, handoff -> Referral Assertions (Needs source)
+        ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.ASSERTION,
+            text="Board members personally benefited.",
+            position=3,
+            handoff_ready=True,
+        )
+        # 5) QUESTION -> Open Questions
+        ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.QUESTION,
+            text="Who authorized the wire transfer?",
+            position=4,
+        )
+        # 6) NOTE -> omitted
+        ThreadElement.objects.create(
+            finding=self.finding,
+            element_type=ThreadElementType.NOTE,
+            text="Imported context note.",
+            position=5,
+        )
+
+    def _text(self) -> str:
+        response = self.client.post(reverse("api_case_referral_pdf", kwargs={"pk": self.case.pk}))
+        self.assertEqual(response.status_code, 200, response.content)
+        return _pdf_text(response)
+
+    def test_renders_all_four_section_headers(self):
+        text = self._text()
+        self.assertIn("Documented Facts", text)
+        self.assertIn("investigator interpretation", text)  # Analysis header
+        self.assertIn("Referral Assertions", text)
+        self.assertIn("Open Questions", text)
+
+    def test_documented_fact_with_citation_and_verbatim_page_ref(self):
+        text = self._text()
+        self.assertIn("Paid $50,000 to a related party.", text)
+        self.assertIn("bank_statement.pdf", text)
+        self.assertIn("Schedule L, line 2", text)  # verbatim page_reference, no "p." prefix
+        self.assertIn("related-party transfer", text)
+
+    def test_analysis_assertion_rendered(self):
+        self.assertIn("The timing suggests coordination.", self._text())
+
+    def test_cited_handoff_is_documented_referral_assertion(self):
+        text = self._text()
+        self.assertIn("The foundation diverted charitable assets.", text)
+        self.assertIn("Documented", text)
+
+    def test_uncited_handoff_is_marked_needs_source(self):
+        text = self._text()
+        self.assertIn("Board members personally benefited.", text)
+        self.assertIn("Needs source", text)
+
+    def test_open_question_rendered(self):
+        self.assertIn("Who authorized the wire transfer?", self._text())
+
+    def test_note_and_legacy_narrative_omitted(self):
+        text = self._text()
+        self.assertNotIn("Imported context note.", text)
+        self.assertNotIn("LEGACY NARRATIVE THAT MUST NOT APPEAR.", text)
+
+    def test_no_doc_token_anywhere(self):
+        self.assertNotIn("[Doc-", self._text())

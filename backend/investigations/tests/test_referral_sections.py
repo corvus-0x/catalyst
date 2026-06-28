@@ -12,7 +12,12 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from ..models import ThreadElementType
-from ..referral_export import ReferralSection, map_thread_element_to_referral_section
+from ..referral_export import (
+    ReferralSection,
+    _pdf_escape,
+    _strip_legacy_doc_tokens,
+    map_thread_element_to_referral_section,
+)
 
 
 def _element(element_type, handoff_ready=False):
@@ -93,3 +98,66 @@ class MapThreadElementToReferralSectionTests(SimpleTestCase):
         from ..thread_elements import assertion_is_cited
 
         self.assertIs(exported, assertion_is_cited)
+
+
+class StripLegacyDocTokensTests(SimpleTestCase):
+    """_strip_legacy_doc_tokens removes ONLY bracketed legacy citation tokens
+    (\[Doc-\d+\]) so the ASSERTION_V1 "no [Doc-" promise holds even if an
+    investigator typed one into their assertion text. It must not touch other
+    bracketed content."""
+
+    def test_strips_a_doc_token(self):
+        self.assertEqual(
+            _strip_legacy_doc_tokens("Paid $5,000 [Doc-3] to the vendor."),
+            "Paid $5,000 to the vendor.",
+        )
+
+    def test_strips_multiple_doc_tokens(self):
+        self.assertEqual(
+            _strip_legacy_doc_tokens("See [Doc-1] and [Doc-22] for proof."),
+            "See and for proof.",
+        )
+
+    def test_leaves_non_doc_brackets_untouched(self):
+        self.assertEqual(
+            _strip_legacy_doc_tokens("Filed [Schedule L] per [IRC 4958]."),
+            "Filed [Schedule L] per [IRC 4958].",
+        )
+
+    def test_leaves_doc_token_without_digits_untouched(self):
+        # Not a legacy citation token — no numeric id.
+        self.assertEqual(_strip_legacy_doc_tokens("[Doc-]"), "[Doc-]")
+
+    def test_collapses_whitespace_left_by_removal(self):
+        self.assertEqual(_strip_legacy_doc_tokens("a  [Doc-3]  b"), "a b")
+
+    def test_handles_empty_string(self):
+        self.assertEqual(_strip_legacy_doc_tokens(""), "")
+
+
+class PdfEscapeTests(SimpleTestCase):
+    """_pdf_escape escapes ONLY the characters reportlab's mini-HTML parser would
+    misinterpret in user-controlled text. It is applied to interpolated data, never
+    to intentional markup labels like <b>Documented</b>."""
+
+    def test_escapes_ampersand(self):
+        self.assertEqual(_pdf_escape("Smith & Jones"), "Smith &amp; Jones")
+
+    def test_escapes_angle_brackets(self):
+        self.assertEqual(_pdf_escape("a < b > c"), "a &lt; b &gt; c")
+
+    def test_escapes_markup_like_text_so_it_renders_literally(self):
+        self.assertEqual(
+            _pdf_escape("<b>not bold</b>"),
+            "&lt;b&gt;not bold&lt;/b&gt;",
+        )
+
+    def test_ampersand_escaped_once(self):
+        # & must become &amp; — not double-escaped into &amp;lt; etc.
+        self.assertEqual(_pdf_escape("a < b & c"), "a &lt; b &amp; c")
+
+    def test_none_becomes_empty_string(self):
+        self.assertEqual(_pdf_escape(None), "")
+
+    def test_plain_text_unchanged(self):
+        self.assertEqual(_pdf_escape("Board of Directors"), "Board of Directors")

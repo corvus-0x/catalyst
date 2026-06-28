@@ -16,9 +16,11 @@ Structure:
     7. Appendix (raw evidence snapshots)
 """
 
+import re
 from datetime import datetime
 from enum import Enum
 from io import BytesIO
+from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -51,6 +53,48 @@ class ReferralSection(str, Enum):
     REFERRAL_ASSERTIONS = "referral_assertions"
     OPEN_QUESTIONS = "open_questions"
     OMIT = "omit"
+
+
+# Fixed render order + government-facing headers for ASSERTION_V1 threads.
+_ASSERTION_SECTION_ORDER = (
+    ReferralSection.DOCUMENTED_FACTS,
+    ReferralSection.ANALYSIS,
+    ReferralSection.REFERRAL_ASSERTIONS,
+    ReferralSection.OPEN_QUESTIONS,
+)
+_ASSERTION_SECTION_TITLES = {
+    ReferralSection.DOCUMENTED_FACTS: "Documented Facts",
+    ReferralSection.ANALYSIS: "Analysis — investigator interpretation",
+    ReferralSection.REFERRAL_ASSERTIONS: "Referral Assertions",
+    ReferralSection.OPEN_QUESTIONS: "Open Questions",
+}
+
+
+_LEGACY_DOC_TOKEN_RE = re.compile(r"\[Doc-\d+\]")
+
+
+def _strip_legacy_doc_tokens(text):
+    """Remove only bracketed legacy citation tokens (``[Doc-N]``) from text.
+
+    ASSERTION_V1 citations come from ThreadElementCitation, not inline tokens, so
+    a stray ``[Doc-3]`` an author typed must not survive into the package. Matches
+    the specific pattern only (not every ``[Doc-`` substring) to avoid damaging
+    legitimate bracketed text, then collapses the whitespace the removal leaves.
+    """
+    stripped = _LEGACY_DOC_TOKEN_RE.sub("", text or "")
+    return re.sub(r"\s{2,}", " ", stripped).strip()
+
+
+def _pdf_escape(value):
+    """Escape user-controlled text for reportlab's mini-HTML ``Paragraph`` parser.
+
+    Apply ONLY to interpolated user data (element text, context notes, filenames)
+    — never to the intentional markup labels (e.g. ``<b>Documented</b>``) the
+    renderer builds, or those would render literally. ``None`` becomes "".
+    """
+    if value is None:
+        return ""
+    return _xml_escape(str(value))
 
 
 def map_thread_element_to_referral_section(element, is_cited=assertion_is_cited):
@@ -145,6 +189,46 @@ class ReferralPDFGenerator:
                 spaceAfter=4,
                 leftIndent=0.2 * inch,
                 fontName="Courier",
+            ),
+            # --- Phase 4C: structured-assertion section styles ---
+            ParagraphStyle(
+                name="AssertionSectionHeading",
+                parent=self.styles["Heading4"],
+                fontSize=11,
+                textColor=colors.HexColor("#2c3e50"),
+                spaceBefore=8,
+                spaceAfter=4,
+                fontName="Helvetica-Bold",
+            ),
+            # Uncited investigator interpretation — visually fenced (tinted + indented)
+            # so a government reader never mistakes it for a sourced fact.
+            ParagraphStyle(
+                name="AnalysisBody",
+                parent=self.styles["Normal"],
+                fontSize=10,
+                leading=14,
+                spaceAfter=6,
+                leftIndent=0.2 * inch,
+                backColor=colors.HexColor("#fbf7e8"),
+                borderPadding=4,
+            ),
+            # Author's headline assertions put forward for referral — callout tint.
+            ParagraphStyle(
+                name="ReferralAssertionBody",
+                parent=self.styles["Normal"],
+                fontSize=10,
+                leading=14,
+                spaceAfter=6,
+                leftIndent=0.2 * inch,
+                backColor=colors.HexColor("#eef4fb"),
+                borderPadding=4,
+            ),
+            ParagraphStyle(
+                name="OpenQuestionBody",
+                parent=self.styles["Normal"],
+                fontSize=10,
+                leading=14,
+                spaceAfter=4,
             ),
         ]
 
@@ -450,10 +534,102 @@ class ReferralPDFGenerator:
             if finding.gate_version == GateVersion.LEGACY_NARRATIVE:
                 story.extend(self._render_legacy_finding(idx, finding))
             else:
-                # TODO(Phase 4C-3): render ASSERTION_V1 from structured assertions
-                # via map_thread_element_to_referral_section. Interim: legacy path.
-                story.extend(self._render_legacy_finding(idx, finding))
+                story.extend(self._render_assertion_finding(idx, finding))
 
+        return story
+
+    def _render_finding_header(self, idx, finding):
+        """Shared title + evidence-weight badge for a thread (both gate versions)."""
+        return [
+            Paragraph(
+                f"{idx}. {_pdf_escape(finding.title)} [{finding.severity}]",
+                self.styles["FindingTitle"],
+            ),
+            Paragraph(
+                (
+                    f"<b>Rule:</b> {_pdf_escape(finding.rule_id or 'MANUAL')} | "
+                    f"<b>Evidence:</b> {finding.evidence_weight}"
+                ),
+                self.styles["Citation"],
+            ),
+            Spacer(1, 0.1 * inch),
+        ]
+
+    def _render_assertion_finding(self, idx, finding):
+        """Render one ASSERTION_V1 thread: structured assertions by derived role.
+
+        Elements are bucketed via map_thread_element_to_referral_section and
+        rendered in fixed order (Documented Facts -> Analysis -> Referral
+        Assertions -> Open Questions). Empty sections are omitted; NOTE/legacy
+        context never appears. Assertion text is [Doc-N]-stripped then escaped.
+        """
+        story = self._render_finding_header(idx, finding)
+
+        buckets = {section: [] for section in _ASSERTION_SECTION_ORDER}
+        for element in finding.elements.all():
+            section = map_thread_element_to_referral_section(element)
+            if section in buckets:
+                buckets[section].append(element)
+
+        for section in _ASSERTION_SECTION_ORDER:
+            elements = buckets[section]
+            if not elements:
+                continue  # omit empty sections
+            story.append(
+                Paragraph(
+                    _ASSERTION_SECTION_TITLES[section], self.styles["AssertionSectionHeading"]
+                )
+            )
+            for element in elements:
+                story.extend(self._render_assertion_item(section, element))
+
+        if finding.legal_refs:
+            refs_text = "; ".join(_pdf_escape(ref) for ref in finding.legal_refs)
+            story.append(Paragraph(f"<b>Legal Basis:</b> {refs_text}", self.styles["Citation"]))
+
+        story.append(Spacer(1, 0.25 * inch))
+        return story
+
+    def _render_assertion_item(self, section, element):
+        """Render a single element into its section (text already role-routed)."""
+        text = _pdf_escape(_strip_legacy_doc_tokens(element.text))
+
+        if section == ReferralSection.OPEN_QUESTIONS:
+            return [Paragraph(f"☐ {text}", self.styles["OpenQuestionBody"])]
+
+        if section == ReferralSection.ANALYSIS:
+            return [Paragraph(text, self.styles["AnalysisBody"])]
+
+        if section == ReferralSection.DOCUMENTED_FACTS:
+            return [
+                Paragraph(text, self.styles["ReferralBodyText"]),
+                *self._render_element_citations(element),
+            ]
+
+        if section == ReferralSection.REFERRAL_ASSERTIONS:
+            cited = assertion_is_cited(element)
+            marker = "Documented" if cited else "Needs source"
+            story = [Paragraph(f"<b>[{marker}]</b> {text}", self.styles["ReferralAssertionBody"])]
+            if cited:
+                story.extend(self._render_element_citations(element))
+            return story
+
+        return []
+
+    def _render_element_citations(self, element):
+        """Per-assertion citations from ThreadElementCitation (source of truth).
+
+        page_reference is rendered verbatim after trimming (no 'p.' prefix — the
+        field is free-form: 'Schedule L', 'Book 429 / Page 12', etc.).
+        """
+        story = []
+        for cite in element.citations.all():
+            filename = _pdf_escape(cite.document.filename)
+            page = (cite.page_reference or "").strip()
+            page_part = f", {_pdf_escape(page)}" if page else ""
+            note = (cite.context_note or "").strip()
+            context = f" ({_pdf_escape(note)})" if note else ""
+            story.append(Paragraph(f"• {filename}{page_part}{context}", self.styles["Citation"]))
         return story
 
     def _render_legacy_finding(self, idx, finding):
