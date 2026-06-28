@@ -10,6 +10,7 @@ regress again.
 import io
 from unittest.mock import patch
 
+import fitz  # PyMuPDF — extract rendered PDF text for content assertions
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -22,6 +23,7 @@ from ..models import (
     FindingDocument,
     FindingEntity,
     FindingStatus,
+    GateVersion,
     OcrStatus,
     Organization,
     OrgDocument,
@@ -33,6 +35,18 @@ from ..models import (
     ThreadElementCitation,
     ThreadElementType,
 )
+
+
+def _pdf_text(response) -> str:
+    """Extract all text from a PDF HTTP response for substring assertions.
+
+    Substring assertions (not exact lines) are deliberate: PDF text extraction
+    reorders/splits punctuation, so we assert stable fragments — headers, body
+    text, filenames — never whole lines, and never raw bytes (the cover page
+    embeds datetime.now()).
+    """
+    with fitz.open(stream=response.content, filetype="pdf") as doc:
+        return "\n".join(page.get_text() for page in doc)
 
 
 def _add_cited_handoff_assertion(finding, document):
@@ -129,18 +143,27 @@ class ReferralPdfTests(TestCase):
         # must not appear in the package (and must not satisfy readiness alone).
         case = Case.objects.create(name="PDF excl")
         ReferralTarget.objects.create(
-            case=case, agency_name="Ohio AG", complaint_type="Charitable fraud",
+            case=case,
+            agency_name="Ohio AG",
+            complaint_type="Charitable fraud",
         )
         f = Finding.objects.create(
-            case=case, rule_id="MANUAL", title="Unreviewed",
-            status=FindingStatus.CONFIRMED, evidence_weight=EvidenceWeight.DOCUMENTED,
-            overreach_reviewed=False, narrative="n",
+            case=case,
+            rule_id="MANUAL",
+            title="Unreviewed",
+            status=FindingStatus.CONFIRMED,
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=False,
+            narrative="n",
         )
         FindingDocument.objects.create(
             finding=f,
             document=Document.objects.create(
-                case=case, filename="d.pdf", file_path="cases/t/d.pdf",
-                sha256_hash="q" * 64, file_size=1024,
+                case=case,
+                filename="d.pdf",
+                file_path="cases/t/d.pdf",
+                sha256_hash="q" * 64,
+                file_size=1024,
             ),
         )
         resp = self.client.post(f"/api/cases/{case.pk}/referral-pdf/")
@@ -158,7 +181,9 @@ class ReferralPdfTests(TestCase):
         """
         case = Case.objects.create(name="Partial PDF filter test")
         ReferralTarget.objects.create(
-            case=case, agency_name="Ohio AG", complaint_type="Charitable fraud",
+            case=case,
+            agency_name="Ohio AG",
+            complaint_type="Charitable fraud",
         )
         shared_doc = Document.objects.create(
             case=case,
@@ -200,7 +225,9 @@ class ReferralPdfTests(TestCase):
             overreach_reviewed=False,
             narrative="Overreach not reviewed — must not appear in the referral package.",
         )
-        FindingDocument.objects.create(finding=excluded, document=excluded_doc, page_reference="p. 1")
+        FindingDocument.objects.create(
+            finding=excluded, document=excluded_doc, page_reference="p. 1"
+        )
 
         with patch("investigations.referral_export.ReferralPDFGenerator") as MockGen:
             instance = MockGen.return_value
@@ -216,3 +243,52 @@ class ReferralPdfTests(TestCase):
         titles = {f.title for f in passed}
         self.assertIn("Good", titles, "Referral-grade angle should be included")
         self.assertNotIn("Excluded", titles, "overreach_reviewed=False angle must be excluded")
+
+
+class LegacyNarrativeRenderingTests(TestCase):
+    """Phase 4C characterization: a LEGACY_NARRATIVE thread keeps rendering its
+    grandfathered narrative + document citation. An explicit legacy fixture (not
+    the ASSERTION_V1 setUp above) pins this so the Phase 2 extract-method refactor
+    and the Phase 3 ASSERTION_V1 branch cannot silently regress the legacy path.
+    """
+
+    def setUp(self):
+        self.client = Client(enforce_csrf_checks=False)
+        self.case = Case.objects.create(name="Legacy Narrative Case")
+        ReferralTarget.objects.create(
+            case=self.case, agency_name="Ohio AG", complaint_type="Charitable fraud"
+        )
+        self.document = Document.objects.create(
+            case=self.case,
+            filename="legacy_deed.pdf",
+            file_path="cases/doc/legacy_deed.pdf",
+            sha256_hash="c" * 64,
+            file_size=1024,
+            doc_type=DocumentType.DEED,
+            ocr_status=OcrStatus.COMPLETED,
+        )
+        self.finding = Finding.objects.create(
+            case=self.case,
+            rule_id="SR-025",
+            title="Legacy False Disclosure",
+            severity=Severity.CRITICAL,
+            status=FindingStatus.CONFIRMED,
+            evidence_weight=EvidenceWeight.DOCUMENTED,
+            overreach_reviewed=True,
+            narrative="Disclosed zero related-party transactions despite the recorded deed.",
+            gate_version=GateVersion.LEGACY_NARRATIVE,
+        )
+        FindingDocument.objects.create(
+            finding=self.finding, document=self.document, page_reference="p. 4"
+        )
+
+    def _url(self) -> str:
+        return reverse("api_case_referral_pdf", kwargs={"pk": self.case.pk})
+
+    def test_legacy_finding_renders_narrative_and_document_citation(self):
+        response = self.client.post(self._url())
+        self.assertEqual(response.status_code, 200, response.content)
+        text = _pdf_text(response)
+        self.assertIn("Legacy False Disclosure", text)
+        self.assertIn("Disclosed zero related-party transactions", text)
+        self.assertIn("legacy_deed.pdf", text)

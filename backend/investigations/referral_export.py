@@ -34,7 +34,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from .models import ThreadElementType
+from .models import GateVersion, ThreadElementType
 from .thread_elements import assertion_is_cited
 
 
@@ -434,94 +434,114 @@ class ReferralPDFGenerator:
         return story
 
     def _build_findings_section(self, findings):
-        """Build the findings section (one per confirmed finding)."""
+        """Build the findings section, dispatching each thread on its gate_version.
+
+        LEGACY_NARRATIVE threads render the grandfathered narrative + flat document
+        citations. ASSERTION_V1 threads will render structured assertions by role
+        (Phase 4C-3); until that renderer lands they fall through to the legacy
+        presentation, which is behavior-preserving because seed_demo/migration kept
+        their narrative + legacy FindingDocument rows.
+        """
         story = []
 
         story.append(Paragraph("FINDINGS", self.styles["SectionHeading"]))
 
         for idx, finding in enumerate(findings, start=1):
+            if finding.gate_version == GateVersion.LEGACY_NARRATIVE:
+                story.extend(self._render_legacy_finding(idx, finding))
+            else:
+                # TODO(Phase 4C-3): render ASSERTION_V1 from structured assertions
+                # via map_thread_element_to_referral_section. Interim: legacy path.
+                story.extend(self._render_legacy_finding(idx, finding))
+
+        return story
+
+    def _render_legacy_finding(self, idx, finding):
+        """Render one LEGACY_NARRATIVE thread: narrative + flat document citations."""
+        story = []
+
+        story.append(
+            Paragraph(
+                f"{idx}. {finding.title} [{finding.severity}]",
+                self.styles["FindingTitle"],
+            )
+        )
+
+        # Evidence weight badge
+        story.append(
+            Paragraph(
+                (
+                    f"<b>Rule:</b> {finding.rule_id or 'MANUAL'} | "
+                    f"<b>Evidence:</b> {finding.evidence_weight}"
+                ),
+                self.styles["Citation"],
+            )
+        )
+        story.append(Spacer(1, 0.1 * inch))
+
+        # Description
+        if finding.description:
             story.append(
                 Paragraph(
-                    f"{idx}. {finding.title} [{finding.severity}]",
-                    self.styles["FindingTitle"],
+                    f"<b>Detection:</b> {finding.description}",
+                    self.styles["ReferralBodyText"],
                 )
             )
 
-            # Evidence weight badge
+        # Narrative
+        if finding.narrative:
             story.append(
                 Paragraph(
-                    (
-                        f"<b>Rule:</b> {finding.rule_id or 'MANUAL'} | "
-                        f"<b>Evidence:</b> {finding.evidence_weight}"
-                    ),
-                    self.styles["Citation"],
+                    f"<b>Analysis:</b> {finding.narrative}",
+                    self.styles["ReferralBodyText"],
                 )
             )
-            story.append(Spacer(1, 0.1 * inch))
 
-            # Description
-            if finding.description:
+        # Linked entities
+        entity_links = finding.entity_links.all()
+        if entity_links.exists():
+            entities_text = ", ".join(
+                [el.context_note or f"Entity ID {el.entity_id}" for el in entity_links]
+            )
+            story.append(
+                Paragraph(
+                    f"<b>Linked Entities:</b> {entities_text}",
+                    self.styles["ReferralBodyText"],
+                )
+            )
+
+        # Linked documents with citations
+        doc_links = finding.document_links.all()
+        if doc_links.exists():
+            story.append(
+                Paragraph(
+                    "<b>Evidence Documents:</b>",
+                    self.styles["ReferralBodyText"],
+                )
+            )
+            for doc_link in doc_links:
+                doc = doc_link.document
+                page_ref = f", p.{doc_link.page_reference}" if doc_link.page_reference else ""
+                context = f" ({doc_link.context_note})" if doc_link.context_note else ""
+                citation = f"• {doc.filename}{page_ref}{context}"
                 story.append(
                     Paragraph(
-                        f"<b>Detection:</b> {finding.description}",
-                        self.styles["ReferralBodyText"],
-                    )
-                )
-
-            # Narrative
-            if finding.narrative:
-                story.append(
-                    Paragraph(
-                        f"<b>Analysis:</b> {finding.narrative}",
-                        self.styles["ReferralBodyText"],
-                    )
-                )
-
-            # Linked entities
-            entity_links = finding.entity_links.all()
-            if entity_links.exists():
-                entities_text = ", ".join(
-                    [el.context_note or f"Entity ID {el.entity_id}" for el in entity_links]
-                )
-                story.append(
-                    Paragraph(
-                        f"<b>Linked Entities:</b> {entities_text}",
-                        self.styles["ReferralBodyText"],
-                    )
-                )
-
-            # Linked documents with citations
-            doc_links = finding.document_links.all()
-            if doc_links.exists():
-                story.append(
-                    Paragraph(
-                        "<b>Evidence Documents:</b>",
-                        self.styles["ReferralBodyText"],
-                    )
-                )
-                for doc_link in doc_links:
-                    doc = doc_link.document
-                    page_ref = f", p.{doc_link.page_reference}" if doc_link.page_reference else ""
-                    context = f" ({doc_link.context_note})" if doc_link.context_note else ""
-                    citation = f"• {doc.filename}{page_ref}{context}"
-                    story.append(
-                        Paragraph(
-                            citation,
-                            self.styles["Citation"],
-                        )
-                    )
-
-            # Legal references
-            if finding.legal_refs:
-                refs_text = "; ".join(finding.legal_refs)
-                story.append(
-                    Paragraph(
-                        f"<b>Legal Basis:</b> {refs_text}",
+                        citation,
                         self.styles["Citation"],
                     )
                 )
 
-            story.append(Spacer(1, 0.25 * inch))
+        # Legal references
+        if finding.legal_refs:
+            refs_text = "; ".join(finding.legal_refs)
+            story.append(
+                Paragraph(
+                    f"<b>Legal Basis:</b> {refs_text}",
+                    self.styles["Citation"],
+                )
+            )
+
+        story.append(Spacer(1, 0.25 * inch))
 
         return story
 
