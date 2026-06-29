@@ -6282,7 +6282,11 @@ def api_case_referral_pdf(request, pk):
 
     findings_qs = (
         referral_grade_qs(case)
-        .prefetch_related("entity_links", "document_links")
+        .prefetch_related(
+            "entity_links",
+            "document_links__document",
+            "elements__citations__document",
+        )
         .order_by("-severity", "created_at")
     )
 

@@ -11,11 +11,18 @@ from .models import ThreadElementType
 
 
 def assertion_is_cited(element) -> bool:
-    """True iff element is an ASSERTION with text and at least one citation."""
+    """True iff element is an ASSERTION with text and at least one citation.
+
+    Uses ``bool(element.citations.all())`` rather than ``.exists()`` so that when
+    citations are prefetched (e.g. the referral PDF prefetches
+    ``elements__citations__document``) this is a cache hit rather than a fresh
+    query per element. The boolean result is identical, so the gate parity test
+    (is_referral_grade vs referral_grade_qs) is unaffected.
+    """
     return (
         element.element_type == ThreadElementType.ASSERTION
         and bool((element.text or "").strip())
-        and element.citations.exists()
+        and bool(element.citations.all())
     )
 
 
