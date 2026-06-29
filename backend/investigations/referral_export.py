@@ -10,7 +10,8 @@ Structure:
     1. Cover page
     2. Executive summary
     3. Subject entities (table)
-    4. Findings (per-finding sections with citations)
+    4. Findings (per finding, by gate_version: LEGACY_NARRATIVE = narrative + flat
+       citations; ASSERTION_V1 = structured assertions bucketed by derived role)
     5. Financial summary (year-over-year analysis)
     6. Document index (chain of custody, SHA-256 hashes)
     7. Appendix (raw evidence snapshots)
@@ -55,14 +56,10 @@ class ReferralSection(str, Enum):
     OMIT = "omit"
 
 
-# Fixed render order + government-facing headers for ASSERTION_V1 threads.
-_ASSERTION_SECTION_ORDER = (
-    ReferralSection.DOCUMENTED_FACTS,
-    ReferralSection.ANALYSIS,
-    ReferralSection.REFERRAL_ASSERTIONS,
-    ReferralSection.OPEN_QUESTIONS,
-)
-_ASSERTION_SECTION_TITLES = {
+# Government-facing section headers in fixed render order, as a single ordered map
+# so render order and titles cannot drift (a new section can't be added to one but
+# not the other). OMIT is intentionally absent — it is not a renderable section.
+_ASSERTION_SECTIONS = {
     ReferralSection.DOCUMENTED_FACTS: "Documented Facts",
     ReferralSection.ANALYSIS: "Analysis — investigator interpretation",
     ReferralSection.REFERRAL_ASSERTIONS: "Referral Assertions",
@@ -112,14 +109,17 @@ def map_thread_element_to_referral_section(element, is_cited=assertion_is_cited)
     (NOTE, unknown) -> OMIT.
     """
     etype = element.element_type
-    if etype == ThreadElementType.QUESTION:
-        return ReferralSection.OPEN_QUESTIONS
     if etype == ThreadElementType.ASSERTION:
         if element.handoff_ready:
             return ReferralSection.REFERRAL_ASSERTIONS
         if is_cited(element):
             return ReferralSection.DOCUMENTED_FACTS
         return ReferralSection.ANALYSIS
+    if etype == ThreadElementType.QUESTION:
+        return ReferralSection.OPEN_QUESTIONS
+    # NOTE — and, defensively, any future type without a bucket — is omitted from
+    # the government-facing package rather than crashing the deliverable. A new
+    # renderable ThreadElementType must be given an explicit branch above.
     return ReferralSection.OMIT
 
 
@@ -521,10 +521,9 @@ class ReferralPDFGenerator:
         """Build the findings section, dispatching each thread on its gate_version.
 
         LEGACY_NARRATIVE threads render the grandfathered narrative + flat document
-        citations. ASSERTION_V1 threads will render structured assertions by role
-        (Phase 4C-3); until that renderer lands they fall through to the legacy
-        presentation, which is behavior-preserving because seed_demo/migration kept
-        their narrative + legacy FindingDocument rows.
+        citations. ASSERTION_V1 threads render structured assertions bucketed by
+        derived role (Documented Facts / Analysis / Referral Assertions / Open
+        Questions).
         """
         story = []
 
@@ -563,25 +562,30 @@ class ReferralPDFGenerator:
         Assertions -> Open Questions). Empty sections are omitted; NOTE/legacy
         context never appears. Assertion text is [Doc-N]-stripped then escaped.
         """
-        story = self._render_finding_header(idx, finding)
-
-        buckets = {section: [] for section in _ASSERTION_SECTION_ORDER}
+        buckets = {section: [] for section in _ASSERTION_SECTIONS}
         for element in finding.elements.all():
             section = map_thread_element_to_referral_section(element)
             if section in buckets:
                 buckets[section].append(element)
 
-        for section in _ASSERTION_SECTION_ORDER:
+        # Build the body first so we can detect a thread that maps to zero
+        # renderable sections. referral_grade_qs guarantees a cited + a handoff
+        # assertion for ASSERTION_V1, so this is defense-in-depth: a header with no
+        # evidentiary body must never reach a government reader as "complete".
+        body = []
+        for section, title in _ASSERTION_SECTIONS.items():
             elements = buckets[section]
             if not elements:
                 continue  # omit empty sections
-            story.append(
-                Paragraph(
-                    _ASSERTION_SECTION_TITLES[section], self.styles["AssertionSectionHeading"]
-                )
-            )
+            body.append(Paragraph(title, self.styles["AssertionSectionHeading"]))
             for element in elements:
-                story.extend(self._render_assertion_item(section, element))
+                body.extend(self._render_assertion_item(section, element))
+
+        if not body:
+            return []  # no renderable content — emit nothing rather than an orphan header
+
+        story = self._render_finding_header(idx, finding)
+        story.extend(body)
 
         if finding.legal_refs:
             refs_text = "; ".join(_pdf_escape(ref) for ref in finding.legal_refs)
@@ -633,33 +637,19 @@ class ReferralPDFGenerator:
         return story
 
     def _render_legacy_finding(self, idx, finding):
-        """Render one LEGACY_NARRATIVE thread: narrative + flat document citations."""
-        story = []
+        """Render one LEGACY_NARRATIVE thread: narrative + flat document citations.
 
-        story.append(
-            Paragraph(
-                f"{idx}. {finding.title} [{finding.severity}]",
-                self.styles["FindingTitle"],
-            )
-        )
-
-        # Evidence weight badge
-        story.append(
-            Paragraph(
-                (
-                    f"<b>Rule:</b> {finding.rule_id or 'MANUAL'} | "
-                    f"<b>Evidence:</b> {finding.evidence_weight}"
-                ),
-                self.styles["Citation"],
-            )
-        )
-        story.append(Spacer(1, 0.1 * inch))
+        All interpolated user/system text is run through ``_pdf_escape`` — reportlab
+        parses ``Paragraph`` strings as mini-HTML, so an unescaped ``<``/``&`` would
+        otherwise crash the export or silently swallow content.
+        """
+        story = self._render_finding_header(idx, finding)
 
         # Description
         if finding.description:
             story.append(
                 Paragraph(
-                    f"<b>Detection:</b> {finding.description}",
+                    f"<b>Detection:</b> {_pdf_escape(finding.description)}",
                     self.styles["ReferralBodyText"],
                 )
             )
@@ -668,7 +658,7 @@ class ReferralPDFGenerator:
         if finding.narrative:
             story.append(
                 Paragraph(
-                    f"<b>Analysis:</b> {finding.narrative}",
+                    f"<b>Analysis:</b> {_pdf_escape(finding.narrative)}",
                     self.styles["ReferralBodyText"],
                 )
             )
@@ -677,7 +667,7 @@ class ReferralPDFGenerator:
         entity_links = finding.entity_links.all()
         if entity_links.exists():
             entities_text = ", ".join(
-                [el.context_note or f"Entity ID {el.entity_id}" for el in entity_links]
+                _pdf_escape(el.context_note or f"Entity ID {el.entity_id}") for el in entity_links
             )
             story.append(
                 Paragraph(
@@ -697,9 +687,13 @@ class ReferralPDFGenerator:
             )
             for doc_link in doc_links:
                 doc = doc_link.document
-                page_ref = f", p.{doc_link.page_reference}" if doc_link.page_reference else ""
-                context = f" ({doc_link.context_note})" if doc_link.context_note else ""
-                citation = f"• {doc.filename}{page_ref}{context}"
+                page_ref = (
+                    f", p.{_pdf_escape(doc_link.page_reference)}" if doc_link.page_reference else ""
+                )
+                context = (
+                    f" ({_pdf_escape(doc_link.context_note)})" if doc_link.context_note else ""
+                )
+                citation = f"• {_pdf_escape(doc.filename)}{page_ref}{context}"
                 story.append(
                     Paragraph(
                         citation,
@@ -709,7 +703,7 @@ class ReferralPDFGenerator:
 
         # Legal references
         if finding.legal_refs:
-            refs_text = "; ".join(finding.legal_refs)
+            refs_text = "; ".join(_pdf_escape(ref) for ref in finding.legal_refs)
             story.append(
                 Paragraph(
                     f"<b>Legal Basis:</b> {refs_text}",

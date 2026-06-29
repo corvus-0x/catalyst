@@ -134,6 +134,10 @@ class StripLegacyDocTokensTests(SimpleTestCase):
     def test_handles_empty_string(self):
         self.assertEqual(_strip_legacy_doc_tokens(""), "")
 
+    def test_handles_none(self):
+        # element.text may be None; the helper must not raise.
+        self.assertEqual(_strip_legacy_doc_tokens(None), "")
+
 
 class PdfEscapeTests(SimpleTestCase):
     """_pdf_escape escapes ONLY the characters reportlab's mini-HTML parser would
