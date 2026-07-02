@@ -79,7 +79,7 @@ The entire backend lives in one Django app: `investigations`. This app contains 
 | Module | Purpose |
 |--------|---------|
 | `entity_resolution.py` | Exact match upsert + fuzzy candidate surfacing |
-| `signal_rules.py` | 15 active fraud signal rules (SR-001 through SR-028; some gaps/retired) |
+| `signal_rules.py` | 17 active fraud signal rules (SR-003 through SR-031; some gaps/retired) |
 | `referral_grade.py` | Single source of truth for referral-grade predicate (dual-version since 4B) |
 | `case_map.py` | Case Map builder — summarized subject-pair edges + strength scoring |
 | `thread_elements.py` | Thread assertion completeness + document_links sync helpers |
@@ -127,7 +127,7 @@ Stage 4: Entity normalization (canonical form for comparison)
 Stage 5: Entity resolution (exact match → upsert; fuzzy → flag for review)
     │
     ▼
-Stage 6: Signal detection (evaluate document + case against 15 active rules)
+Stage 6: Signal detection (evaluate document + case against 17 active rules)
     │
     ▼
 Stage 7: Financial extraction (for IRS 990 → FinancialSnapshot)
@@ -158,7 +158,7 @@ Each stage is best-effort — a failure never blocks the upload.
   Role (fact/analysis/claim) is **derived from evidence**, not stored.
 - **ThreadElementCitation** — Source document for an ASSERTION. Source of truth for
   citations; `Finding.document_links` (`FindingDocument`) is a synced compatibility index.
-- **Signal** — Automated detection of suspicious patterns (15 active rule types)
+- **Signal** — Automated detection of suspicious patterns (17 active rule types)
 - **FinancialSnapshot** — Extracted IRS Form 990 financial data
 - **SearchJob** — Async job tracker for research connector calls
 
