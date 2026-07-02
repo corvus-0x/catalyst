@@ -58,7 +58,7 @@ Catalyst/
 │   │   ├── entity_extraction.py ← Rule-based entity extraction from text
 │   │   ├── entity_resolution.py ← Fuzzy matching + dedup entities
 │   │   ├── entity_normalization.py ← Name/EIN/address standardization
-│   │   ├── signal_rules.py      ← 15 active fraud detection rules
+│   │   ├── signal_rules.py      ← 17 active fraud detection rules
 │   │   ├── referral_grade.py    ← Referral-grade predicate (tie-off gate) — one def, 3 call sites
 │   │   ├── case_map.py          ← Case Map builder: summarized subject-pair edges + strength (Phase 1A)
 │   │   ├── thread_elements.py   ← Thread assertions: completeness predicates + document_links ensure/reap sync (Phase 4A — built but UNWIRED until 4B)
@@ -134,7 +134,9 @@ Key models for quick orientation:
   document ∧ weight ∈ {DOCUMENTED, TRACED} ∧ `overreach_reviewed`. The predicate lives once in
   `referral_grade.py` (`referral_grade_qs` / `is_referral_grade`) and is reused by readiness,
   the credibility counts, and the referral PDF filter. Enforced server-side in
-  `FindingUpdateSerializer` on the transition into CONFIRMED.
+  `FindingUpdateSerializer` on the transition into CONFIRMED. **Investigator-facing
+  writeup of this gate + the whole detection/citation methodology:
+  `docs/METHODOLOGY.md` — keep it in sync when `referral_grade.py` changes.**
   **Phase 4A (Session 52):** added `Finding.gate_version` (`LEGACY_NARRATIVE` | `ASSERTION_V1`,
   default `ASSERTION_V1`) for the 4B grandfathered gate; `serialize_finding` now embeds
   `elements[]` + `gate_version`. The old tie-off gate above is **unchanged** in 4A.
@@ -155,7 +157,8 @@ Key models for quick orientation:
 
 → Full rule table + dedup logic: **`docs/team/backend-engineer.md`**
 
-15 active rules. Severities: SR-015 INSIDER_SWAP, SR-025 FALSE_DISCLOSURE, SR-028
+17 active rules (SR-003 through SR-031, with gaps for retired IDs). Severities:
+SR-015 INSIDER_SWAP, SR-025 FALSE_DISCLOSURE, SR-028
 MATERIAL_DIVERSION are CRITICAL. All others HIGH or MEDIUM.
 
 ---

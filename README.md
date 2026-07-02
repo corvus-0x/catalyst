@@ -5,7 +5,7 @@
 ![Railway](https://img.shields.io/badge/Railway-deployed-blue?style=flat)
 ![Claude API](https://img.shields.io/badge/Claude_API-integrated-blueviolet?style=flat)
 
-**Upload public records → Claude extracts entities → 15 fraud-detection rules fire → citation-bearing referral package for the AG / IRS / FBI.**
+**Upload public records → Claude extracts entities → 17 fraud-detection rules fire → citation-bearing referral package for the AG / IRS / FBI.**
 
 Built backwards from a real Ohio nonprofit investigation. Five agency referrals filed.
 
@@ -40,7 +40,7 @@ Open **http://localhost:5174** — a complete investigation case loads automatic
 
 ```
 Upload PDF → SHA-256 hash → OCR / extract text → Entities resolved
-    → 15 signal rules fire → Investigator reviews → AI pattern analysis
+    → 17 signal rules fire → Investigator reviews → AI pattern analysis
         → Citation-bearing referral package
 ```
 
@@ -90,7 +90,7 @@ What ships in a referral package, how evidence is weighed, and when an entity me
 
 ## Test surface
 
-1,055 backend tests covering connectors, API endpoints, all 15 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, data quality validators, and the referral PDF exporter. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
+1,055 backend tests covering connectors, API endpoints, all 17 signal rules, async job pipeline, AI pattern augmentation, upload pipeline, entity resolution, classification, data quality validators, and the referral PDF exporter. CI enforces the full suite on every push via a Postgres service container — no Railway-roulette.
 
 ```bash
 # Run the full suite (inside Docker):

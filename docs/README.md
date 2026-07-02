@@ -2,6 +2,13 @@
 
 This folder contains project documentation grouped by purpose.
 
+## standards
+
+- `METHODOLOGY.md`: **Methodology & Citation Standard** — how a finding is derived,
+  what it may claim, and how every claim is cited. Written for the professional
+  investigator receiving a referral package. Source of truth for the mechanics is
+  `backend/investigations/signal_rules.py` and `referral_grade.py`.
+
 ## project
 
 - `project/system-overview.md`: architecture, components, and implementation status.
