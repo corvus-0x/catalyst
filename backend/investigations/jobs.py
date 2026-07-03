@@ -214,30 +214,30 @@ def run_irs_fetch_xml(job_id: str) -> None:
                         # Each row links to both the snapshot and case for
                         # efficient signal-rule queries without extra joins.
                         if parsed.schedule_l_transactions:
-                            ScheduleLTransaction.objects.bulk_create([
-                                ScheduleLTransaction(
-                                    snapshot=fin,
-                                    case=case,
-                                    tax_year=tax_year,
-                                    party_name=t.get("party_name", ""),
-                                    relationship_description=t.get(
-                                        "relationship_description", ""
-                                    ),
-                                    transaction_description=t.get(
-                                        "transaction_description", ""
-                                    ),
-                                    amount=t.get("amount"),
-                                )
-                                for t in parsed.schedule_l_transactions
-                            ])
+                            ScheduleLTransaction.objects.bulk_create(
+                                [
+                                    ScheduleLTransaction(
+                                        snapshot=fin,
+                                        case=case,
+                                        tax_year=tax_year,
+                                        party_name=t.get("party_name", ""),
+                                        relationship_description=t.get(
+                                            "relationship_description", ""
+                                        ),
+                                        transaction_description=t.get(
+                                            "transaction_description", ""
+                                        ),
+                                        amount=t.get("amount"),
+                                    )
+                                    for t in parsed.schedule_l_transactions
+                                ]
+                            )
 
                         # --- Persist Schedule R and O as JSON fields ---
                         if parsed.schedule_r_orgs or parsed.schedule_o_explanations:
                             fin.schedule_r_orgs = parsed.schedule_r_orgs
                             fin.schedule_o_explanations = parsed.schedule_o_explanations
-                            fin.save(
-                                update_fields=["schedule_r_orgs", "schedule_o_explanations"]
-                            )
+                            fin.save(update_fields=["schedule_r_orgs", "schedule_o_explanations"])
 
                         snapshots_created += 1
 
@@ -394,6 +394,26 @@ def run_ai_pattern_analysis(job_id: str) -> None:
         # Pass the job object so analyze_case can link findings back to this
         # run and stamp the model version into evidence_snapshot.
         summary = ai_pattern_augmentation.analyze_case(case_id, job=job)
+        _mark_success(job, summary)
+    except Exception as exc:  # noqa: BLE001
+        _mark_failed(job, exc)
+
+
+def run_thread_assist(job_id: str) -> None:
+    """Run the assist-only Phase 4D proposal pass for one finding.
+
+    The worker stores the proposals in SearchJob.result — it never creates
+    ThreadElement rows. The Thread Builder polls GET /api/jobs/<id>/ and the
+    investigator accepts proposals through the normal element endpoints.
+    """
+    job = _load_and_mark_running(job_id)
+    if job is None:
+        return
+    try:
+        from investigations import ai_thread_assist
+
+        finding_id = job.query_params["finding_id"]
+        summary = ai_thread_assist.propose_assertions(finding_id, job=job)
         _mark_success(job, summary)
     except Exception as exc:  # noqa: BLE001
         _mark_failed(job, exc)

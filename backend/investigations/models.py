@@ -1531,6 +1531,10 @@ class AuditAction(models.TextChoices):
     AI_PATTERN_RUN_COMPLETED = "AI_PATTERN_RUN_COMPLETED", "AI pattern analysis run completed"
     AI_FINDING_CREATED = "AI_FINDING_CREATED", "AI-flagged pattern written as finding"
     AI_FINDING_REVIEWED = "AI_FINDING_REVIEWED", "Investigator reviewed an AI-flagged finding"
+    AI_THREAD_ASSIST_COMPLETED = (
+        "AI_THREAD_ASSIST_COMPLETED",
+        "AI thread-assist proposal run completed",
+    )
 
 
 class AppendOnlyError(Exception):
@@ -1800,6 +1804,7 @@ class JobType(models.TextChoices):
     COUNTY_PARCEL = "COUNTY_PARCEL", "County Parcel Search"
     AI_PATTERN_ANALYSIS = "AI_PATTERN_ANALYSIS", "AI Pattern Analysis"
     AI_ASK = "AI_ASK", "AI Ask Question"
+    AI_THREAD_ASSIST = "AI_THREAD_ASSIST", "AI Thread Assist"
 
 
 class JobStatus(models.TextChoices):
