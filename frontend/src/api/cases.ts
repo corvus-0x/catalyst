@@ -10,7 +10,11 @@
  */
 
 import { fetchApi } from "./base";
-import type { ThreadElement, ThreadElementType } from "../types";
+import type {
+  AsyncJobEnqueuedResponse,
+  ThreadElement,
+  ThreadElementType,
+} from "../types";
 import type {
   CaseListResponse,
   CaseListItem,
@@ -332,6 +336,21 @@ export async function reorderElements(
     method: "POST",
     body: { ordered_ids: orderedIds },
   });
+}
+
+/**
+ * Request Lead suggestions for a thread (Phase 4D, assist-only).
+ * Returns 202 + job_id; poll the job for ThreadAssistJobResult. Accepting a
+ * proposal is a separate human action via createElement/addCitation.
+ */
+export async function requestThreadAssist(
+  caseId: string,
+  findingId: string,
+): Promise<AsyncJobEnqueuedResponse> {
+  return fetchApi<AsyncJobEnqueuedResponse>(
+    `/api/cases/${caseId}/findings/${findingId}/assist/`,
+    { method: "POST" },
+  );
 }
 
 /** Add a document citation to an ASSERTION element. Returns the updated element. */

@@ -120,7 +120,8 @@ export type JobType =
   | "OHIO_AOS"
   | "COUNTY_PARCEL"
   | "AI_PATTERN_ANALYSIS"
-  | "AI_ASK";
+  | "AI_ASK"
+  | "AI_THREAD_ASSIST";
 
 /** Async job lifecycle status */
 export type JobStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
@@ -1245,6 +1246,30 @@ export interface AsyncJobEnqueuedResponse {
 export interface AiPatternJobResult {
   findings_created: number;
   patterns_dropped: number;
+}
+
+/**
+ * One proposed assertion from a completed AI_THREAD_ASSIST job (Phase 4D).
+ * Assist-only: nothing is persisted until the investigator accepts a proposal,
+ * which goes through the normal element/citation endpoints.
+ */
+export interface ThreadAssistProposal {
+  /** Proposed assertion text (single checkable statement). */
+  text: string;
+  /** Doc-N refs as returned by the model (already validated server-side). */
+  doc_refs: string[];
+  /** Short quote/paraphrase of the freeform material the proposal came from. */
+  basis: string;
+  /** Doc-N refs resolved to stable ids + filenames for display and citation. */
+  documents: Array<{ document_id: UUID; filename: string }>;
+}
+
+/** result shape for a completed AI_THREAD_ASSIST job. */
+export interface ThreadAssistJobResult {
+  finding_id: UUID;
+  case_id: UUID;
+  proposals: ThreadAssistProposal[];
+  proposals_dropped: number;
 }
 
 /**

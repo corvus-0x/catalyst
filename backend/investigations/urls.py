@@ -161,6 +161,11 @@ urlpatterns = [
         name="api_case_finding_detail",
     ),
     path(
+        "api/cases/<uuid:pk>/findings/<uuid:finding_id>/assist/",
+        views.api_thread_assist,
+        name="api_thread_assist",
+    ),
+    path(
         "api/cases/<uuid:pk>/findings/<uuid:finding_id>/elements/",
         views.api_thread_element_collection,
         name="api_thread_element_collection",

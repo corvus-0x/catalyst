@@ -60,6 +60,7 @@ export {
   reorderElements,
   addCitation,
   removeCitation,
+  requestThreadAssist,
 } from "./cases";
 
 // Param types exported from cases.ts

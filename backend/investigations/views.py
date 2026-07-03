@@ -5777,6 +5777,42 @@ def api_ai_analyze_patterns(request, pk):
     )
 
 
+@require_http_methods(["POST"])
+def api_thread_assist(request, pk, finding_id):
+    """Enqueue an assist-only proposal job for one thread (Phase 4D).
+
+    The worker returns proposed assertions in the job result; it persists
+    nothing. One assist job per finding may be in-flight at a time —
+    application-level check only (no partial unique index: the per-finding
+    scope lives inside query_params, and a duplicate slipping a race costs
+    one redundant Claude call, not corrupted data).
+    """
+    case = get_object_or_404(Case, pk=pk)
+    finding = get_object_or_404(Finding, pk=finding_id, case=case)
+
+    in_flight = SearchJob.objects.filter(
+        case=case,
+        job_type=JobType.AI_THREAD_ASSIST,
+        status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
+        query_params__finding_id=str(finding.id),
+    ).exists()
+    if in_flight:
+        return JsonResponse(
+            {"error": "A suggestion run is already in progress for this thread."},
+            status=409,
+        )
+    job = SearchJob.objects.create(
+        case=case,
+        job_type=JobType.AI_THREAD_ASSIST,
+        query_params={"case_id": str(case.id), "finding_id": str(finding.id)},
+    )
+    async_task("investigations.jobs.run_thread_assist", str(job.id))
+    return JsonResponse(
+        {"job_id": str(job.id), "status_url": f"/api/jobs/{job.id}/"},
+        status=202,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Research → Case Wiring: Add to Case
 # ──────────────────────────────────────────────────────────────────────
