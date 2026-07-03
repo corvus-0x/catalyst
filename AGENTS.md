@@ -58,7 +58,7 @@ Catalyst/
 │   │   ├── entity_extraction.py ← Rule-based entity extraction from text
 │   │   ├── entity_resolution.py ← Fuzzy matching + dedup entities
 │   │   ├── entity_normalization.py ← Name/EIN/address standardization
-│   │   ├── signal_rules.py      ← 15 active fraud detection rules
+│   │   ├── signal_rules.py      ← 17 active fraud detection rules
 │   │   ├── data_quality.py      ← Data validation + audit logging
 │   │   ├── ai_gateway.py        ← Shared model gateway for JSON calls, retries, usage
 │   │   ├── ai_extraction.py     ← Intake entity/financial extraction via ai_gateway.py
@@ -137,7 +137,8 @@ Key models for quick orientation:
 
 → Full rule table + dedup logic: **`docs/team/backend-engineer.md`**
 
-15 active rules. Severities: SR-015 INSIDER_SWAP, SR-025 FALSE_DISCLOSURE, SR-028
+17 active rules (SR-003 through SR-031, with gaps for retired IDs). Severities:
+SR-015 INSIDER_SWAP, SR-025 FALSE_DISCLOSURE, SR-028
 MATERIAL_DIVERSION are CRITICAL. All others HIGH or MEDIUM.
 
 ---
