@@ -76,7 +76,7 @@ on the tool that surfaced it. (See the credibility rationale in §7.)
 
 ## 3. How a finding is produced
 
-```
+```text
 public records → extraction/OCR → entity extraction → entity resolution
    → data quality → SIGNAL RULES → Finding (NEW / SPECULATIVE / AUTO)
    → human triage → (tie-off gate) → Referral Package
