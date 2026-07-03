@@ -10,16 +10,20 @@ import logging
 from django.utils import timezone
 
 from .models import (
+    FinancialInstrument,
     Finding,
     FindingStatus,
+    OrgAddress,
     Organization,
     OrganizationStatus,
     OrgDocument,
     Person,
+    PersonAddress,
     PersonDocument,
     PersonOrganization,
     PropertyTransaction,
     Relationship,
+    RelationshipType,
 )
 from .referral_grade import is_referral_grade
 
@@ -186,7 +190,7 @@ def _subject_index(case):
                 "has_active_thread": False,
                 "has_substantiated_thread": False,
             },
-            "metadata": {"thread_count": 0, "document_count": 0},
+            "metadata": {"thread_count": 0, "document_count": 0, "transaction_count": 0},
         }
     for o in Organization.objects.filter(case=case):
         idx[str(o.id)] = {
@@ -200,7 +204,7 @@ def _subject_index(case):
                 "has_active_thread": False,
                 "has_substantiated_thread": False,
             },
-            "metadata": {"thread_count": 0, "document_count": 0},
+            "metadata": {"thread_count": 0, "document_count": 0, "transaction_count": 0},
         }
     for pd in PersonDocument.objects.filter(person__case=case):
         sid = str(pd.person_id)
@@ -283,21 +287,32 @@ def _collect_transactions(case, subjects, evidence):
 
     Properties are NOT nodes; the transaction is attributed to the buyer/seller
     subject pair. A transaction with only one side resolving to a case subject
-    contributes no edge (spec §"Property transaction summarization"). The spec's
-    one-sided "metadata credit" for the resolved subject is deferred to the 1A
-    fast-follow; the skip is debug-logged so it can be told apart from a data bug.
+    contributes no edge (spec §"Property transaction summarization"), but DOES
+    credit the resolved subject's `metadata.transaction_count` — the spec's
+    one-sided "metadata credit" (1A fast-follow). Two-sided transactions credit
+    both nodes. The no-edge skip stays debug-logged so it can be told apart
+    from a data bug.
     """
     qs = PropertyTransaction.objects.filter(property__case=case).select_related("property")
     for tx in qs:
         buyer = str(tx.buyer_id) if tx.buyer_id else None
         seller = str(tx.seller_id) if tx.seller_id else None
-        if not buyer or not seller or buyer not in subjects or seller not in subjects:
+        # dict.fromkeys = ordered dedup: a self-transaction (buyer == seller)
+        # credits the subject's metadata ONCE and never makes a self-loop edge
+        # (a pair map has no meaningful self-pair; the txn stays inspectable
+        # via the node's transaction_count).
+        resolved = list(dict.fromkeys(s for s in (buyer, seller) if s and s in subjects))
+        for sid in resolved:
+            subjects[sid]["metadata"]["transaction_count"] += 1
+        if len(resolved) < 2:
             logger.debug(
-                "case_map: tx %s skipped — a side did not resolve to a case subject "
-                "(buyer=%s seller=%s)",
+                "case_map: tx %s made no edge — sides did not resolve to a distinct "
+                "case-subject pair (buyer=%s seller=%s); metadata credit applied to "
+                "%d node(s)",
                 tx.id,
                 buyer,
                 seller,
+                len(resolved),
             )
             continue
         lo, hi, _ = pair_edge_id(buyer, seller)
@@ -323,12 +338,25 @@ def _collect_transactions(case, subjects, evidence):
         )
 
 
-def _collect_relationships(case, subjects, evidence):
-    """Manual/person Relationship rows → family_or_personal evidence.
+# Relationship types that read as business associations rather than
+# family/personal ties (1A fast-follow split). Everything else — including
+# OTHER, which carries no type signal — stays in the family_or_personal bucket.
+_BUSINESS_RELATIONSHIP_TYPES = frozenset(
+    {
+        RelationshipType.BUSINESS_PARTNER,
+        RelationshipType.CO_OFFICER,
+        RelationshipType.ATTORNEY_CLIENT,
+        RelationshipType.EMPLOYER_EMPLOYEE,
+    }
+)
 
-    NOTE: every Relationship row currently sets `has_family` regardless of
-    `relationship_type`. Splitting business/personal into a separate
-    `business_association` category is part of the 1A fast-follow.
+
+def _collect_relationships(case, subjects, evidence):
+    """Manual/person Relationship rows → family_or_personal OR business_association.
+
+    The bucket is decided per-row by `relationship_type`
+    (_BUSINESS_RELATIONSHIP_TYPES); a pair with both a SPOUSE and a
+    BUSINESS_PARTNER row scores both categories.
     """
     qs = Relationship.objects.filter(case=case).select_related("person_a", "person_b")
     for rel in qs:
@@ -337,7 +365,10 @@ def _collect_relationships(case, subjects, evidence):
             continue
         lo, hi, _ = pair_edge_id(a, b)
         ev = evidence.setdefault((lo, hi), _new_evidence())
-        ev["has_family"] = True
+        if rel.relationship_type in _BUSINESS_RELATIONSHIP_TYPES:
+            ev["has_business"] = True
+        else:
+            ev["has_family"] = True
         ev["relationship_types"].add(rel.relationship_type)
         ev["underlying"].append(
             {
@@ -345,6 +376,106 @@ def _collect_relationships(case, subjects, evidence):
                 "label": rel.get_relationship_type_display(),
                 "source": "manual_relationship",
                 "source_id": str(rel.id),
+            }
+        )
+
+
+def _collect_shared_addresses(case, subjects, evidence):
+    """Subjects linked to the same normalized Address → shared_address evidence.
+
+    PersonAddress + OrgAddress rows are grouped by address; every unordered
+    subject pair sharing an address gets `has_shared_address` (one flag per
+    pair regardless of how many addresses they share — the scorer awards
+    SHARED_ADDRESS_POINTS once), plus one evidence_ref/underlying entry per
+    shared address for inspector drill-down.
+    """
+    addr_subjects = {}
+    addr_labels = {}
+    for pa in PersonAddress.objects.filter(person__case=case).select_related("address"):
+        sid = str(pa.person_id)
+        if sid in subjects:
+            aid = str(pa.address_id)
+            addr_subjects.setdefault(aid, set()).add(sid)
+            addr_labels[aid] = pa.address.raw_text
+    for oa in OrgAddress.objects.filter(org__case=case).select_related("address"):
+        sid = str(oa.org_id)
+        if sid in subjects:
+            aid = str(oa.address_id)
+            addr_subjects.setdefault(aid, set()).add(sid)
+            addr_labels[aid] = oa.address.raw_text
+    for aid, members in addr_subjects.items():
+        ordered = sorted(members)
+        for i, a in enumerate(ordered):
+            for b in ordered[i + 1 :]:
+                lo, hi, _ = pair_edge_id(a, b)
+                ev = evidence.setdefault((lo, hi), _new_evidence())
+                ev["has_shared_address"] = True
+                ev["relationship_types"].add("SHARED_ADDRESS")
+                ev["evidence_refs"].append(
+                    {
+                        "kind": "shared_address",
+                        "document_id": None,
+                        "label": f"Shared address — {addr_labels[aid]}",
+                        "category": "shared_address",
+                    }
+                )
+                ev["underlying"].append(
+                    {
+                        "kind": "SHARED_ADDRESS",
+                        "label": addr_labels[aid],
+                        "source": "shared_address",
+                        "source_id": aid,
+                    }
+                )
+
+
+def _collect_financial_links(case, subjects, evidence):
+    """FinancialInstrument debtor <-> secured-party pairs → financial_link evidence.
+
+    The instrument connects the debtor and the secured party (UCC/lien/loan);
+    the signer is deliberately NOT paired — signing is captured as a formal
+    role elsewhere and pairing it here would over-connect counsel/officers.
+    An instrument with only one side resolving to a case subject contributes
+    nothing (mirrors the transaction collector's two-sided rule).
+    """
+    for fi in FinancialInstrument.objects.filter(case=case):
+        debtor = str(fi.debtor_id) if fi.debtor_id else None
+        secured = str(fi.secured_party_id) if fi.secured_party_id else None
+        if (
+            not debtor
+            or not secured
+            or debtor == secured
+            or debtor not in subjects
+            or secured not in subjects
+        ):
+            logger.debug(
+                "case_map: instrument %s made no edge — sides did not resolve to a "
+                "distinct case-subject pair (debtor=%s secured_party=%s)",
+                fi.id,
+                debtor,
+                secured,
+            )
+            continue
+        type_label = fi.get_instrument_type_display()
+        label = f"{type_label} {fi.filing_number}" if fi.filing_number else type_label
+        lo, hi, _ = pair_edge_id(debtor, secured)
+        ev = evidence.setdefault((lo, hi), _new_evidence())
+        ev["has_financial"] = True
+        ev["relationship_types"].add("FINANCIAL_LINK")
+        ev["evidence_refs"].append(
+            {
+                "kind": "financial_instrument",
+                "document_id": None,
+                "label": label,
+                "category": "financial_link",
+            }
+        )
+        ev["underlying"].append(
+            {
+                "kind": "FINANCIAL_LINK",
+                "label": label,
+                "source": "financial_instrument",
+                "source_id": str(fi.id),
             }
         )
 
@@ -505,6 +636,8 @@ def build_case_map(case):
     _collect_roles(case, subjects, evidence)
     _collect_transactions(case, subjects, evidence)
     _collect_relationships(case, subjects, evidence)
+    _collect_shared_addresses(case, subjects, evidence)
+    _collect_financial_links(case, subjects, evidence)
     _collect_threads(case, subjects, evidence)
     edges = _build_edges(evidence)
     nodes = list(subjects.values())
