@@ -297,13 +297,18 @@ def _collect_transactions(case, subjects, evidence):
     for tx in qs:
         buyer = str(tx.buyer_id) if tx.buyer_id else None
         seller = str(tx.seller_id) if tx.seller_id else None
-        resolved = [s for s in (buyer, seller) if s and s in subjects]
+        # dict.fromkeys = ordered dedup: a self-transaction (buyer == seller)
+        # credits the subject's metadata ONCE and never makes a self-loop edge
+        # (a pair map has no meaningful self-pair; the txn stays inspectable
+        # via the node's transaction_count).
+        resolved = list(dict.fromkeys(s for s in (buyer, seller) if s and s in subjects))
         for sid in resolved:
             subjects[sid]["metadata"]["transaction_count"] += 1
         if len(resolved) < 2:
             logger.debug(
-                "case_map: tx %s made no edge — a side did not resolve to a case "
-                "subject (buyer=%s seller=%s); metadata credit applied to %d node(s)",
+                "case_map: tx %s made no edge — sides did not resolve to a distinct "
+                "case-subject pair (buyer=%s seller=%s); metadata credit applied to "
+                "%d node(s)",
                 tx.id,
                 buyer,
                 seller,

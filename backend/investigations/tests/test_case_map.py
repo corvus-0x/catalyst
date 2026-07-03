@@ -246,6 +246,14 @@ class PropertyTransactionTests(TestCase):
         self.assertEqual(nodes[str(self.buyer.id)]["metadata"]["transaction_count"], 1)
         self.assertEqual(nodes[str(self.seller.id)]["metadata"]["transaction_count"], 0)
 
+    def test_self_transaction_credits_once_and_makes_no_edge(self):
+        # buyer == seller (self-transfer): one metadata credit, no self-loop edge
+        self._tx(self.buyer.id, self.buyer.id)
+        result = build_case_map(self.case)
+        self.assertEqual(result["edges"], [])
+        nodes = {n["id"]: n for n in result["nodes"]}
+        self.assertEqual(nodes[str(self.buyer.id)]["metadata"]["transaction_count"], 1)
+
     def test_two_sided_transaction_credits_both_node_metadata(self):
         self._tx(self.buyer.id, self.seller.id)
         result = build_case_map(self.case)
