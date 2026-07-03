@@ -11,17 +11,21 @@ from investigations.case_map import (
     score_evidence,
 )
 from investigations.models import (
+    Address,
     Case,
     Document,
     EvidenceWeight,
+    FinancialInstrument,
     Finding,
     FindingDocument,
     FindingEntity,
     FindingStatus,
+    OrgAddress,
     Organization,
     OrganizationStatus,
     OrgDocument,
     Person,
+    PersonAddress,
     PersonDocument,
     PersonOrganization,
     Property,
@@ -234,6 +238,21 @@ class PropertyTransactionTests(TestCase):
         result = build_case_map(self.case)
         self.assertEqual(result["edges"], [])
 
+    def test_one_sided_transaction_credits_resolved_node_metadata(self):
+        # 1A fast-follow: no edge, but the resolved side gets metadata credit
+        self._tx(self.buyer.id, uuid.uuid4())
+        result = build_case_map(self.case)
+        nodes = {n["id"]: n for n in result["nodes"]}
+        self.assertEqual(nodes[str(self.buyer.id)]["metadata"]["transaction_count"], 1)
+        self.assertEqual(nodes[str(self.seller.id)]["metadata"]["transaction_count"], 0)
+
+    def test_two_sided_transaction_credits_both_node_metadata(self):
+        self._tx(self.buyer.id, self.seller.id)
+        result = build_case_map(self.case)
+        nodes = {n["id"]: n for n in result["nodes"]}
+        self.assertEqual(nodes[str(self.buyer.id)]["metadata"]["transaction_count"], 1)
+        self.assertEqual(nodes[str(self.seller.id)]["metadata"]["transaction_count"], 1)
+
 
 class ManualRelationshipTests(TestCase):
     def setUp(self):
@@ -256,6 +275,141 @@ class ManualRelationshipTests(TestCase):
             result["edges"][0]["underlying_relationships"][0]["source"],
             "manual_relationship",
         )
+
+    def test_business_relationship_scores_business_not_family(self):
+        # 1A fast-follow: BUSINESS_PARTNER lands in business_association
+        Relationship.objects.create(
+            case=self.case,
+            person_a=self.a,
+            person_b=self.b,
+            relationship_type="BUSINESS_PARTNER",
+        )
+        result = build_case_map(self.case)
+        s = result["edges"][0]["strength"]
+        self.assertIn("business_association", s["categories"])
+        self.assertNotIn("family_or_personal", s["categories"])
+
+    def test_family_and_business_rows_score_both_categories(self):
+        Relationship.objects.create(
+            case=self.case, person_a=self.a, person_b=self.b, relationship_type="SPOUSE"
+        )
+        Relationship.objects.create(
+            case=self.case, person_a=self.a, person_b=self.b, relationship_type="CO_OFFICER"
+        )
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        s = result["edges"][0]["strength"]
+        self.assertIn("family_or_personal", s["categories"])
+        self.assertIn("business_association", s["categories"])
+        # 25 (family) + 25 (business) = 50 → repeated band
+        self.assertEqual(s["score"], 50)
+        self.assertEqual(s["level"], "repeated")
+
+    def test_other_relationship_type_defaults_to_family_bucket(self):
+        # OTHER carries no type signal — stays family_or_personal (no false
+        # business claims from untyped rows)
+        Relationship.objects.create(
+            case=self.case, person_a=self.a, person_b=self.b, relationship_type="OTHER"
+        )
+        result = build_case_map(self.case)
+        s = result["edges"][0]["strength"]
+        self.assertIn("family_or_personal", s["categories"])
+        self.assertNotIn("business_association", s["categories"])
+
+
+class SharedAddressTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.p = Person.objects.create(case=self.case, full_name="Insider")
+        self.o = Organization.objects.create(case=self.case, name="Charity")
+        self.addr = Address.objects.create(case=self.case, raw_text="99 Elm St, Osgood OH")
+
+    def test_person_and_org_sharing_address_make_edge(self):
+        PersonAddress.objects.create(person=self.p, address=self.addr)
+        OrgAddress.objects.create(org=self.o, address=self.addr)
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        edge = result["edges"][0]
+        s = edge["strength"]
+        self.assertIn("shared_address", s["categories"])
+        # 15 pts alone → observed band (below documented's 20)
+        self.assertEqual(s["score"], 15)
+        self.assertEqual(s["level"], "observed")
+        self.assertIn("SHARED_ADDRESS", s["relationship_types"])
+        under = edge["underlying_relationships"][0]
+        self.assertEqual(under["source"], "shared_address")
+        self.assertEqual(under["source_id"], str(self.addr.id))
+        self.assertEqual(under["label"], "99 Elm St, Osgood OH")
+        ref = edge["evidence_refs"][0]
+        self.assertEqual(ref["category"], "shared_address")
+        self.assertIn("99 Elm St", ref["label"])
+
+    def test_single_occupant_address_makes_no_edge(self):
+        PersonAddress.objects.create(person=self.p, address=self.addr)
+        result = build_case_map(self.case)
+        self.assertEqual(result["edges"], [])
+
+    def test_two_shared_addresses_score_category_once_with_two_refs(self):
+        addr2 = Address.objects.create(case=self.case, raw_text="PO Box 7, Osgood OH")
+        PersonAddress.objects.create(person=self.p, address=self.addr)
+        OrgAddress.objects.create(org=self.o, address=self.addr)
+        PersonAddress.objects.create(person=self.p, address=addr2)
+        OrgAddress.objects.create(org=self.o, address=addr2)
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        edge = result["edges"][0]
+        # flag scores once (15), but each address is inspectable
+        self.assertEqual(edge["strength"]["score"], 15)
+        self.assertEqual(len(edge["underlying_relationships"]), 2)
+
+
+class FinancialLinkTests(TestCase):
+    def setUp(self):
+        self.case = Case.objects.create(name="C")
+        self.debtor = Person.objects.create(case=self.case, full_name="Debtor")
+        self.lender = Organization.objects.create(case=self.case, name="Example Lender")
+
+    def test_ucc_debtor_secured_party_make_edge(self):
+        fi = FinancialInstrument.objects.create(
+            case=self.case,
+            instrument_type="UCC_FILING",
+            filing_number="UCC-2026-001",
+            debtor_id=self.debtor.id,
+            secured_party_id=self.lender.id,
+        )
+        result = build_case_map(self.case)
+        self.assertEqual(len(result["edges"]), 1)
+        edge = result["edges"][0]
+        s = edge["strength"]
+        self.assertIn("financial_link", s["categories"])
+        # 25 pts alone → documented band
+        self.assertEqual(s["score"], 25)
+        self.assertEqual(s["level"], "documented")
+        self.assertIn("FINANCIAL_LINK", s["relationship_types"])
+        under = edge["underlying_relationships"][0]
+        self.assertEqual(under["source"], "financial_instrument")
+        self.assertEqual(under["source_id"], str(fi.id))
+        self.assertEqual(under["label"], "UCC filing UCC-2026-001")
+        self.assertEqual(edge["evidence_refs"][0]["category"], "financial_link")
+
+    def test_one_sided_instrument_makes_no_edge(self):
+        FinancialInstrument.objects.create(
+            case=self.case,
+            instrument_type="LIEN",
+            debtor_id=self.debtor.id,
+            secured_party_id=uuid.uuid4(),  # out-of-case secured party
+        )
+        result = build_case_map(self.case)
+        self.assertEqual(result["edges"], [])
+
+    def test_instrument_missing_a_side_makes_no_edge(self):
+        FinancialInstrument.objects.create(
+            case=self.case,
+            instrument_type="LOAN",
+            debtor_id=self.debtor.id,
+        )
+        result = build_case_map(self.case)
+        self.assertEqual(result["edges"], [])
 
 
 class ThreadAttachmentTests(TestCase):
