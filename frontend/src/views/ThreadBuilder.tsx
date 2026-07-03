@@ -21,6 +21,7 @@ const CiteDocumentPicker = lazy(() => import("../components/CiteDocumentPicker")
 const TieOffModal = lazy(() => import("../components/TieOffModal"));
 const AngleSplitModal = lazy(() => import("../components/AngleSplitModal"));
 import ElementCard from "../components/ElementCard";
+import LeadSuggestionsPanel from "../components/LeadSuggestionsPanel";
 import { threadReadiness } from "../components/threadReadiness";
 import {
   ArrowLeft,
@@ -538,6 +539,16 @@ export default function ThreadBuilder({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Lead suggestions (Phase 4D — assist-only; you confirm every one) */}
+          {!isLegacy && (
+            <LeadSuggestionsPanel
+              caseId={caseId}
+              findingId={angleId}
+              disabled={isTiedOff}
+              onAccepted={refresh}
+            />
           )}
 
           {/* Observations (quick captures on this thread) */}
