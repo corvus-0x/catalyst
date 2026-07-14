@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from investigations.models import Case, Finding, FindingStatus, Property
+from investigations.referral_grade import referral_grade_qs
 from investigations.thread_elements import (
     finding_has_cited_assertion,
     finding_has_handoff_ready_assertion,
@@ -55,4 +56,26 @@ class SeedDemoSignalParityTests(TestCase):
                 0,
                 f"Elm {rule_id} row must stay uncited (need-work thread), but has "
                 f"{elm_finding.document_links.count()} document link(s)",
+            )
+
+
+class SeedDemoReferralMixTests(TestCase):
+    # 11 rule-backed (incl. Elm SR-003 and Elm SR-015) + 1 Lead finding
+    EXPECTED_THREADS = 12
+
+    def test_seed_produces_referral_mix_and_universal_elements(self):
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        findings = Finding.objects.filter(case=case)
+        self.assertEqual(findings.count(), self.EXPECTED_THREADS)
+        self.assertEqual(referral_grade_qs(case).count(), 5)
+        self.assertEqual(
+            findings.count() - referral_grade_qs(case).count(),
+            self.EXPECTED_THREADS - 5,
+        )
+        rule_backed = findings.exclude(rule_id="")
+        for finding in rule_backed:
+            self.assertTrue(
+                finding.elements.exists(),
+                f"{finding.rule_id} '{finding.title[:40]}' has no thread elements",
             )

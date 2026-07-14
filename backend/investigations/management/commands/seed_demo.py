@@ -1133,79 +1133,144 @@ class Command(BaseCommand):
         # ────────────────────────────────────────────────────────────────
         # 11a. OVERREACH REVIEW — author a realistic in-progress case:
         # some angles fully tied off (referral-grade), some still need
-        # work.  No silent grandfathering — the seed selects confirmed
-        # angles (which in this demo are already cited and DOCUMENTED or
-        # TRACED) and sets overreach_reviewed=True on the first
-        # len//2 + 1 of them, ordered by creation time.  That subset then
-        # meets every referral-grade condition.  This must run AFTER
-        # citations and evidence weights are assigned.
+        # work.  This must run AFTER citations and evidence weights are
+        # assigned.
         # ────────────────────────────────────────────────────────────────
 
-        confirmed = list(
+        # The referral-grade set is a deliberate demo choice: both CRITICAL
+        # threads plus three documented HIGHs.  SR-015 is the canonical
+        # walkthrough spine (insiders on both sides, three citations, a
+        # property transaction).  The Elm SR-003/SR-015 rows are NEW and
+        # uncited, so the document_links filter cannot pick them up.
+        REFERRAL_GRADE_RULES = ["SR-003", "SR-006", "SR-013", "SR-015", "SR-025"]
+        reviewed = list(
             Finding.objects.filter(
                 case=case,
                 status=FindingStatus.CONFIRMED,
+                rule_id__in=REFERRAL_GRADE_RULES,
                 document_links__isnull=False,
-            )
-            .distinct()
-            .order_by("created_at")
+            ).distinct()
         )
-        reviewed_count = (len(confirmed) // 2 + 1) if confirmed else 0
-        for finding in confirmed[:reviewed_count]:
+        for finding in reviewed:
             finding.overreach_reviewed = True
             finding.save(update_fields=["overreach_reviewed"])
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"  ✓ Overreach reviewed: {reviewed_count} of {len(confirmed)} "
-                f"cited confirmed angles marked referral-grade"
+                f"  ✓ Overreach reviewed: {len(reviewed)} threads tied off referral-grade"
             )
         )
 
         # ────────────────────────────────────────────────────────────────
-        # 11b-4A. PHASE 4 ASSERTIONS — flagship confirmed thread gets a
-        # cited assertion + a handoff_ready assertion so it is
-        # referral-grade-shaped under ASSERTION_V1.  The finding's
-        # existing `narrative` and its legacy FindingDocument rows are
-        # intentionally retained so the pre-4C PDF/UI still render.
+        # 11b. THREAD ELEMENTS — every rule-backed thread gets structured
+        # elements so the Thread Builder demos the full derived-role
+        # spectrum.  Referral-grade threads (the overreach-reviewed set)
+        # get a cited assertion + a handoff-ready assertion, which is
+        # exactly what the ASSERTION_V1 gate requires; everything else
+        # gets an uncited assertion + an open question (need-work).
+        # Narratives and FindingDocument rows are retained for the PDF.
         # ────────────────────────────────────────────────────────────────
 
         from investigations.models import ThreadElement, ThreadElementType  # noqa: PLC0415
 
-        flagship_finding = (
-            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
-            .order_by("created_at")
-            .first()
-        )
-        deed_oak_doc = docs["Deed_1250_Oak_St.pdf"]
+        ASSERTION_TEXTS = {
+            "SR-003": (
+                "1250 Oak Street was purchased for $425,000 against a $180,000 "
+                "assessed value on 2021-06-28 — a 136% deviation.",
+                "Above-assessed purchase from a related LLC warrants appraisal "
+                "records and board-minutes review by the receiving agency.",
+            ),
+            "SR-005": (
+                "875 Elm Avenue was transferred for $0 consideration on "
+                "2021-08-14 while title moved to a board member's spouse.",
+                "Zero-consideration insider transfer warrants review of the "
+                "deed chain and any private-benefit analysis.",
+            ),
+            "SR-006": (
+                "Form 990 Part IV Line 28 is answered 'Yes' but no Schedule L "
+                "is attached to the 2021 filing.",
+                "Missing Schedule L despite an affirmative Line 28 answer "
+                "warrants a completeness inquiry on the filing.",
+            ),
+            "SR-012": (
+                "The 2021 Form 990 Part VI reports no conflict-of-interest "
+                "policy at a $4.2M-revenue organization.",
+                "Absent COI policy alongside recorded insider transactions "
+                "warrants governance review.",
+            ),
+            "SR-013": (
+                "The 2021 Form 990 Part VII reports $0 total officer "
+                "compensation at $4.2M annual revenue.",
+                "Implausible $0 officer pay warrants payroll and related-entity "
+                "compensation tracing.",
+            ),
+            "SR-015": (
+                "County records show the same family on both sides of the Oak "
+                "Street transaction: seller managed by a board member's spouse, "
+                "buyer the charity itself.",
+                "Related parties on both sides of a property transaction "
+                "warrant arm's-length review by the receiving agency.",
+            ),
+            "SR-021": (
+                "Reported revenue grew from $890K (2018) to $4.2M (2021), "
+                "exceeding 100% year-over-year growth in the filing record.",
+                "Unexplained revenue spike warrants source-of-funds review.",
+            ),
+            "SR-025": (
+                "Form 990 Part IV Line 28 denies related-party transactions in "
+                "the same year county deeds record two insider transfers.",
+                "Filed disclosure contradicts recorded transactions; refer the "
+                "990 and both deeds for disclosure-accuracy review.",
+            ),
+            "SR-029": (
+                "Program expenses are 38% of total spending on the 2021 filing, "
+                "with $0 reported salaries despite evident staffing.",
+                "Low program ratio with unexplained cost routing warrants "
+                "expense-allocation review.",
+            ),
+        }
+        DEFAULT_QUESTION = "What corroborating records would confirm or rule this out?"
 
-        if flagship_finding and not flagship_finding.elements.exists():
-            cited_el = ThreadElement.objects.create(
-                finding=flagship_finding,
+        reviewed_ids = set(
+            Finding.objects.filter(case=case, overreach_reviewed=True).values_list("id", flat=True)
+        )
+        for finding in Finding.objects.filter(case=case).exclude(rule_id=""):
+            if finding.elements.exists():
+                continue
+            cited_text, handoff_text = ASSERTION_TEXTS.get(
+                finding.rule_id,
+                (finding.title, "Warrants review by the receiving agency."),
+            )
+            assertion = ThreadElement.objects.create(
+                finding=finding,
                 element_type=ThreadElementType.ASSERTION,
                 position=0,
-                text="Org purchased 1250 Oak Street for $425,000 on 2021-06-28.",
+                text=cited_text,
             )
-            cited_el.citations.create(
-                document=deed_oak_doc,
-                page_reference="p.2",
-                context_note="Recorded sale price from county deed (instrument #2021-0045678).",
-            )
-            ThreadElement.objects.create(
-                finding=flagship_finding,
-                element_type=ThreadElementType.ASSERTION,
-                position=1,
-                text=(
-                    "Above-market insider transfer from related LLC warranting "
-                    "review of board minutes and appraisal records."
-                ),
-                handoff_ready=True,
-            )
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"  ✓ Phase 4 assertions added to flagship thread: {flagship_finding.rule_id}"
+            first_link = finding.document_links.select_related("document").first()
+            if finding.id in reviewed_ids and first_link:
+                assertion.citations.create(
+                    document=first_link.document,
+                    page_reference=first_link.page_reference or "",
+                    context_note=first_link.context_note or "",
                 )
-            )
+                ThreadElement.objects.create(
+                    finding=finding,
+                    element_type=ThreadElementType.ASSERTION,
+                    position=1,
+                    text=handoff_text,
+                    handoff_ready=True,
+                )
+            else:
+                ThreadElement.objects.create(
+                    finding=finding,
+                    element_type=ThreadElementType.QUESTION,
+                    position=1,
+                    text=DEFAULT_QUESTION,
+                )
+        self.stdout.write(
+            self.style.SUCCESS("  ✓ Thread elements authored for all rule-backed threads")
+        )
 
         # ────────────────────────────────────────────────────────────────
         # 11c. AI FINDING (seeded to demonstrate AI pattern analysis)
