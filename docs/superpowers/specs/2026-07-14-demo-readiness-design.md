@@ -146,6 +146,17 @@ field's type and presence in the API are unchanged — content only. Existing
 tests that assert raw messages (`test_jobs.py`, `test_ai_thread_assist.py`)
 are updated to assert the sanitized copy, and `api-contract.md` gets a note.
 
+**Read-only demo mode — decided (Tyler, 2026-07-14, punch-list P0-6).** Prod
+gets an env-flagged demo guard: anonymous mutation endpoints return 403 with
+friendly copy ("This is a read-only public demo") while GET/read paths stay
+open. Rationale: anonymous visitors can currently delete threads, create
+cases, and re-run signals — this is how prod data drift (P0-1, P0-2) keeps
+happening, and any cleanup decays without it. Constraints: `seed_demo` and
+management commands are unaffected (they bypass HTTP); the API health check
+currently *creates* test rows against prod (the "CSRF Test Case" source
+suspect) and must be made demo-mode-aware or pointed at a mutation-exempt
+self-cleaning path — the smoke test must stay green against prod.
+
 **`query_params` stays public — decided, not overlooked.** `api_job_detail`
 and `api_case_jobs` return `query_params` verbatim. Its contents are the
 caller's own search inputs (query, county, fetch_xml), which the frontend
