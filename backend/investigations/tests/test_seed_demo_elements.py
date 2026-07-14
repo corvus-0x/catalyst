@@ -4,7 +4,7 @@ from django.urls import reverse
 
 from investigations.case_map import build_case_map
 from investigations.models import Case, Finding, FindingStatus, Property, ThreadElementType
-from investigations.referral_grade import referral_grade_qs
+from investigations.referral_grade import is_referral_grade, referral_grade_qs
 from investigations.thread_elements import (
     finding_has_cited_assertion,
     finding_has_handoff_ready_assertion,
@@ -121,3 +121,41 @@ class SeedDemoResetTests(TestCase):
         call_command("seed_demo", "--reset")
         case = Case.objects.get(name="Bright Future Foundation Investigation")
         self.assertTrue(Finding.objects.filter(case=case).exists())
+
+
+class SeedDemoCanonicalPathTests(TestCase):
+    """One thread must demonstrate the full chain: public record -> subject
+    relationship -> Case Map edge -> cited assertion -> handoff-ready claim ->
+    referral PDF. This is the demo spine the README walkthrough follows.
+
+    Two SR-015 rows exist in the seed (Oak: CONFIRMED/referral-grade, Elm:
+    NEW/SPECULATIVE) so the spine lookup is narrowed to the referral-grade
+    (CONFIRMED) row rather than Finding.objects.get(case=case, rule_id="SR-015"),
+    which would raise MultipleObjectsReturned.
+    """
+
+    def test_canonical_thread_walks_the_full_chain(self):
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        spine = Finding.objects.filter(
+            case=case, rule_id="SR-015", status=FindingStatus.CONFIRMED
+        ).get()
+        self.assertTrue(is_referral_grade(spine))
+        self.assertTrue(
+            spine.elements.filter(
+                element_type=ThreadElementType.ASSERTION, citations__isnull=False
+            ).exists()
+        )
+        self.assertTrue(
+            spine.elements.filter(
+                element_type=ThreadElementType.ASSERTION, handoff_ready=True
+            ).exists()
+        )
+        payload = build_case_map(case)
+        thread_edge_ids = {
+            ref.get("thread_id") for edge in payload["edges"] for ref in edge.get("thread_refs", [])
+        }
+        self.assertIn(str(spine.id), thread_edge_ids, "SR-015 spine missing from Case Map")
+        response = self.client.post(reverse("api_case_referral_pdf", kwargs={"pk": case.pk}))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b"%PDF"))

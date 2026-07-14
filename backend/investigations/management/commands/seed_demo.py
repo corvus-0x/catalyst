@@ -1641,3 +1641,26 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("  ✓ Audit log entries created"))
+
+        # ────────────────────────────────────────────────────────────────
+        # 14. REFERRAL TARGET
+        # ────────────────────────────────────────────────────────────────
+        # Without at least one ReferralTarget, api_case_referral_pdf's readiness
+        # gate (build_case_readiness -> "referral_target" FAIL) blocks the PDF
+        # endpoint with a 400, even when the case has referral-grade findings.
+        # The demo case must be handoff-demonstrable end to end.
+
+        self.stdout.write("Creating referral target...")
+
+        from investigations.models import ReferralTarget
+
+        ReferralTarget.objects.get_or_create(
+            case=case,
+            agency_name="Ohio Attorney General — Charitable Law Section",
+            defaults={
+                "complaint_type": "Charitable fraud / related-party self-dealing",
+                "status": "DRAFT",
+            },
+        )
+
+        self.stdout.write(self.style.SUCCESS("  ✓ Ohio Attorney General — Charitable Law Section"))
