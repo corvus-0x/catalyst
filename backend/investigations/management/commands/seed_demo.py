@@ -27,6 +27,7 @@ Usage:
 """
 
 import sys
+from datetime import date
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -43,20 +44,24 @@ from investigations.models import (
     DocumentType,
     EvidenceWeight,
     ExtractionStatus,
+    FinancialInstrument,
     FinancialSnapshot,
     Finding,
     FindingDocument,
     FindingEntity,
     FindingSource,
     FindingStatus,
+    InstrumentType,
     InvestigationStep,
     InvestigatorNote,
     OcrStatus,
+    OrgAddress,
     Organization,
     OrganizationStatus,
     OrganizationType,
     OrgDocument,
     Person,
+    PersonAddress,
     PersonDocument,
     PersonOrganization,
     PersonRole,
@@ -68,6 +73,7 @@ from investigations.models import (
     Severity,
     TransactionPartyType,
 )
+from investigations.signal_rules import RULE_REGISTRY
 
 
 class Command(BaseCommand):
@@ -97,6 +103,7 @@ class Command(BaseCommand):
             if case:
                 # Delete in reverse dependency order
                 Finding.objects.filter(case=case).delete()
+                FinancialInstrument.objects.filter(case=case).delete()
                 Document.objects.filter(case=case).delete()
                 FinancialSnapshot.objects.filter(case=case).delete()
                 Property.objects.filter(case=case).delete()
@@ -309,6 +316,46 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"  ✓ {oak_st_addr.raw_text}"))
         self.stdout.write(self.style.SUCCESS(f"  ✓ {elm_ave_addr.raw_text}"))
+
+        # Shared business address: Sarah Mitchell + Mitchell Development Group
+        # → shared_address Case Map edge between the two subjects.
+        commerce_addr, _ = Address.objects.get_or_create(
+            case=case,
+            raw_text="4400 Commerce Parkway, Suite 210, Columbus, OH 43219",
+            defaults={
+                "street": "4400 Commerce Parkway, Suite 210",
+                "city": "Columbus",
+                "state": "OH",
+                "zip_code": "43219",
+                "county": "Franklin",
+                "address_type": AddressType.MAILING,
+            },
+        )
+        PersonAddress.objects.get_or_create(
+            person=sarah,
+            address=commerce_addr,
+            defaults={"address_role": AddressType.MAILING},
+        )
+        OrgAddress.objects.get_or_create(
+            org=mitchell_dev,
+            address=commerce_addr,
+            defaults={"address_role": AddressType.MAILING},
+        )
+
+        # UCC-style loan: Mitchell Dev (secured party) → BFF (debtor), signed
+        # by Sarah → financial_link Case Map edge between the two orgs.
+        FinancialInstrument.objects.get_or_create(
+            case=case,
+            filing_number="OH-UCC-2021-118834",
+            defaults={
+                "instrument_type": InstrumentType.LOAN,
+                "filing_date": date(2021, 5, 12),
+                "signer": sarah,
+                "secured_party_id": mitchell_dev.id,
+                "debtor_id": bff.id,
+                "amount": Decimal("250000.00"),
+            },
+        )
 
         # ────────────────────────────────────────────────────────────────
         # 6. PROPERTIES
@@ -776,8 +823,8 @@ class Command(BaseCommand):
                     "with asset stripping or self-dealing."
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "ORC § 1702.33"],
-                "trigger_entity_id": bff.id,
-                "trigger_entity_type": "organization",
+                "trigger_entity_id": prop_oak.id,
+                "trigger_entity_type": "property",
             },
             {
                 "rule_id": "SR-005",
@@ -804,6 +851,7 @@ class Command(BaseCommand):
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
                 "trigger_entity_id": james.id,
                 "trigger_entity_type": "person",
+                "trigger_doc_filename": "Deed_875_Elm_Ave.pdf",
             },
             {
                 "rule_id": "SR-006",
@@ -898,8 +946,8 @@ class Command(BaseCommand):
                     "a textbook insider swap."
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
-                "trigger_entity_id": sarah.id,
-                "trigger_entity_type": "person",
+                "trigger_entity_id": prop_oak.id,
+                "trigger_entity_type": "property",
             },
             {
                 "rule_id": "SR-021",
@@ -973,30 +1021,78 @@ class Command(BaseCommand):
                 "trigger_entity_id": bff.id,
                 "trigger_entity_type": "organization",
             },
+            {
+                "rule_id": "SR-003",
+                "title": "Purchase Price Deviates >50% From Assessed Value",
+                "description": (
+                    "875 Elm Avenue assessed at $220,000 but transferred for $0. "
+                    "Zero-consideration transfer produces a 100% deviation below "
+                    "assessed value; overlaps the SR-005 zero-consideration thread."
+                ),
+                "severity": Severity.HIGH,
+                "status": FindingStatus.NEW,
+                "evidence_weight": EvidenceWeight.SPECULATIVE,
+                "source": FindingSource.AUTO,
+                "narrative": "",
+                "legal_refs": [],
+                "trigger_entity_id": prop_elm.id,
+                "trigger_entity_type": "property",
+            },
+            {
+                "rule_id": "SR-015",
+                "title": RULE_REGISTRY["SR-015"].title,
+                "description": (
+                    "875 Elm Avenue was transferred by Mitchell Development Group "
+                    "to James Mitchell (board member) for $0 — the same insider "
+                    "LLC on the seller side of the Oak Street purchase. Needs "
+                    "review to confirm the same insider-swap pattern applies."
+                ),
+                "severity": Severity.CRITICAL,
+                "status": FindingStatus.NEW,
+                "evidence_weight": EvidenceWeight.SPECULATIVE,
+                "source": FindingSource.AUTO,
+                "narrative": "",
+                "legal_refs": [],
+                "trigger_entity_id": prop_elm.id,
+                "trigger_entity_type": "property",
+            },
         ]
+
+        # Citations are keyed by rule_id, but SR-003 and SR-015 now each have
+        # two rows (Oak and Elm) sharing a rule_id — guard by trigger so
+        # citations follow the finding, not the rule. The Elm rows stay
+        # uncited (need-work threads).
+        CITATION_TRIGGER_GUARD = {"SR-003": prop_oak.id, "SR-015": prop_oak.id}
 
         for finding_data in findings_data:
             trigger_entity_id = finding_data.pop("trigger_entity_id", None)
             trigger_entity_type = finding_data.pop("trigger_entity_type", None)
+            trigger_doc_filename = finding_data.pop("trigger_doc_filename", None)
+            # Identity includes trigger_entity_id so per-property rules (SR-003/SR-015) can
+            # seed multiple rows for the same rule_id; two rows of one rule with
+            # trigger_entity_id=None would collapse into one — give doc-only rules distinct
+            # trigger_docs if that ever happens.
             finding, _ = Finding.objects.get_or_create(
                 case=case,
                 rule_id=finding_data["rule_id"],
+                trigger_entity_id=trigger_entity_id,
                 defaults=finding_data,
             )
 
-            if trigger_entity_id:
-                finding.trigger_entity_id = trigger_entity_id
-                finding.save()
+            if trigger_doc_filename and docs.get(trigger_doc_filename):
+                finding.trigger_doc = docs[trigger_doc_filename]
+                finding.save(update_fields=["trigger_doc"])
+
+            if trigger_entity_id and trigger_entity_type:
                 # Mirror the trigger entity into the FindingEntity link table
                 # so the entity detail page can list this finding under its
                 # related-findings panel.
-                if trigger_entity_type:
-                    FindingEntity.objects.get_or_create(
-                        finding=finding,
-                        entity_id=trigger_entity_id,
-                        entity_type=trigger_entity_type,
-                        defaults={"context_note": "Trigger entity for this rule"},
-                    )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=trigger_entity_id,
+                    entity_type=trigger_entity_type,
+                    defaults={"context_note": "Trigger entity for this rule"},
+                )
 
             # Cite source documents — every confirmed angle must carry document
             # evidence or the referral package flags it as incomplete.
@@ -1032,25 +1128,56 @@ class Command(BaseCommand):
                     ("BFF_Form990_2021.pdf", "Part I", "Program expense ratio 38%"),
                 ],
             }
-            for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
-                doc = docs.get(doc_filename)
-                if doc:
-                    FindingDocument.objects.get_or_create(
-                        finding=finding,
-                        document=doc,
-                        defaults={
-                            "page_reference": page_ref,
-                            "context_note": note,
-                        },
-                    )
+            expected_trigger = CITATION_TRIGGER_GUARD.get(finding_data["rule_id"])
+            if expected_trigger is None or trigger_entity_id == expected_trigger:
+                for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
+                    doc = docs.get(doc_filename)
+                    if doc:
+                        # Referral-PDF evidence links, not citation-sync mirrors — is_legacy=True
+                        # keeps reap_document_link_if_orphaned (thread_elements.py) from deleting
+                        # these if a demo visitor removes a cited assertion.
+                        FindingDocument.objects.get_or_create(
+                            finding=finding,
+                            document=doc,
+                            defaults={
+                                "page_reference": page_ref,
+                                "context_note": note,
+                                "is_legacy": True,
+                            },
+                        )
 
-            # SR-015 INSIDER_SWAP involves both insiders — add the second entity link
+            # SR-003 (Oak row): trigger moved to the property, so re-add the
+            # org subject links the old organization-typed trigger used to
+            # provide — the Case Map only reads person/organization
+            # FindingEntity rows, not property-typed ones.
+            if finding_data["rule_id"] == "SR-003" and trigger_entity_id == prop_oak.id:
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=bff.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Buyer at 136% above assessed value"},
+                )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=mitchell_dev.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Seller — insider-managed LLC"},
+                )
+
+            # SR-015 INSIDER_SWAP involves both insiders — add both subject
+            # links (trigger moved to the property, same reasoning as above).
             if finding_data["rule_id"] == "SR-015":
                 FindingEntity.objects.get_or_create(
                     finding=finding,
                     entity_id=james.id,
                     entity_type="person",
                     defaults={"context_note": "Second insider: received property at $0"},
+                )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=sarah.id,
+                    entity_type="person",
+                    defaults={"context_note": "Insider on seller side (Mitchell Dev manager)"},
                 )
 
             self.stdout.write(
@@ -1060,79 +1187,208 @@ class Command(BaseCommand):
         # ────────────────────────────────────────────────────────────────
         # 11a. OVERREACH REVIEW — author a realistic in-progress case:
         # some angles fully tied off (referral-grade), some still need
-        # work.  No silent grandfathering — the seed selects confirmed
-        # angles (which in this demo are already cited and DOCUMENTED or
-        # TRACED) and sets overreach_reviewed=True on the first
-        # len//2 + 1 of them, ordered by creation time.  That subset then
-        # meets every referral-grade condition.  This must run AFTER
-        # citations and evidence weights are assigned.
+        # work.  This must run AFTER citations and evidence weights are
+        # assigned.
         # ────────────────────────────────────────────────────────────────
 
-        confirmed = list(
+        # The referral-grade set is a deliberate demo choice: both CRITICAL
+        # threads plus three documented HIGHs.  SR-015 is the canonical
+        # walkthrough spine (insiders on both sides, three citations, a
+        # property transaction).  The Elm SR-003/SR-015 rows are NEW and
+        # uncited, so the document_links filter cannot pick them up.
+        REFERRAL_GRADE_RULES = ["SR-003", "SR-006", "SR-013", "SR-015", "SR-025"]
+        reviewed = list(
             Finding.objects.filter(
                 case=case,
                 status=FindingStatus.CONFIRMED,
+                rule_id__in=REFERRAL_GRADE_RULES,
                 document_links__isnull=False,
-            )
-            .distinct()
-            .order_by("created_at")
+            ).distinct()
         )
-        reviewed_count = (len(confirmed) // 2 + 1) if confirmed else 0
-        for finding in confirmed[:reviewed_count]:
+        for finding in reviewed:
             finding.overreach_reviewed = True
             finding.save(update_fields=["overreach_reviewed"])
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"  ✓ Overreach reviewed: {reviewed_count} of {len(confirmed)} "
-                f"cited confirmed angles marked referral-grade"
+                f"  ✓ Overreach reviewed: {len(reviewed)} threads tied off referral-grade"
             )
         )
 
         # ────────────────────────────────────────────────────────────────
-        # 11b-4A. PHASE 4 ASSERTIONS — flagship confirmed thread gets a
-        # cited assertion + a handoff_ready assertion so it is
-        # referral-grade-shaped under ASSERTION_V1.  The finding's
-        # existing `narrative` and its legacy FindingDocument rows are
-        # intentionally retained so the pre-4C PDF/UI still render.
+        # 11b. THREAD ELEMENTS — every rule-backed thread gets structured
+        # elements so the Thread Builder demos the full derived-role
+        # spectrum.  Referral-grade threads (the overreach-reviewed set)
+        # get a cited assertion + a handoff-ready assertion, which is
+        # exactly what the ASSERTION_V1 gate requires; everything else
+        # gets an uncited assertion + an open question (need-work).
+        # Narratives and FindingDocument rows are retained for the PDF.
         # ────────────────────────────────────────────────────────────────
 
         from investigations.models import ThreadElement, ThreadElementType  # noqa: PLC0415
 
-        flagship_finding = (
-            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
-            .order_by("created_at")
-            .first()
-        )
-        deed_oak_doc = docs["Deed_1250_Oak_St.pdf"]
+        ASSERTION_TEXTS = {
+            "SR-003": (
+                "1250 Oak Street was purchased for $425,000 against a $180,000 "
+                "assessed value on 2021-06-28 — a 136% deviation.",
+                "Above-assessed purchase from a related LLC warrants appraisal "
+                "records and board-minutes review by the receiving agency.",
+            ),
+            "SR-005": (
+                "875 Elm Avenue was transferred for $0 consideration on "
+                "2021-08-14 while title moved to a board member's spouse.",
+                "Zero-consideration insider transfer warrants review of the "
+                "deed chain and any private-benefit analysis.",
+            ),
+            "SR-006": (
+                "Form 990 Part IV Line 28 is answered 'Yes' but no Schedule L "
+                "is attached to the 2021 filing.",
+                "Missing Schedule L despite an affirmative Line 28 answer "
+                "warrants a completeness inquiry on the filing.",
+            ),
+            "SR-012": (
+                "The 2021 Form 990 Part VI reports no conflict-of-interest "
+                "policy at a $4.2M-revenue organization.",
+                "Absent COI policy alongside recorded insider transactions "
+                "warrants governance review.",
+            ),
+            "SR-013": (
+                "The 2021 Form 990 Part VII reports $0 total officer "
+                "compensation at $4.2M annual revenue.",
+                "Implausible $0 officer pay warrants payroll and related-entity "
+                "compensation tracing.",
+            ),
+            "SR-015": (
+                "County records show the same family on both sides of the Oak "
+                "Street transaction: seller managed by a board member's spouse, "
+                "buyer the charity itself.",
+                "Related parties on both sides of a property transaction "
+                "warrant arm's-length review by the receiving agency.",
+            ),
+            "SR-021": (
+                "Reported revenue grew from $890K (2018) to $4.2M (2021), "
+                "exceeding 100% year-over-year growth in the filing record.",
+                "Unexplained revenue spike warrants source-of-funds review.",
+            ),
+            "SR-025": (
+                "Form 990 Part IV Line 28 denies related-party transactions in "
+                "the same year county deeds record two insider transfers.",
+                "Filed disclosure contradicts recorded transactions; refer the "
+                "990 and both deeds for disclosure-accuracy review.",
+            ),
+            "SR-029": (
+                "Program expenses are 38% of total spending on the 2021 filing, "
+                "with $0 reported salaries despite evident staffing.",
+                "Low program ratio with unexplained cost routing warrants "
+                "expense-allocation review.",
+            ),
+        }
+        DEFAULT_QUESTION = "What corroborating records would confirm or rule this out?"
 
-        if flagship_finding and not flagship_finding.elements.exists():
-            cited_el = ThreadElement.objects.create(
-                finding=flagship_finding,
+        reviewed_ids = set(
+            Finding.objects.filter(case=case, overreach_reviewed=True).values_list("id", flat=True)
+        )
+        for finding in Finding.objects.filter(case=case).exclude(rule_id=""):
+            if finding.elements.exists():
+                continue
+            cited_text, handoff_text = ASSERTION_TEXTS.get(
+                finding.rule_id,
+                (finding.title, "Warrants review by the receiving agency."),
+            )
+            assertion = ThreadElement.objects.create(
+                finding=finding,
                 element_type=ThreadElementType.ASSERTION,
                 position=0,
-                text="Org purchased 1250 Oak Street for $425,000 on 2021-06-28.",
+                text=cited_text,
             )
-            cited_el.citations.create(
-                document=deed_oak_doc,
-                page_reference="p.2",
-                context_note="Recorded sale price from county deed (instrument #2021-0045678).",
-            )
-            ThreadElement.objects.create(
-                finding=flagship_finding,
-                element_type=ThreadElementType.ASSERTION,
-                position=1,
-                text=(
-                    "Above-market insider transfer from related LLC warranting "
-                    "review of board minutes and appraisal records."
-                ),
-                handoff_ready=True,
-            )
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"  ✓ Phase 4 assertions added to flagship thread: {flagship_finding.rule_id}"
+            first_link = finding.document_links.select_related("document").first()
+            if finding.id in reviewed_ids and first_link:
+                assertion.citations.create(
+                    document=first_link.document,
+                    page_reference=first_link.page_reference or "",
+                    context_note=first_link.context_note or "",
                 )
+                ThreadElement.objects.create(
+                    finding=finding,
+                    element_type=ThreadElementType.ASSERTION,
+                    position=1,
+                    text=handoff_text,
+                    handoff_ready=True,
+                )
+            else:
+                ThreadElement.objects.create(
+                    finding=finding,
+                    element_type=ThreadElementType.QUESTION,
+                    position=1,
+                    text=DEFAULT_QUESTION,
+                )
+        self.stdout.write(
+            self.style.SUCCESS("  ✓ Thread elements authored for all rule-backed threads")
+        )
+
+        # ────────────────────────────────────────────────────────────────
+        # 11b-ii. LEAD SUGGESTIONS STAGING — two threads carry realistic
+        # investigator freeform (notes + open questions) so a live
+        # "Suggest assertions" click has grounded material to structure.
+        # Proposals are never seeded: they are generated live and only
+        # persist when a human accepts them (spec §Phase 4D).
+        # ────────────────────────────────────────────────────────────────
+
+        LEAD_STAGING = {
+            "SR-013": [
+                (
+                    ThreadElementType.NOTE,
+                    "Part VII of the 2021 990 lists four officers, every one at "
+                    "$0 reportable compensation. The same filing reports $1.62M "
+                    "in admin and salaries. Somebody is being paid — the filing "
+                    "just doesn't say who.",
+                ),
+                (
+                    ThreadElementType.NOTE,
+                    "Mitchell Development Group's formation filing lists Sarah "
+                    "Mitchell as manager. If management fees flow to the LLC "
+                    "instead of W-2 officer pay, that would reconcile the $0.",
+                ),
+                (
+                    ThreadElementType.QUESTION,
+                    "Does any 990 schedule or county record show payments from "
+                    "the charity to Mitchell Development Group?",
+                ),
+            ],
+            "SR-021": [
+                (
+                    ThreadElementType.NOTE,
+                    "Revenue: $85K (2016), $156K (2017), $890K (2018), $1.6M "
+                    "(2019), $2.8M (2020), $4.2M (2021). The 2018 jump is 471% "
+                    "and predates both property transactions.",
+                ),
+                (
+                    ThreadElementType.NOTE,
+                    "No grants schedule or donor concentration data in the "
+                    "filings on hand; the growth is unexplained in Part I.",
+                ),
+                (
+                    ThreadElementType.QUESTION,
+                    "Which revenue line (contributions, program service, other) "
+                    "drives the 2018 spike?",
+                ),
+            ],
+        }
+        for rule_id, elements in LEAD_STAGING.items():
+            finding = (
+                Finding.objects.filter(case=case, rule_id=rule_id).order_by("created_at").first()
             )
+            if finding is None:
+                continue
+            next_pos = finding.elements.count() or 0
+            for offset, (el_type, text) in enumerate(elements):
+                ThreadElement.objects.get_or_create(
+                    finding=finding,
+                    element_type=el_type,
+                    text=text,
+                    defaults={"position": next_pos + offset},
+                )
+        self.stdout.write(self.style.SUCCESS("  ✓ Lead staging notes on SR-013 / SR-021"))
 
         # ────────────────────────────────────────────────────────────────
         # 11c. AI FINDING (seeded to demonstrate AI pattern analysis)
@@ -1393,3 +1649,26 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("  ✓ Audit log entries created"))
+
+        # ────────────────────────────────────────────────────────────────
+        # 14. REFERRAL TARGET
+        # ────────────────────────────────────────────────────────────────
+        # Without at least one ReferralTarget, api_case_referral_pdf's readiness
+        # gate (build_case_readiness -> "referral_target" FAIL) blocks the PDF
+        # endpoint with a 400, even when the case has referral-grade findings.
+        # The demo case must be handoff-demonstrable end to end.
+
+        self.stdout.write("Creating referral target...")
+
+        from investigations.models import ReferralTarget
+
+        ReferralTarget.objects.get_or_create(
+            case=case,
+            agency_name="Ohio Attorney General — Charitable Law Section",
+            defaults={
+                "complaint_type": "Charitable fraud / related-party self-dealing",
+                "status": "DRAFT",
+            },
+        )
+
+        self.stdout.write(self.style.SUCCESS("  ✓ Ohio Attorney General — Charitable Law Section"))
