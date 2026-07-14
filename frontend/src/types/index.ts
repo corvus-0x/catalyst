@@ -969,11 +969,18 @@ export interface UpdateFindingBody {
   remove_document_ids?: UUID[];
 }
 
-/** Summary counts from GET /api/signal-summary/ */
-export interface SignalSummary {
-  total: number;
+/** Per-case finding metrics from GET /api/signal-summary/. Only cases with at
+ * least one finding are included — there is no case-independent "total". */
+export interface SignalSummaryRow {
+  case_id: UUID;
+  highest_severity: FindingSeverity;
+  open_count: number;
+  total_count: number;
   by_severity: Partial<Record<FindingSeverity, number>>;
-  by_status: Partial<Record<FindingStatus, number>>;
+}
+
+export interface SignalSummary {
+  results: SignalSummaryRow[];
 }
 
 // ---------------------------------------------------------------------------

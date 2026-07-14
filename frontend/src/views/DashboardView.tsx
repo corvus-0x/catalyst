@@ -1,7 +1,7 @@
 /**
  * DashboardView.tsx — Top-level dashboard showing KPI cards, recent cases, and activity feed.
  *
- * Vocabulary: Angles = Findings, Knots = Person/Organization nodes.
+ * Vocabulary: Threads = Findings, Subjects = Person/Organization nodes.
  * Banned strings: "Haiku", "Sonnet", "Claude", "AI assistant", "LLM", "GPT".
  */
 
@@ -199,7 +199,10 @@ export default function DashboardView() {
   }
 
   const activeCases = cases.filter((c) => c.status === "ACTIVE").length;
-  const totalAngles = signalSummary?.total ?? 0;
+  // /api/signal-summary/ returns one row per case with findings — sum
+  // total_count across rows for the dashboard-wide thread count.
+  const totalThreads =
+    signalSummary?.results.reduce((sum, row) => sum + row.total_count, 0) ?? 0;
   const totalCases = loading ? "—" : cases.length;
 
   return (
@@ -231,7 +234,7 @@ export default function DashboardView() {
           <>
             <StatCard label="Total cases" value={totalCases} />
             <StatCard label="Active cases" value={activeCases} />
-            <StatCard label="Total angles" value={totalAngles} />
+            <StatCard label="Total threads" value={totalThreads} />
           </>
         )}
       </div>
