@@ -49,7 +49,7 @@ const FILTER_LABELS: Record<FilterKey, string> = {
   financial: "990s",
   transaction: "Transactions",
   ucc: "UCC",
-  finding: "Angles",
+  finding: "Threads",
   note: "Notes",
 };
 
@@ -141,7 +141,7 @@ function DocumentCard({ event, onCiteInAngle }: { event: TimelineEvent; onCiteIn
             style={{ fontSize: 11, padding: "3px 8px" }}
             onClick={() => onCiteInAngle(event)}
           >
-            Cite in angle
+            Cite in thread
           </button>
         </div>
       )}
@@ -176,7 +176,7 @@ function FinancialCard({ event, onCiteInAngle }: { event: TimelineEvent; onCiteI
             style={{ fontSize: 11, padding: "3px 8px" }}
             onClick={() => onCiteInAngle(event)}
           >
-            Cite in angle
+            Cite in thread
           </button>
         </div>
       )}
@@ -207,7 +207,7 @@ function TransactionCard({ event, onCiteInAngle }: { event: TimelineEvent; onCit
             style={{ fontSize: 11, padding: "3px 8px" }}
             onClick={() => onCiteInAngle(event)}
           >
-            Cite in angle
+            Cite in thread
           </button>
         </div>
       )}
@@ -245,7 +245,7 @@ function FindingCard({ event, onCiteInAngle }: { event: TimelineEvent; onCiteInA
             style={{ fontSize: 11, padding: "3px 8px" }}
             onClick={() => onCiteInAngle(event)}
           >
-            Cite in angle
+            Cite in thread
           </button>
         </div>
       )}
@@ -273,7 +273,7 @@ function NoteCard({ event, onCiteInAngle }: { event: TimelineEvent; onCiteInAngl
             style={{ fontSize: 11, padding: "3px 8px" }}
             onClick={() => onCiteInAngle(event)}
           >
-            Cite in angle
+            Cite in thread
           </button>
         </div>
       )}

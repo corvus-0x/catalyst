@@ -93,7 +93,7 @@ class ReferralReadinessTests(TestCase):
         self.assertLessEqual(payload["quality"]["score"], 69)
         top_labels = [issue["label"] for issue in payload["quality"]["top_issues"]]
         self.assertIn("Referral target", top_labels)
-        self.assertIn("Confirmed angles", top_labels)
+        self.assertIn("Confirmed threads", top_labels)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["referral_target"]["status"], "FAIL")
         self.assertEqual(by_key["confirmed_angles"]["status"], "FAIL")

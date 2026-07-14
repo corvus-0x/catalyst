@@ -2373,13 +2373,13 @@ def build_case_readiness(case):
         ),
         _readiness_item(
             "confirmed_angles",
-            "Confirmed angles",
+            "Confirmed threads",
             "PASS" if referral_grade_count else "FAIL",
             (
-                f"{referral_grade_count} referral-grade angle"
+                f"{referral_grade_count} referral-grade thread"
                 f"{'' if referral_grade_count == 1 else 's'} ready for referral."
                 if referral_grade_count
-                else "Tie off at least one referral-grade angle before export."
+                else "Tie off at least one referral-grade thread before export."
             ),
             referral_grade_count,
             "investigate",
@@ -2389,13 +2389,13 @@ def build_case_readiness(case):
             "Citation coverage",
             "PASS" if confirmed_count and uncited_count == 0 else "FAIL",
             (
-                "Every confirmed angle has at least one cited document."
+                "Every confirmed thread has at least one cited document."
                 if confirmed_count and uncited_count == 0
                 else (
-                    f"{uncited_count} confirmed angle"
+                    f"{uncited_count} confirmed thread"
                     f"{'' if uncited_count == 1 else 's'} missing cited documents."
                     if confirmed_count
-                    else "Confirmed angles need cited documents before export."
+                    else "Confirmed threads need cited documents before export."
                 )
             ),
             uncited_count,
@@ -2412,12 +2412,12 @@ def build_case_readiness(case):
                 else "WARN"
             ),
             (
-                "All confirmed angles are documented or traced."
+                "All confirmed threads are documented or traced."
                 if confirmed_count and eligible_count == confirmed_count
                 else (
-                    "Confirmed angles must be documented or traced to appear in the PDF."
+                    "Confirmed threads must be documented or traced to appear in the PDF."
                     if confirmed_count
-                    else "Confirmed angles need documented or traced evidence weight."
+                    else "Confirmed threads need documented or traced evidence weight."
                 )
             ),
             confirmed_count - eligible_count,
@@ -2480,11 +2480,11 @@ def build_case_readiness(case):
             "Overreach review",
             "WARN" if overreach_pending else "PASS",
             (
-                f"{overreach_pending} confirmed angle"
+                f"{overreach_pending} confirmed thread"
                 f"{'' if overreach_pending == 1 else 's'} need an overreach acknowledgement "
                 "to become referral-grade."
                 if overreach_pending
-                else "All cited, documented angles have passed overreach review."
+                else "All cited, documented threads have passed overreach review."
             ),
             overreach_pending,
             "investigate",

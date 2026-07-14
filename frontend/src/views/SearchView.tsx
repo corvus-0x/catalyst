@@ -17,7 +17,7 @@ import type { SearchResult } from "../types";
 const TYPE_LABELS: Record<SearchResult["type"], string> = {
   case: "Cases",
   document: "Documents",
-  signal: "Angles",
+  signal: "Threads",
   entity: "Entities",
 };
 
@@ -97,7 +97,7 @@ export default function SearchView() {
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search cases, documents, angles, entities…"
+          placeholder="Search cases, documents, threads, entities…"
           style={{
             width: "100%",
             padding: "10px 14px",
@@ -131,7 +131,7 @@ export default function SearchView() {
         <div className="empty-state">
           <p className="empty-state__title">Enter a search term</p>
           <p className="empty-state__body">
-            Search across all cases, documents, angles, and entities.
+            Search across all cases, documents, threads, and entities.
           </p>
         </div>
       )}
