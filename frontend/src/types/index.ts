@@ -1570,9 +1570,17 @@ export interface CoverageResponse {
 // GET  /api/admin/sos-csv-status/
 // ---------------------------------------------------------------------------
 
+/** One tracked Ohio SOS bulk-data file's upload status. */
+export interface SosCsvFileStatus {
+  filename: string;
+  report_type: string;
+  exists: boolean;
+  uploaded_at: string | null;
+  days_old: number | null;
+  size_bytes: number | null;
+}
+
 /** Response from GET /api/admin/sos-csv-status/ */
 export interface SosCsvStatusResponse {
-  uploaded_files: string[];
-  expected_files: string[];
-  all_present: boolean;
+  files: SosCsvFileStatus[];
 }

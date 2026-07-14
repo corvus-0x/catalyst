@@ -26,7 +26,7 @@ function SosCsvSection() {
     setStatusLoading(true);
     try {
       const res = await fetchSosCsvStatus();
-      setStatus(res as SosCsvStatusResponse);
+      setStatus(res);
     } catch {
       setStatus(null);
     } finally {
@@ -94,52 +94,57 @@ function SosCsvSection() {
       {statusLoading ? (
         <div className="skeleton" style={{ height: 80, borderRadius: 6, marginBottom: 16 }} />
       ) : status ? (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 10,
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: status.all_present ? "#22c55e" : "#f59e0b",
-              }}
-            />
-            <span style={{ fontSize: 13, fontWeight: 500 }}>
-              {status.all_present
-                ? "All expected files are present."
-                : `${status.uploaded_files.length} of ${status.expected_files.length} expected files uploaded.`}
-            </span>
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gap: 4,
-              fontSize: 12,
-            }}
-          >
-            {status.expected_files.map((fname) => {
-              const uploaded = status.uploaded_files.includes(fname);
-              return (
-                <div key={fname} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: uploaded ? "#22c55e" : "#9ca3af" }}>
-                    {uploaded ? "✓" : "○"}
-                  </span>
-                  <span style={{ color: uploaded ? "inherit" : "var(--text-muted, #9ca3af)" }}>
-                    {fname}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        (() => {
+          const files = status.files ?? [];
+          const uploadedCount = files.filter((f) => f.exists).length;
+          const allPresent = files.length > 0 && uploadedCount === files.length;
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: allPresent ? "#22c55e" : "#f59e0b",
+                  }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>
+                  {allPresent
+                    ? "All expected files are present."
+                    : `${uploadedCount} of ${files.length} expected files uploaded.`}
+                </span>
+              </div>
+              <div
+                data-testid="sos-status-files"
+                style={{
+                  display: "grid",
+                  gap: 4,
+                  fontSize: 12,
+                }}
+              >
+                {files.map((f) => (
+                  <div key={f.filename} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ color: f.exists ? "#22c55e" : "#9ca3af" }}>
+                      {f.exists ? "✓" : "○"}
+                    </span>
+                    <span style={{ color: f.exists ? "inherit" : "var(--text-muted, #9ca3af)" }}>
+                      {f.filename}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
       ) : (
         <p style={{ fontSize: 13, color: "#ef4444", marginBottom: 16 }}>
           Could not load CSV status. Check backend connection.

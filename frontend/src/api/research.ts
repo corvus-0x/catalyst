@@ -19,6 +19,7 @@ import type {
   CaseJobsResponse,
   SyncResearchResponse,
   AddToCaseResult,
+  SosCsvStatusResponse,
 } from "../types";
 
 /** Re-export the envelope type so callers can use the same name used in JSDoc. */
@@ -202,6 +203,6 @@ export async function uploadSosCsv(formData: FormData): Promise<unknown> {
 }
 
 /** Check which Ohio SOS CSV files have been uploaded. */
-export async function fetchSosCsvStatus(): Promise<unknown> {
-  return fetchApi<unknown>("/api/admin/sos-csv-status/");
+export async function fetchSosCsvStatus(): Promise<SosCsvStatusResponse> {
+  return fetchApi<SosCsvStatusResponse>("/api/admin/sos-csv-status/");
 }
