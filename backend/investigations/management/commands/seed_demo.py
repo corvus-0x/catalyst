@@ -1273,6 +1273,70 @@ class Command(BaseCommand):
         )
 
         # ────────────────────────────────────────────────────────────────
+        # 11b-ii. LEAD SUGGESTIONS STAGING — two threads carry realistic
+        # investigator freeform (notes + open questions) so a live
+        # "Suggest assertions" click has grounded material to structure.
+        # Proposals are never seeded: they are generated live and only
+        # persist when a human accepts them (spec §Phase 4D).
+        # ────────────────────────────────────────────────────────────────
+
+        LEAD_STAGING = {
+            "SR-013": [
+                (
+                    ThreadElementType.NOTE,
+                    "Part VII of the 2021 990 lists four officers, every one at "
+                    "$0 reportable compensation. The same filing reports $1.62M "
+                    "in admin and salaries. Somebody is being paid — the filing "
+                    "just doesn't say who.",
+                ),
+                (
+                    ThreadElementType.NOTE,
+                    "Mitchell Development Group's formation filing lists Sarah "
+                    "Mitchell as manager. If management fees flow to the LLC "
+                    "instead of W-2 officer pay, that would reconcile the $0.",
+                ),
+                (
+                    ThreadElementType.QUESTION,
+                    "Does any 990 schedule or county record show payments from "
+                    "the charity to Mitchell Development Group?",
+                ),
+            ],
+            "SR-021": [
+                (
+                    ThreadElementType.NOTE,
+                    "Revenue: $85K (2016), $156K (2017), $890K (2018), $1.6M "
+                    "(2019), $2.8M (2020), $4.2M (2021). The 2018 jump is 471% "
+                    "and predates both property transactions.",
+                ),
+                (
+                    ThreadElementType.NOTE,
+                    "No grants schedule or donor concentration data in the "
+                    "filings on hand; the growth is unexplained in Part I.",
+                ),
+                (
+                    ThreadElementType.QUESTION,
+                    "Which revenue line (contributions, program service, other) "
+                    "drives the 2018 spike?",
+                ),
+            ],
+        }
+        for rule_id, elements in LEAD_STAGING.items():
+            finding = (
+                Finding.objects.filter(case=case, rule_id=rule_id).order_by("created_at").first()
+            )
+            if finding is None:
+                continue
+            next_pos = finding.elements.count() or 0
+            for offset, (el_type, text) in enumerate(elements):
+                ThreadElement.objects.get_or_create(
+                    finding=finding,
+                    element_type=el_type,
+                    text=text,
+                    defaults={"position": next_pos + offset},
+                )
+        self.stdout.write(self.style.SUCCESS("  ✓ Lead staging notes on SR-013 / SR-021"))
+
+        # ────────────────────────────────────────────────────────────────
         # 11c. AI FINDING (seeded to demonstrate AI pattern analysis)
         # ────────────────────────────────────────────────────────────────
 

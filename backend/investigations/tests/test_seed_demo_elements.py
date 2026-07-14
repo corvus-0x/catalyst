@@ -2,7 +2,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from investigations.models import Case, Finding, FindingStatus, Property
+from investigations.models import Case, Finding, FindingStatus, Property, ThreadElementType
 from investigations.referral_grade import referral_grade_qs
 from investigations.thread_elements import (
     finding_has_cited_assertion,
@@ -78,4 +78,23 @@ class SeedDemoReferralMixTests(TestCase):
             self.assertTrue(
                 finding.elements.exists(),
                 f"{finding.rule_id} '{finding.title[:40]}' has no thread elements",
+            )
+
+
+class SeedDemoLeadStagingTests(TestCase):
+    STAGED_RULES = ("SR-013", "SR-021")
+
+    def test_staged_threads_have_freeform_material_and_document_links(self):
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        for rule_id in self.STAGED_RULES:
+            finding = Finding.objects.get(case=case, rule_id=rule_id)
+            notes = finding.elements.filter(element_type=ThreadElementType.NOTE)
+            questions = finding.elements.filter(element_type=ThreadElementType.QUESTION)
+            self.assertGreaterEqual(notes.count(), 2, rule_id)
+            self.assertGreaterEqual(questions.count(), 1, rule_id)
+            self.assertTrue(
+                finding.document_links.exists(),
+                f"{rule_id}: staged Lead thread must link its evidence documents — "
+                "build_thread_context puts document_links first in the prompt budget",
             )
