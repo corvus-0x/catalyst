@@ -7,6 +7,10 @@ Foundation" case, and the README that fronts them — presentable to two audienc
 a recruiter clicking the link cold (primary) and Tyler driving a live interview
 walkthrough (secondary).
 
+**The winning standard:** a recruiter can understand the project in 90 seconds,
+then a technical reviewer can inspect the repo and see that the hard parts are
+real. "Works" is the floor; "communicates why it's non-trivial" is the bar.
+
 ## Problem
 
 The Case Map arc (Phases 1A → 4D, PRs #13–#24) shipped after the demo case was
@@ -65,6 +69,23 @@ behavior (exception strings, stack traces, model names, raw HTTP codes as
 user copy). Everything else is logged with severity and left for later. The
 punch list bounds the effort; it does not grow it.
 
+**Recruiter skim audit.** Alongside the click-through, score the README + live
+demo on a 90-second recruiter pass: Can I tell what Catalyst is in one screen?
+Can I tell what engineering problems Tyler solved? Can I find the live demo,
+screenshots, tech stack, tests, and architecture without hunting? Do any
+claims sound inflated compared with what the demo actually shows?
+
+**Claim-vs-proof table.** A dedicated punch-list category for README claims
+that need proof, each row: claim → proof (screenshot/GIF step + test
+reference) → code path. Example: "citation-backed referral package" → GIF
+step N + `test_referral_pdf.py` → source document → thread assertion →
+referral PDF.
+
+**Recruiter confusion log.** Track not only bugs but "I don't know why this
+matters" moments — a working feature that doesn't communicate its value is
+still a demo problem, and these feed the walkthrough script and README
+Engineering Highlights.
+
 ## Phase 1 — Seed Enrichment (branch 1)
 
 Extend `seed_demo` so the data showcases the post-Case-Map feature set:
@@ -96,6 +117,15 @@ Extend `seed_demo` so the data showcases the post-Case-Map feature set:
   deletes no instrument rows, so adding them without extending the reset path
   breaks every subsequent `--reset` (including Phase 3's prod reseed). Same
   rule applies to any other new RESTRICT-linked row type Phase 1 introduces.
+- **One canonical walkthrough path, seeded deliberately.** The seed supports
+  one clean end-to-end story: public record → subject relationship → Case Map
+  edge → Thread Builder assertion → cited, handoff-ready claim → referral
+  PDF. This exact path is what the README Traceability Walkthrough and the
+  GIF follow — not just "more realistic data," but a designed demo spine.
+- **The canonical path is asserted in tests.** Beyond "5 referral-grade," a
+  seed test asserts at least one thread has: a cited assertion, a
+  handoff-ready assertion, a Case Map relationship edge involving its trigger
+  subject, and inclusion in the referral PDF.
 - **Invariants preserved:** `--reset` idempotency; all confirmed threads keep
   cited documents; the referral PDF stays complete; the 5/5 honest mix stands
   (no all-green demo — Tyler's standing call).
@@ -144,6 +174,27 @@ Branch 1 does not merge, and Phase 3 does not start, until every box checks:
       README claims spot-checked against the live deployment.
 - [ ] Prod reseed preflight completed and rollback note written (below).
 
+Recruiter-facing layer:
+
+- [ ] README first viewport explains what Catalyst does, who it's for, and
+      why it's technically non-trivial (90-second skim standard).
+- [ ] README has an **Engineering Highlights** section with 5–7 concrete
+      bullets.
+- [ ] README has a **Traceability Walkthrough** matching the GIF path.
+- [ ] README distinguishes real implemented behavior from demo-seeded data
+      and deferred work.
+- [ ] The GIF shows one complete engineering loop: source/evidence → Case
+      Map → Thread Builder → assertion or Lead Suggestions → referral
+      output/readiness.
+- [ ] Walkthrough script lists exact clicks and the engineering point each
+      screen proves.
+- [ ] No empty prestige panels: every major panel on the walkthrough path
+      either contains meaningful data or has intentional empty-state copy —
+      no "thin because seed data" panels.
+- [ ] Proof artifacts are discoverable: README links to `api-contract.md`,
+      the frontend design spec, the test command, and the demo seed command,
+      and names the specific tests/suites protecting the critical workflow.
+
 ## Phase 3 — Reseed + Capture + Leave-Behinds
 
 1. **Prod reseed preflight (before `--reset` touches Railway):** record the
@@ -156,17 +207,42 @@ Branch 1 does not merge, and Phase 3 does not start, until every box checks:
 2. Verify with the smoke test (target: 29/29 or better) and re-check the
    Definition of Done items against prod.
 3. Fresh README screenshots from the live demo; new demo GIF covering the
-   Case Map → Thread Builder → Lead Suggestions arc. **Asset hygiene:** new
-   assets land in the README's existing image location (`docs/` screenshots
-   path); every superseded screenshot/GIF is deleted in the same commit, and
-   the README is grepped for references to removed files.
-4. **Lead Suggestions demo fallback:** after enrichment, run Lead Suggestions
+   canonical path (source/evidence → Case Map → Thread Builder → assertion /
+   Lead Suggestions → referral output). **Asset hygiene:** new assets land in
+   the README's existing image location (`docs/` screenshots path); every
+   superseded screenshot/GIF is deleted in the same commit, and the README is
+   grepped for references to removed files.
+4. **README restructuring — content, not just assets** (one README PR with
+   both, since the Traceability Walkthrough must match the final GIF path):
+   - Top summary in plain language: what Catalyst is, who it's for, why it's
+     technically non-trivial — all in the first viewport.
+   - **Engineering Highlights** — 5–7 concrete bullets (e.g., dual-version
+     referral gate with grandfathering migration, async job contract with
+     reattach-on-mount, citation chain to SHA-256 document index, rule +
+     human-review pipeline, 1,100+ tests).
+   - **Traceability Walkthrough** — the canonical path, step by step,
+     matching the GIF.
+   - **Real vs demo-seeded** — what's implemented behavior vs staged data vs
+     deferred work.
+   - **Tradeoffs / Next steps** and **How to verify** (run commands, test
+     commands, seed command).
+   - **Framing rule:** lead with traceability, async jobs, data modeling,
+     graph workflow, tests, and human review. Lead Suggestions is supporting
+     evidence, not the headline — same credibility-firewall logic as the
+     banned-strings gate: the audience discounts AI claims, so the AI feature
+     earns trust only after the engineering does.
+   - **Honesty pass:** sweep for overclaims. Prefer "production-style" over
+     "production-ready," "public-records investigation workflow" and
+     "signals" over "fraud detection," "human-reviewed findings," "referral
+     packaging." Every superlative must map to a claim-vs-proof row.
+5. **Lead Suggestions demo fallback:** after enrichment, run Lead Suggestions
    once against the staged threads and capture a known-good result
    (screenshot + the proposal JSON shape). The walkthrough script presents it
    as "generated live — here's the expected shape," so an interview never
    depends on a perfect fresh model call.
-5. Short **walkthrough script** doc — the interview screen-share path, derived
-   from the audit route, including the fallback framing above.
+6. Short **walkthrough script** doc — the interview screen-share path, derived
+   from the audit route: exact clicks, the engineering point each screen
+   proves, and the Lead fallback framing above.
 
 ## Testing & Safety
 
