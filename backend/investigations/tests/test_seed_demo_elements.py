@@ -2,6 +2,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
+from investigations.case_map import build_case_map
 from investigations.models import Case, Finding, FindingStatus, Property, ThreadElementType
 from investigations.referral_grade import referral_grade_qs
 from investigations.thread_elements import (
@@ -98,3 +99,25 @@ class SeedDemoLeadStagingTests(TestCase):
                 f"{rule_id}: staged Lead thread must link its evidence documents — "
                 "build_thread_context puts document_links first in the prompt budget",
             )
+
+
+class SeedDemoCaseMapTests(TestCase):
+    def test_case_map_renders_all_three_evidence_categories(self):
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        payload = build_case_map(case)
+        categories = set()
+        for edge in payload["edges"]:
+            for ref in edge.get("evidence_refs", []):
+                categories.add(ref.get("category"))
+        for expected in ("transaction", "shared_address", "financial_link"):
+            self.assertIn(expected, categories, f"no {expected} edge on the demo Case Map")
+
+
+class SeedDemoResetTests(TestCase):
+    def test_reset_twice_rebuilds_cleanly(self):
+        call_command("seed_demo")
+        call_command("seed_demo", "--reset")
+        call_command("seed_demo", "--reset")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        self.assertTrue(Finding.objects.filter(case=case).exists())

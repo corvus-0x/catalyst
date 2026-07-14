@@ -27,6 +27,7 @@ Usage:
 """
 
 import sys
+from datetime import date
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -43,20 +44,24 @@ from investigations.models import (
     DocumentType,
     EvidenceWeight,
     ExtractionStatus,
+    FinancialInstrument,
     FinancialSnapshot,
     Finding,
     FindingDocument,
     FindingEntity,
     FindingSource,
     FindingStatus,
+    InstrumentType,
     InvestigationStep,
     InvestigatorNote,
     OcrStatus,
+    OrgAddress,
     Organization,
     OrganizationStatus,
     OrganizationType,
     OrgDocument,
     Person,
+    PersonAddress,
     PersonDocument,
     PersonOrganization,
     PersonRole,
@@ -98,6 +103,7 @@ class Command(BaseCommand):
             if case:
                 # Delete in reverse dependency order
                 Finding.objects.filter(case=case).delete()
+                FinancialInstrument.objects.filter(case=case).delete()
                 Document.objects.filter(case=case).delete()
                 FinancialSnapshot.objects.filter(case=case).delete()
                 Property.objects.filter(case=case).delete()
@@ -310,6 +316,46 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"  ✓ {oak_st_addr.raw_text}"))
         self.stdout.write(self.style.SUCCESS(f"  ✓ {elm_ave_addr.raw_text}"))
+
+        # Shared business address: Sarah Mitchell + Mitchell Development Group
+        # → shared_address Case Map edge between the two subjects.
+        commerce_addr, _ = Address.objects.get_or_create(
+            case=case,
+            raw_text="4400 Commerce Parkway, Suite 210, Columbus, OH 43219",
+            defaults={
+                "street": "4400 Commerce Parkway, Suite 210",
+                "city": "Columbus",
+                "state": "OH",
+                "zip_code": "43219",
+                "county": "Franklin",
+                "address_type": AddressType.MAILING,
+            },
+        )
+        PersonAddress.objects.get_or_create(
+            person=sarah,
+            address=commerce_addr,
+            defaults={"address_role": AddressType.MAILING},
+        )
+        OrgAddress.objects.get_or_create(
+            org=mitchell_dev,
+            address=commerce_addr,
+            defaults={"address_role": AddressType.MAILING},
+        )
+
+        # UCC-style loan: Mitchell Dev (secured party) → BFF (debtor), signed
+        # by Sarah → financial_link Case Map edge between the two orgs.
+        FinancialInstrument.objects.get_or_create(
+            case=case,
+            filing_number="OH-UCC-2021-118834",
+            defaults={
+                "instrument_type": InstrumentType.LOAN,
+                "filing_date": date(2021, 5, 12),
+                "signer": sarah,
+                "secured_party_id": mitchell_dev.id,
+                "debtor_id": bff.id,
+                "amount": Decimal("250000.00"),
+            },
+        )
 
         # ────────────────────────────────────────────────────────────────
         # 6. PROPERTIES
