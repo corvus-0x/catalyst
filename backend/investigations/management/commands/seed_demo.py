@@ -68,6 +68,7 @@ from investigations.models import (
     Severity,
     TransactionPartyType,
 )
+from investigations.signal_rules import RULE_REGISTRY
 
 
 class Command(BaseCommand):
@@ -776,8 +777,8 @@ class Command(BaseCommand):
                     "with asset stripping or self-dealing."
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "ORC § 1702.33"],
-                "trigger_entity_id": bff.id,
-                "trigger_entity_type": "organization",
+                "trigger_entity_id": prop_oak.id,
+                "trigger_entity_type": "property",
             },
             {
                 "rule_id": "SR-005",
@@ -804,6 +805,7 @@ class Command(BaseCommand):
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
                 "trigger_entity_id": james.id,
                 "trigger_entity_type": "person",
+                "trigger_doc_filename": "Deed_875_Elm_Ave.pdf",
             },
             {
                 "rule_id": "SR-006",
@@ -898,8 +900,8 @@ class Command(BaseCommand):
                     "a textbook insider swap."
                 ),
                 "legal_refs": ["26 U.S.C. § 4941", "18 U.S.C. § 666"],
-                "trigger_entity_id": sarah.id,
-                "trigger_entity_type": "person",
+                "trigger_entity_id": prop_oak.id,
+                "trigger_entity_type": "property",
             },
             {
                 "rule_id": "SR-021",
@@ -973,30 +975,73 @@ class Command(BaseCommand):
                 "trigger_entity_id": bff.id,
                 "trigger_entity_type": "organization",
             },
+            {
+                "rule_id": "SR-003",
+                "title": "Purchase Price Deviates >50% From Assessed Value",
+                "description": (
+                    "875 Elm Avenue assessed at $220,000 but transferred for $0. "
+                    "Zero-consideration transfer produces a 100% deviation below "
+                    "assessed value; overlaps the SR-005 zero-consideration thread."
+                ),
+                "severity": Severity.HIGH,
+                "status": FindingStatus.NEW,
+                "evidence_weight": EvidenceWeight.SPECULATIVE,
+                "source": FindingSource.AUTO,
+                "narrative": "",
+                "legal_refs": [],
+                "trigger_entity_id": prop_elm.id,
+                "trigger_entity_type": "property",
+            },
+            {
+                "rule_id": "SR-015",
+                "title": RULE_REGISTRY["SR-015"].title,
+                "description": (
+                    "875 Elm Avenue was transferred by Mitchell Development Group "
+                    "to James Mitchell (board member) for $0 — the same insider "
+                    "LLC on the seller side of the Oak Street purchase. Needs "
+                    "review to confirm the same insider-swap pattern applies."
+                ),
+                "severity": Severity.CRITICAL,
+                "status": FindingStatus.NEW,
+                "evidence_weight": EvidenceWeight.SPECULATIVE,
+                "source": FindingSource.AUTO,
+                "narrative": "",
+                "legal_refs": [],
+                "trigger_entity_id": prop_elm.id,
+                "trigger_entity_type": "property",
+            },
         ]
+
+        # Citations are keyed by rule_id, but SR-003 now has two rows (Oak and
+        # Elm) sharing that rule_id — guard by trigger so citations follow the
+        # finding, not the rule. The Elm row stays uncited (need-work thread).
+        CITATION_TRIGGER_GUARD = {"SR-003": prop_oak.id}
 
         for finding_data in findings_data:
             trigger_entity_id = finding_data.pop("trigger_entity_id", None)
             trigger_entity_type = finding_data.pop("trigger_entity_type", None)
+            trigger_doc_filename = finding_data.pop("trigger_doc_filename", None)
             finding, _ = Finding.objects.get_or_create(
                 case=case,
                 rule_id=finding_data["rule_id"],
+                trigger_entity_id=trigger_entity_id,
                 defaults=finding_data,
             )
 
-            if trigger_entity_id:
-                finding.trigger_entity_id = trigger_entity_id
-                finding.save()
+            if trigger_doc_filename and docs.get(trigger_doc_filename):
+                finding.trigger_doc = docs[trigger_doc_filename]
+                finding.save(update_fields=["trigger_doc"])
+
+            if trigger_entity_id and trigger_entity_type:
                 # Mirror the trigger entity into the FindingEntity link table
                 # so the entity detail page can list this finding under its
                 # related-findings panel.
-                if trigger_entity_type:
-                    FindingEntity.objects.get_or_create(
-                        finding=finding,
-                        entity_id=trigger_entity_id,
-                        entity_type=trigger_entity_type,
-                        defaults={"context_note": "Trigger entity for this rule"},
-                    )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=trigger_entity_id,
+                    entity_type=trigger_entity_type,
+                    defaults={"context_note": "Trigger entity for this rule"},
+                )
 
             # Cite source documents — every confirmed angle must carry document
             # evidence or the referral package flags it as incomplete.
@@ -1032,25 +1077,52 @@ class Command(BaseCommand):
                     ("BFF_Form990_2021.pdf", "Part I", "Program expense ratio 38%"),
                 ],
             }
-            for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
-                doc = docs.get(doc_filename)
-                if doc:
-                    FindingDocument.objects.get_or_create(
-                        finding=finding,
-                        document=doc,
-                        defaults={
-                            "page_reference": page_ref,
-                            "context_note": note,
-                        },
-                    )
+            expected_trigger = CITATION_TRIGGER_GUARD.get(finding_data["rule_id"])
+            if expected_trigger is None or trigger_entity_id == expected_trigger:
+                for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
+                    doc = docs.get(doc_filename)
+                    if doc:
+                        FindingDocument.objects.get_or_create(
+                            finding=finding,
+                            document=doc,
+                            defaults={
+                                "page_reference": page_ref,
+                                "context_note": note,
+                            },
+                        )
 
-            # SR-015 INSIDER_SWAP involves both insiders — add the second entity link
+            # SR-003 (Oak row): trigger moved to the property, so re-add the
+            # org subject links the old organization-typed trigger used to
+            # provide — the Case Map only reads person/organization
+            # FindingEntity rows, not property-typed ones.
+            if finding_data["rule_id"] == "SR-003" and trigger_entity_id == prop_oak.id:
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=bff.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Buyer at 136% above assessed value"},
+                )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=mitchell_dev.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Seller — insider-managed LLC"},
+                )
+
+            # SR-015 INSIDER_SWAP involves both insiders — add both subject
+            # links (trigger moved to the property, same reasoning as above).
             if finding_data["rule_id"] == "SR-015":
                 FindingEntity.objects.get_or_create(
                     finding=finding,
                     entity_id=james.id,
                     entity_type="person",
                     defaults={"context_note": "Second insider: received property at $0"},
+                )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=sarah.id,
+                    entity_type="person",
+                    defaults={"context_note": "Insider on seller side (Mitchell Dev manager)"},
                 )
 
             self.stdout.write(
