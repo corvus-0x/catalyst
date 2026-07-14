@@ -19,7 +19,14 @@ stack: `docker exec catalyst_backend python manage.py test investigations.tests.
 
 ## Global Constraints
 
+- This plan executes in Claude Code on Tyler's machine: Claude creates the branch and
+  makes the commits (CLAUDE.md workflow rule 5 — hooks are dormant, run ruff manually).
 - Branch: create `demo-seed-enrichment` off `main`; never commit to `main`.
+- **Trigger identity ≠ subject presentation.** `trigger_entity_id` exists for dedup parity
+  with live rules; which subjects a thread implicates on the Case Map comes from
+  person/organization `FindingEntity` rows (property-type links are explicitly skipped by
+  `_subject_ids_from_finding`, `case_map.py:511-517`). Every task keeps these two concerns
+  separate.
 - Ruff: line length 100, double quotes; run `ruff check backend/investigations/` and
   `ruff format backend/investigations/` before every commit (hooks are dormant).
 - No user-visible strings containing "Haiku", "Sonnet", "Opus", "Claude", "AI assistant",
@@ -52,8 +59,14 @@ stack: `docker exec catalyst_backend python manage.py test investigations.tests.
 - `ThreadElement(finding, element_type, text, position, handoff_ready)` — unique
   `(finding, position)`; `ThreadElementCitation(element, document, page_reference,
   context_note)` — same-case guard.
-- Overreach block (`seed_demo.py:~1065-1083`): marks first `len(confirmed)//2 + 1`
-  confirmed+cited findings `overreach_reviewed=True`. 8 confirmed → 5 reviewed. Keep.
+- Overreach block (`seed_demo.py:~1065-1083`): currently marks the first
+  `len(confirmed)//2 + 1` confirmed+cited findings by `created_at`. Task 2 REPLACES this
+  positional selection with an explicit rule list so both CRITICAL threads are
+  referral-grade and the demo spine is deliberate, not accidental.
+- Case Map edge thread refs carry `thread_id` (NOT `finding_id`) — `case_map.py:582`.
+- Canonical walkthrough thread: **SR-015** (CRITICAL, two insider FindingEntity links,
+  three citations, a property transaction). Chosen explicitly; never rely on "earliest
+  confirmed."
 - PDF endpoint for tests: `reverse("api_case_referral_pdf", kwargs={"pk": case.pk})`,
   POST, expect 200 + body starting `%PDF`.
 - `FinancialInstrument(case[RESTRICT], instrument_type, filing_number, filing_date,
@@ -136,6 +149,25 @@ In `seed_demo.py`:
 1. SR-003 entry (~line 779): change
    `"trigger_entity_id": bff.id,` / `"trigger_entity_type": "organization",`
    to `"trigger_entity_id": prop_oak.id,` / `"trigger_entity_type": "property",`
+   **AND preserve the subject links the trigger used to provide** — the Case Map ignores
+   property-type FindingEntity rows, so without this the SR-003 thread vanishes from the
+   graph. Add a subject-link special case beside the existing SR-015 one:
+
+```python
+            if finding_data["rule_id"] == "SR-003" and trigger_entity_id == prop_oak.id:
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=bff.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Buyer at 136% above assessed value"},
+                )
+                FindingEntity.objects.get_or_create(
+                    finding=finding,
+                    entity_id=mitchell_dev.id,
+                    entity_type="organization",
+                    defaults={"context_note": "Seller — insider-managed LLC"},
+                )
+```
 2. SR-005 entry (~line 805): keep `"trigger_entity_id": james.id` (it feeds the
    FindingEntity panel) but ADD a doc anchor key: `"trigger_doc_filename":
    "Deed_875_Elm_Ave.pdf",` — wired in Step 5.
@@ -224,6 +256,25 @@ directly). New entry:
 Use the real assessed value from the `prop_elm` creation block (~line 333) in the
 description if it differs from $195,000.
 
+**Keep the Elm row uncited.** The citation loop is keyed by `rule_id` alone, so without a
+guard BOTH SR-003 rows would cite `Deed_1250_Oak_St.pdf` — giving the Elm thread Oak
+evidence. Guard the citation loop by trigger so citations follow the finding, not the
+rule:
+
+```python
+            CITATION_TRIGGER_GUARD = {"SR-003": prop_oak.id}
+            expected_trigger = CITATION_TRIGGER_GUARD.get(finding_data["rule_id"])
+            if expected_trigger is None or trigger_entity_id == expected_trigger:
+                for doc_filename, page_ref, note in citation_map.get(
+                    finding_data["rule_id"], []
+                ):
+                    ...  # existing citation-creation body unchanged
+```
+
+(Hoist `CITATION_TRIGGER_GUARD` above the `for finding_data` loop next to `citation_map`
+so it isn't rebuilt per iteration.) The Elm row staying uncited is intentional — it is a
+need-work thread and Task 2 gives it an uncited assertion + open question.
+
 - [ ] **Step 7: Run the parity test again**
 
 ```bash
@@ -299,7 +350,49 @@ docker exec catalyst_backend python manage.py test investigations.tests.test_see
 Expected: FAIL — `referral_grade_qs` returns 1 (flagship only), most findings have no
 elements.
 
-- [ ] **Step 3: Replace the flagship-only block with a universal elements section**
+- [ ] **Step 3: Make the referral-grade set an explicit, deliberate choice**
+
+In the overreach block (section 11a), replace the positional selection
+
+```python
+        confirmed = list(...)
+        reviewed_count = (len(confirmed) // 2 + 1) if confirmed else 0
+        for finding in confirmed[:reviewed_count]:
+```
+
+with an explicit rule list that includes both CRITICAL threads (SR-015 is the canonical
+walkthrough spine, SR-025 the disclosure contradiction):
+
+```python
+        # The referral-grade set is a deliberate demo choice: both CRITICAL
+        # threads plus three documented HIGHs.  SR-015 is the canonical
+        # walkthrough spine (insiders on both sides, three citations, a
+        # property transaction).  The Elm SR-003 row is NEW and uncited, so
+        # the rule_id filter cannot pick it up.
+        REFERRAL_GRADE_RULES = ["SR-003", "SR-006", "SR-013", "SR-015", "SR-025"]
+        reviewed = list(
+            Finding.objects.filter(
+                case=case,
+                status=FindingStatus.CONFIRMED,
+                rule_id__in=REFERRAL_GRADE_RULES,
+                document_links__isnull=False,
+            ).distinct()
+        )
+        for finding in reviewed:
+            finding.overreach_reviewed = True
+            finding.save(update_fields=["overreach_reviewed"])
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  ✓ Overreach reviewed: {len(reviewed)} threads tied off referral-grade"
+            )
+        )
+```
+
+Verify each of the five rules' seeded `status` is CONFIRMED in `findings_data` (the
+counts test in Step 1 fails loudly if one isn't).
+
+- [ ] **Step 4: Replace the flagship-only block with a universal elements section**
 
 Delete the whole `flagship_finding = ...` / `if flagship_finding and not
 flagship_finding.elements.exists():` block (section 11b-4A) and insert:
@@ -423,16 +516,17 @@ Placement: AFTER the overreach-review block (it reads `overreach_reviewed`) and 
 section 11c (the AI finding). The AI finding keeps zero elements — Leads start unstructured
 by design.
 
-- [ ] **Step 4: Run the counts test and the pre-existing flagship test**
+- [ ] **Step 5: Run the counts test and the pre-existing flagship test**
 
 ```bash
 docker exec catalyst_backend python manage.py test investigations.tests.test_seed_demo_elements -v 2 --keepdb --noinput
 ```
 
-Expected: ALL PASS. The old flagship test must still pass — the earliest confirmed finding
-is in the reviewed set, so it still gets cited + handoff assertions.
+Expected: ALL PASS. The old flagship test asserts the *earliest confirmed* finding has
+cited + handoff assertions — that's the Oak SR-003 row, which is in
+`REFERRAL_GRADE_RULES`, so it still passes.
 
-- [ ] **Step 5: Lint and commit**
+- [ ] **Step 6: Lint and commit**
 
 ```bash
 cd backend && ruff check investigations/ && ruff format investigations/ && cd ..
@@ -608,7 +702,7 @@ class SeedDemoCaseMapTests(TestCase):
         for edge in payload["edges"]:
             for ref in edge.get("evidence_refs", []):
                 categories.add(ref.get("category"))
-        for expected in ("shared_address", "financial_link"):
+        for expected in ("transaction", "shared_address", "financial_link"):
             self.assertIn(expected, categories, f"no {expected} edge on the demo Case Map")
 
 
@@ -742,29 +836,25 @@ class SeedDemoCanonicalPathTests(TestCase):
     def test_canonical_thread_walks_the_full_chain(self):
         call_command("seed_demo")
         case = Case.objects.get(name="Bright Future Foundation Investigation")
-        flagship = (
-            Finding.objects.filter(case=case, status=FindingStatus.CONFIRMED)
-            .order_by("created_at")
-            .first()
-        )
-        self.assertTrue(is_referral_grade(flagship))
+        spine = Finding.objects.get(case=case, rule_id="SR-015")
+        self.assertTrue(is_referral_grade(spine))
         self.assertTrue(
-            flagship.elements.filter(
+            spine.elements.filter(
                 element_type=ThreadElementType.ASSERTION, citations__isnull=False
             ).exists()
         )
         self.assertTrue(
-            flagship.elements.filter(
+            spine.elements.filter(
                 element_type=ThreadElementType.ASSERTION, handoff_ready=True
             ).exists()
         )
         payload = build_case_map(case)
         thread_edge_ids = {
-            ref.get("finding_id")
+            ref.get("thread_id")
             for edge in payload["edges"]
             for ref in edge.get("thread_refs", [])
         }
-        self.assertIn(str(flagship.id), thread_edge_ids, "flagship missing from Case Map")
+        self.assertIn(str(spine.id), thread_edge_ids, "SR-015 spine missing from Case Map")
         response = self.client.post(
             reverse("api_case_referral_pdf", kwargs={"pk": case.pk})
         )
@@ -772,9 +862,9 @@ class SeedDemoCanonicalPathTests(TestCase):
         self.assertTrue(response.content.startswith(b"%PDF"))
 ```
 
-Before finalizing, check the edge `thread_refs` key shape in `case_map.py`
-(`_collect_threads` / `_build_edges`) — assert against the actual field carrying the
-finding id, and check whether `api_case_referral_pdf` expects GET or POST in
+The `thread_id` key is verified against `case_map.py:582`. Before finalizing, confirm
+`_build_edges` copies `thread_refs` onto the serialized edge dict (it scores from the
+same evidence dict), and check whether `api_case_referral_pdf` expects GET or POST in
 `test_referral_pdf.py:116` and match it.
 
 - [ ] **Step 2: Run it**
@@ -811,12 +901,11 @@ Expected: ALL PASS (~1,118 + the new tests). Pre-existing tests that pinned old 
 behavior (e.g. exact finding counts elsewhere) may fail — update those assertions to the
 new counts, nothing else.
 
-- [ ] **Step 2: Sync the spec's Definition of Done to the verified counts**
+- [ ] **Step 2: Verify the spec's Definition of Done matches the shipped counts**
 
-In the spec's DoD, change "exactly 10 threads; exactly 5 in `referral_grade_qs(case)`"
-to the final verified numbers (11 threads — or 12 if Task 1 Step 7 added an Elm SR-015 —
-still exactly 5 referral-grade). Also update the Phase 1 bullet "among the 10 seeded
-threads" to match.
+The spec DoD was pre-synced to 11 threads / 5 referral-grade / 6 need-work when this plan
+was reviewed. Only touch it if Task 1 Step 7 forced a second SR-015 row (→ 12 threads):
+update the DoD line and the Phase 1 bullet to the verified number.
 
 - [ ] **Step 3: Lint everything, commit, and stop for review**
 
