@@ -56,9 +56,14 @@ Drive a browser through the live Railway demo as a first-time recruiter:
 
 Every empty state, stale string, thin dataset, broken interaction, or confusing
 moment goes into a punch list at `docs/superpowers/plans/` with a severity:
-**demo-blocker / rough edge / nice-to-have**. The punch list is the definition
-of done for the whole effort. The click path doubles as the draft walkthrough
-script.
+**demo-blocker / rough edge / nice-to-have**. The click path doubles as the
+draft walkthrough script.
+
+**Scope cap (anti-QA-month rule):** Phase 2 fixes only items that (a) block or
+visibly mar the recruiter walkthrough path, or (b) expose internal/raw system
+behavior (exception strings, stack traces, model names, raw HTTP codes as
+user copy). Everything else is logged with severity and left for later. The
+punch list bounds the effort; it does not grow it.
 
 ## Phase 1 — Seed Enrichment (branch 1)
 
@@ -111,17 +116,67 @@ field's type and presence in the API are unchanged — content only. Existing
 tests that assert raw messages (`test_jobs.py`, `test_ai_thread_assist.py`)
 are updated to assert the sanitized copy, and `api-contract.md` gets a note.
 
+**`query_params` stays public — decided, not overlooked.** `api_job_detail`
+and `api_case_jobs` return `query_params` verbatim. Its contents are the
+caller's own search inputs (query, county, fetch_xml), which the frontend
+needs for reattach-on-mount labels, and the codebase already enforces the
+boundary by convention: the AI ask endpoint stores transcripts in cache
+specifically because job params are readable via the jobs API (`views.py`,
+Session 54). Unlike `error_message`, nothing internal leaks. No change.
+
+## Definition of Done
+
+Branch 1 does not merge, and Phase 3 does not start, until every box checks:
+
+- [ ] `seed_demo --reset` runs **twice in a row** cleanly, locally AND on the
+      Railway PR preview (idempotency + RESTRICT-path proof).
+- [ ] Post-seed: exactly 10 threads; exactly 5 in `referral_grade_qs(case)`;
+      5 need-work — asserted in tests, not eyeballed.
+- [ ] Case Map for the demo case renders `transaction`, `shared_address`, and
+      `financial_link` evidence categories.
+- [ ] ≥2 Lead-staged threads each have NOTE/QUESTION elements AND
+      `FindingDocument` links to seeded documents.
+- [ ] Referral PDF exports successfully (200 + `%PDF`) from the enriched seed.
+- [ ] Public job failures show sanitized copy; raw exception appears only in
+      server logs.
+- [ ] README screenshots/GIF regenerated from the final live demo; stale
+      assets deleted or replaced (no old-UI images left on the public surface);
+      README claims spot-checked against the live deployment.
+- [ ] Prod reseed preflight completed and rollback note written (below).
+
 ## Phase 3 — Reseed + Capture + Leave-Behinds
 
-1. Reseed Railway prod (`seed_demo --reset`) — outward-facing; confirm with
-   Tyler before touching prod. Verify with the smoke test.
-2. Fresh README screenshots from the live demo.
-3. New demo GIF: Case Map → Thread Builder → Lead Suggestions arc.
-4. Short **walkthrough script** doc — the interview screen-share path, derived
-   from the audit route.
+1. **Prod reseed preflight (before `--reset` touches Railway):** record the
+   current demo case id and finding/thread counts; save current README
+   screenshot/GIF assets aside; take a DB backup (`pg_dump` via `railway ssh`
+   or a Railway snapshot) and note the restore command. Only then, with
+   Tyler's go-ahead, run `seed_demo --reset`. The rollback story is: restore
+   the dump, or re-run the pre-branch-1 seed from the old commit — written
+   down before execution, not improvised after.
+2. Verify with the smoke test (target: 29/29 or better) and re-check the
+   Definition of Done items against prod.
+3. Fresh README screenshots from the live demo; new demo GIF covering the
+   Case Map → Thread Builder → Lead Suggestions arc. **Asset hygiene:** new
+   assets land in the README's existing image location (`docs/` screenshots
+   path); every superseded screenshot/GIF is deleted in the same commit, and
+   the README is grepped for references to removed files.
+4. **Lead Suggestions demo fallback:** after enrichment, run Lead Suggestions
+   once against the staged threads and capture a known-good result
+   (screenshot + the proposal JSON shape). The walkthrough script presents it
+   as "generated live — here's the expected shape," so an interview never
+   depends on a perfect fresh model call.
+5. Short **walkthrough script** doc — the interview screen-share path, derived
+   from the audit route, including the fallback framing above.
 
 ## Testing & Safety
 
+- **Branch-1 tests, named now:** extend `test_seed_demo_elements.py`
+  (10 threads / 5 referral-grade via `referral_grade_qs` / double-`--reset`
+  idempotency / staged NOTE-QUESTION + `FindingDocument` links); extend
+  `test_case_map.py` or add a seed-scoped test asserting `shared_address` and
+  `financial_link` categories appear after seeding; extend
+  `test_referral_pdf.py` to prove the PDF exports from the ASSERTION_V1-
+  repaired seed.
 - Each branch follows the standing 3-stage gate: local Docker suite
   (`--exclude-tag=eval --keepdb --noinput`) → Railway PR preview (seeded via
   `railway ssh -- sh -lc "python manage.py seed_demo --reset"` and eyeballed)
