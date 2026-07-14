@@ -2,7 +2,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from investigations.models import Case, Finding, FindingStatus
+from investigations.models import Case, Finding, FindingStatus, Property
 from investigations.thread_elements import (
     finding_has_cited_assertion,
     finding_has_handoff_ready_assertion,
@@ -39,3 +39,20 @@ class SeedDemoSignalParityTests(TestCase):
             f"re-evaluation created {after - before} duplicate finding(s): "
             f"{list(Finding.objects.filter(case=case).values_list('rule_id', 'title'))}",
         )
+
+    def test_elm_need_work_findings_are_uncited(self):
+        """The Elm-property SR-003/SR-015 rows are deliberately need-work threads;
+        the citation guard must keep them free of the Oak rows' document evidence."""
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        prop_elm = Property.objects.get(case=case, parcel_number="R-2024-1456")
+        for rule_id in ("SR-003", "SR-015"):
+            elm_finding = Finding.objects.get(
+                case=case, rule_id=rule_id, trigger_entity_id=prop_elm.id
+            )
+            self.assertEqual(
+                elm_finding.document_links.count(),
+                0,
+                f"Elm {rule_id} row must stay uncited (need-work thread), but has "
+                f"{elm_finding.document_links.count()} document link(s)",
+            )

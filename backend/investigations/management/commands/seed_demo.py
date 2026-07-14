@@ -1012,10 +1012,11 @@ class Command(BaseCommand):
             },
         ]
 
-        # Citations are keyed by rule_id, but SR-003 now has two rows (Oak and
-        # Elm) sharing that rule_id — guard by trigger so citations follow the
-        # finding, not the rule. The Elm row stays uncited (need-work thread).
-        CITATION_TRIGGER_GUARD = {"SR-003": prop_oak.id}
+        # Citations are keyed by rule_id, but SR-003 and SR-015 now each have
+        # two rows (Oak and Elm) sharing a rule_id — guard by trigger so
+        # citations follow the finding, not the rule. The Elm rows stay
+        # uncited (need-work threads).
+        CITATION_TRIGGER_GUARD = {"SR-003": prop_oak.id, "SR-015": prop_oak.id}
 
         for finding_data in findings_data:
             trigger_entity_id = finding_data.pop("trigger_entity_id", None)
