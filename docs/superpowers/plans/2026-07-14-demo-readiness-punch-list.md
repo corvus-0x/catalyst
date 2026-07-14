@@ -40,13 +40,25 @@ health-check or CSRF probe path that doesn't self-clean). Phase 2.
 Console confirms uncaught exception. **Fix:** Phase 2 (bug + consider a
 route-level error boundary so no future crash ever blanks the whole app).
 
-### P0-4. Lead Suggestions button silently self-destructs (prod)
-On the Thread Builder, clicking "Suggest assertions" removes the button from
-the DOM with **no API request, no spinner, no proposals, no error message**
-(reproduced twice; network monitor captured zero `/api/` calls on the second
-click). The newest headline feature appears simply broken. **Fix:** Phase 2 —
-reproduce locally, root-cause (component state bug vs auth/CSRF silent 4xx),
-and add a visible loading/error state either way.
+### P0-4. Lead Suggestions dead in prod — ROOT CAUSE FOUND: stale worker (infra)
+**Update 2026-07-14 (post-audit investigation):** the prod `catalyst-worker`
+service is deployed from `26c2880` — a **pre-history-rewrite commit from
+early June**. Its auto-deploy has been broken since the June force-push, so
+every job function added since (including Phase 4D `run_thread_assist`) is
+unknown to it: thread-assist jobs enqueue (202) and hang QUEUED forever, and
+the "2 research jobs still running" in readiness (P1-5) are the same rot.
+The frontend button behavior observed in the audit is consistent with a
+never-completing job, not a component bug (`LeadSuggestionsPanel` renders
+"Working…" while QUEUED; the a11y `find` missed it because the label
+changed).
+**Fix (two parts):** (a) INFRA, immediate: deploy current `main` to
+`catalyst-worker` (`railway up --service catalyst-worker` from a clean main
+checkout) and repair the service's auto-deploy source in the Railway
+dashboard — likely still pointed at a pre-rewrite SHA/branch state. (b)
+Phase 2 UX hardening: `useAsyncJob` has no timeout — a job stuck QUEUED
+shows "Working…" forever; add a stuck-job timeout message + surface FAILED
+error copy, and purge/expire stale QUEUED SearchJobs so readiness stops
+counting corpses.
 
 ### P0-5. Dashboard stat card: "Total angles: 0"
 Wrong count (case has 14 findings) AND stale pre-rename vocabulary in the
