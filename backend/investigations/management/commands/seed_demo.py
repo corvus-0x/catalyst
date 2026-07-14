@@ -1068,6 +1068,10 @@ class Command(BaseCommand):
             trigger_entity_id = finding_data.pop("trigger_entity_id", None)
             trigger_entity_type = finding_data.pop("trigger_entity_type", None)
             trigger_doc_filename = finding_data.pop("trigger_doc_filename", None)
+            # Identity includes trigger_entity_id so per-property rules (SR-003/SR-015) can
+            # seed multiple rows for the same rule_id; two rows of one rule with
+            # trigger_entity_id=None would collapse into one — give doc-only rules distinct
+            # trigger_docs if that ever happens.
             finding, _ = Finding.objects.get_or_create(
                 case=case,
                 rule_id=finding_data["rule_id"],
@@ -1129,12 +1133,16 @@ class Command(BaseCommand):
                 for doc_filename, page_ref, note in citation_map.get(finding_data["rule_id"], []):
                     doc = docs.get(doc_filename)
                     if doc:
+                        # Referral-PDF evidence links, not citation-sync mirrors — is_legacy=True
+                        # keeps reap_document_link_if_orphaned (thread_elements.py) from deleting
+                        # these if a demo visitor removes a cited assertion.
                         FindingDocument.objects.get_or_create(
                             finding=finding,
                             document=doc,
                             defaults={
                                 "page_reference": page_ref,
                                 "context_note": note,
+                                "is_legacy": True,
                             },
                         )
 

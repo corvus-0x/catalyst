@@ -3,7 +3,15 @@ from django.test import TestCase
 from django.urls import reverse
 
 from investigations.case_map import build_case_map
-from investigations.models import Case, Finding, FindingStatus, Property, ThreadElementType
+from investigations.models import (
+    Case,
+    FinancialInstrument,
+    Finding,
+    FindingStatus,
+    Property,
+    ThreadElement,
+    ThreadElementType,
+)
 from investigations.referral_grade import is_referral_grade, referral_grade_qs
 from investigations.thread_elements import (
     finding_has_cited_assertion,
@@ -121,6 +129,18 @@ class SeedDemoResetTests(TestCase):
         call_command("seed_demo", "--reset")
         case = Case.objects.get(name="Bright Future Foundation Investigation")
         self.assertTrue(Finding.objects.filter(case=case).exists())
+        self.assertTrue(FinancialInstrument.objects.filter(case=case).exists())
+
+
+class SeedDemoPlainRerunTests(TestCase):
+    def test_plain_rerun_creates_nothing_new(self):
+        call_command("seed_demo")
+        case = Case.objects.get(name="Bright Future Foundation Investigation")
+        finding_count = Finding.objects.filter(case=case).count()
+        element_count = ThreadElement.objects.filter(finding__case=case).count()
+        call_command("seed_demo")
+        self.assertEqual(Finding.objects.filter(case=case).count(), finding_count)
+        self.assertEqual(ThreadElement.objects.filter(finding__case=case).count(), element_count)
 
 
 class SeedDemoCanonicalPathTests(TestCase):
