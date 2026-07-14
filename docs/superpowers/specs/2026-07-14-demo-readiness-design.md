@@ -94,9 +94,10 @@ Extend `seed_demo` so the data showcases the post-Case-Map feature set:
   5 intended referral-grade threads gets ≥1 cited assertion AND ≥1
   handoff-ready assertion (a single cited + handoff_ready assertion satisfies
   both — see `referral_grade.py`), so a fresh reseed restores the deliberate
-  **5 referral-grade / 6 need-work** mix among the 11 seeded threads (the
-  dedup-parity repair adds an Elm SR-003 row). This is a correctness
-  requirement, not just polish (see Problem).
+  **5 referral-grade / 7 need-work** mix among the 12 seeded threads (the
+  dedup-parity repair adds an Elm SR-003 row, and the parity test forced a
+  second SR-015 row). This is a correctness requirement, not just polish
+  (see Problem).
 - **Assertions across threads.** Referral-grade threads get cited assertions
   with a realistic fact/analysis mix; need-work threads get uncited assertions
   and open QUESTIONs. The Thread Builder shows the full derived-role spectrum,
@@ -127,6 +128,11 @@ Extend `seed_demo` so the data showcases the post-Case-Map feature set:
   seed test asserts at least one thread has: a cited assertion, a
   handoff-ready assertion, a Case Map relationship edge involving its trigger
   subject, and inclusion in the referral PDF.
+- **Seed now creates a `ReferralTarget` row.** Verifying the canonical path
+  against the referral PDF surfaced a real gap: without a seeded
+  `ReferralTarget`, the referral PDF endpoint has nothing to export against,
+  so `seed_demo` now creates one so the referral PDF actually works out of
+  the box.
 - **Invariants preserved:** `--reset` idempotency; all confirmed threads keep
   cited documents; the referral PDF stays complete; the 5/5 honest mix stands
   (no all-green demo — Tyler's standing call).
@@ -172,11 +178,11 @@ Branch 1 does not merge, and Phase 3 does not start, until every box checks:
 
 - [ ] `seed_demo --reset` runs **twice in a row** cleanly, locally AND on the
       Railway PR preview (idempotency + RESTRICT-path proof).
-- [ ] Post-seed: exactly 11 threads (10 rule-backed incl. the Elm SR-003 the
-      dedup-parity work adds, + 1 Lead); exactly 5 in `referral_grade_qs(case)`
-      chosen by an explicit rule list including both CRITICALs (SR-015 = the
-      canonical spine); 6 need-work — asserted in tests, not eyeballed. (If the
-      parity test forces a second SR-015 row, 12 threads — sync this line.)
+- [ ] Post-seed: exactly 12 threads (11 rule-backed incl. the Elm SR-003 the
+      dedup-parity work adds and the second SR-015 row the parity test
+      forced, + 1 Lead); exactly 5 in `referral_grade_qs(case)` chosen by an
+      explicit rule list including both CRITICALs (SR-015 = the canonical
+      spine); 7 need-work — asserted in tests, not eyeballed.
 - [ ] Case Map for the demo case renders `transaction`, `shared_address`, and
       `financial_link` evidence categories.
 - [ ] ≥2 Lead-staged threads each have NOTE/QUESTION elements AND
