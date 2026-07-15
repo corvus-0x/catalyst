@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import IntegrityError, transaction
@@ -2347,6 +2347,7 @@ def build_case_readiness(case):
     active_job_count = SearchJob.objects.filter(
         case=case,
         status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
+        created_at__gte=timezone.now() - timedelta(hours=24),
     ).count()
     overreach_pending = (
         confirmed_qs.filter(
@@ -4573,7 +4574,6 @@ def api_case_document_process_pending(request, pk):
         crash mid-pipeline used to leave these stranded with no retry.
         (QA audit P1.)
     """
-    from datetime import timedelta
 
     from .models import ExtractionStatus
 

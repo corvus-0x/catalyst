@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from ..models import (
     Case,
@@ -186,6 +189,45 @@ class ReferralReadinessTests(TestCase):
         self.assertEqual(by_key["pending_connections"]["status"], "WARN")
         self.assertEqual(by_key["pending_extraction"]["status"], "WARN")
         self.assertEqual(by_key["active_jobs"]["status"], "WARN")
+
+    def test_readiness_ignores_search_jobs_older_than_24h(self):
+        self._target()
+        finding = self._confirmed_finding(overreach_reviewed=True)
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
+
+        stale_job = SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.IRS_NAME_SEARCH,
+            status=JobStatus.QUEUED,
+            query_params={"name": "stale"},
+        )
+        SearchJob.objects.filter(pk=stale_job.pk).update(
+            created_at=timezone.now() - timedelta(hours=25)
+        )
+
+        payload = self._get_readiness()
+
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["active_jobs"]["status"], "PASS")
+        self.assertEqual(by_key["active_jobs"]["count"], 0)
+
+        fresh_job = SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.IRS_NAME_SEARCH,
+            status=JobStatus.QUEUED,
+            query_params={"name": "fresh"},
+        )
+        SearchJob.objects.filter(pk=fresh_job.pk).update(
+            created_at=timezone.now() - timedelta(hours=1)
+        )
+
+        payload = self._get_readiness()
+
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["active_jobs"]["status"], "WARN")
+        self.assertEqual(by_key["active_jobs"]["count"], 1)
 
     def test_readiness_blocks_for_failed_source_document_intake(self):
         self._target()
