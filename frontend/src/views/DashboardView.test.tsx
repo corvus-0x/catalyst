@@ -171,6 +171,32 @@ describe("DashboardView — Activity feed copy (P1-3)", () => {
     expect(screen.queryByText(/reevaluate_signals/)).not.toBeInTheDocument();
   });
 
+  it("drops an unmapped notes code entirely rather than rendering it verbatim", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-8",
+          case_id: "case-1",
+          table_name: "findings",
+          record_id: "rec-8",
+          action: "SIGNAL_CONFIRMED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "some_unmapped_internal_code",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread substantiated")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/some_unmapped_internal_code/)).not.toBeInTheDocument();
+  });
+
   it("humanizes AI_EXTRACTION_COMPLETED as Intake copy with no AI leak", async () => {
     const activity: ActivityFeedResponse = {
       count: 1,

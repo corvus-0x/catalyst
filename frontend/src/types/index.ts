@@ -1246,7 +1246,8 @@ export type AuditAction =
 /** One entry in the investigation audit log */
 export interface ActivityFeedItem {
   id: UUID;
-  case_id: UUID;
+  /** Null for case-independent audit rows (e.g. admin actions not tied to a case). */
+  case_id: UUID | null;
   table_name: string;
   record_id: UUID | null;
   action: AuditAction;

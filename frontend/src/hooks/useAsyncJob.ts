@@ -23,6 +23,8 @@ const MAX_POLLS = 90;
 const POLL_INTERVAL_MS = 2000;
 const STUCK_JOB_MESSAGE =
   "Still queued after several minutes — the worker may be busy. Check back shortly.";
+const UNREACHABLE_MESSAGE =
+  "Couldn't reach the server — check your connection and try again.";
 
 export interface AsyncJobState<TResult> {
   status: JobStatus | "idle";
@@ -51,10 +53,16 @@ export function useAsyncJob<TResult = unknown>(): AsyncJobState<TResult> {
   function startPolling(id: string) {
     stopPolling();
     let pollCount = 0;
+    // True once any poll has successfully reached the server. Distinguishes
+    // "job is legitimately slow" (server reachable, still QUEUED/RUNNING)
+    // from "we've never once reached the server" (network/server down) so
+    // the cap message can point at the right problem.
+    let everReached = false;
     intervalRef.current = setInterval(async () => {
       pollCount += 1;
       try {
         const job = await fetchJob(id);
+        everReached = true;
         setStatus(job.status);
         if (job.status === "SUCCESS") {
           setResult(job.result as TResult);
@@ -65,13 +73,14 @@ export function useAsyncJob<TResult = unknown>(): AsyncJobState<TResult> {
           stopPolling();
           return;
         }
-      } catch {
+      } catch (err) {
         // Network blip — keep polling until status resolves
+        console.error("useAsyncJob poll failed", err);
       }
       if (pollCount >= MAX_POLLS) {
         stopPolling();
         setStatus("FAILED");
-        setError(STUCK_JOB_MESSAGE);
+        setError(everReached ? STUCK_JOB_MESSAGE : UNREACHABLE_MESSAGE);
       }
     }, POLL_INTERVAL_MS);
   }

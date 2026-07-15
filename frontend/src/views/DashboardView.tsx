@@ -40,9 +40,9 @@ function titleCaseAction(action: string): string {
 
 /**
  * table_name -> the Subject/Thread vocabulary noun for that record type.
- * Used both for specific AuditAction copy and for the generic RECORD_*
- * actions (which the audit log emits for tables without a dedicated
- * action, e.g. plain field edits).
+ * Used only by the generic RECORD_* fallback below (which the audit log
+ * emits for tables without a dedicated action, e.g. plain field edits) —
+ * every action with its own entry in ACTION_COPY supplies its own copy.
  */
 const TABLE_NOUNS: Record<string, string> = {
   cases: "Case",
@@ -117,6 +117,8 @@ const RECORD_VERBS: Record<string, string> = {
 /**
  * Internal/system note payloads that must never render verbatim — mapped to
  * an investigator-facing sentence instead. Keys are exact `notes` values.
+ * Any `notes` value NOT in this map is dropped entirely (never rendered),
+ * since it's an internal code, not investigator-facing prose.
  */
 const NOTE_COPY: Record<string, string> = {
   reevaluate_signals: "Signal rules re-evaluated",
@@ -124,9 +126,10 @@ const NOTE_COPY: Record<string, string> = {
 
 /**
  * Turns one raw ActivityFeedItem into an investigator-facing sentence.
- * Never renders a raw snake_case AuditAction or a raw internal `notes`
- * code (e.g. "reevaluate_signals") — those are mapped to human copy or,
- * failing that, title-cased.
+ * Never renders a raw snake_case AuditAction (mapped to human copy or,
+ * failing that, title-cased) and never renders a raw internal `notes`
+ * code — only `notes` values whitelisted in NOTE_COPY are appended; any
+ * other `notes` value is silently omitted.
  */
 function humanizeActivity(item: ActivityFeedItem): string {
   const tableNoun = TABLE_NOUNS[item.table_name];
@@ -151,9 +154,7 @@ function humanizeActivity(item: ActivityFeedItem): string {
   if (notes && notes in NOTE_COPY) {
     return `${headline} — ${NOTE_COPY[notes]}`;
   }
-  if (notes) {
-    return `${headline} — ${notes}`;
-  }
+  // Unmapped notes are internal codes, not investigator-facing prose — drop them.
   return headline;
 }
 

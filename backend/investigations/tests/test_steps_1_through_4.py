@@ -501,6 +501,24 @@ class DemoReadOnlyModeTests(SimpleTestCase):
         _response = mw(request)
         get_response.assert_called_once_with(request)
 
+    def test_valid_api_token_not_in_demo_write_tokens_still_blocked(self):
+        """MIRROR trap: a request carrying a valid CATALYST_API_TOKENS bearer that is
+        NOT in CATALYST_DEMO_WRITE_TOKENS must still get 403. The demo gate checks
+        membership in demo_write_tokens only — it must not treat "a token that
+        authenticates under CATALYST_API_TOKENS" as equivalent to "a token allowed
+        to write on the demo"."""
+        mw, get_response = self._make_middleware(
+            demo_read_only=True,
+            tokens=["real-tok"],
+            demo_write_tokens=[],
+        )
+        request = self._make_request(method="POST", auth_header="Bearer real-tok")
+        response = mw(request)
+        self.assertEqual(response.status_code, 403)
+        body = json.loads(response.content)
+        self.assertIn("read-only public demo", body["error"])
+        get_response.assert_not_called()
+
     def test_demo_mode_on_does_not_trip_auth_active_for_anonymous_get(self):
         """Regression guard for the trap: turning on demo mode alone must NOT
         make self._auth_active True (that would 401 anonymous GETs and break

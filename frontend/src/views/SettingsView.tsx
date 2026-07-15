@@ -27,7 +27,8 @@ function SosCsvSection() {
     try {
       const res = await fetchSosCsvStatus();
       setStatus(res);
-    } catch {
+    } catch (err) {
+      console.error("SOS CSV status load failed", err);
       setStatus(null);
     } finally {
       setStatusLoading(false);
