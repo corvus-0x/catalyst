@@ -9,6 +9,27 @@ README.md as the pre-click surface.
 
 ---
 
+## STATUS (updated 2026-07-14, end of Session 56)
+
+| Item | State |
+|------|-------|
+| P0-1 prod data degraded | ✅ FIXED — branch 1 (PR #25) seed repair + interim prod reseed (case a037100b: 5 referral-grade / 7 need-work) |
+| P0-2 CSRF junk rows | ⚠️ PARTIAL — creation stopped by P0-6 read-only demo mode (once flag flipped in Phase 3); 2 existing rows still on prod (Tyler to delete via UI — API DELETE gated by permission classifier) |
+| P0-3 Settings blank page | ✅ FIXED — branch 2 Task 1 (contract fix + route error boundary) |
+| P0-4 Lead Suggestions dead | ✅ FIXED — root cause was stale prod worker (redeployed, verified live); branch 2 Task 6 added stuck-job poll cap so it can never *look* dead again |
+| P0-5 "Total angles: 0" | ✅ FIXED — branch 2 Task 2 (correct count + Thread vocab) |
+| P0-6 public demo writable | ✅ BUILT — branch 2 Task 5 read-only demo mode (env flag; flip in Phase 3) |
+| P1-1 angle vocab sweep | ✅ FIXED — branch 2 Task 3 (all user-visible surfaces). Knot→Subject deferred (separate vocab item) |
+| P1-3 activity feed raw copy | ✅ FIXED — branch 2 Task 7 + fix (humanized, no "Ai" leak, real emitted enum) |
+| P1-5 stale research jobs | ✅ FIXED — branch 2 Task 6 (readiness ignores >24h jobs) |
+| Deferred job error copy | ✅ FIXED — branch 2 Task 4 (sanitized error_message) |
+| P1-2 Thread Builder layout | ⬜ OPEN — enriched data helps; cramped editor/negative-first framing not addressed (Phase 3 or later) |
+| P1-4 canvas scroll-zoom | ⬜ OPEN — logged, not built |
+| P1-6 Financials col clip | ⬜ OPEN — logged, not built |
+| README / GIF / walkthrough | ⬜ Phase 3 |
+
+---
+
 ## P0 — Demo-blockers
 
 ### P0-1. Prod demo data is degraded: 0 referral-grade, 14 threads, PDF blocked
