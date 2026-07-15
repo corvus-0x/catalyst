@@ -50,9 +50,9 @@ export default function AnglePickerModal({ caseId, open, onClose, onPick }: Angl
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
         <Dialog.Content className="dialog-content">
-          <Dialog.Title className="dialog-title">Cite into an angle</Dialog.Title>
+          <Dialog.Title className="dialog-title">Cite into a thread</Dialog.Title>
           <Dialog.Description className="dialog-description">
-            Choose an angle to cite this into, or start a new one.
+            Choose a thread to cite this into, or start a new one.
           </Dialog.Description>
           <div className="angle-picker-list">
             <button
@@ -60,12 +60,12 @@ export default function AnglePickerModal({ caseId, open, onClose, onPick }: Angl
               className="angle-picker-item angle-picker-item--new"
               onClick={() => void handlePick(null)}
             >
-              <Plus size={13} /> + New Angle from this
+              <Plus size={13} /> + New Thread from this
             </button>
-            {loading && <div className="angle-picker-empty">Loading angles…</div>}
+            {loading && <div className="angle-picker-empty">Loading threads…</div>}
             {!loading && loadError && (
               <div className="angle-picker-empty angle-picker-error" role="alert">
-                Couldn’t load angles.{" "}
+                Couldn’t load threads.{" "}
                 <button
                   type="button"
                   className="angle-picker-retry"
@@ -76,7 +76,7 @@ export default function AnglePickerModal({ caseId, open, onClose, onPick }: Angl
               </div>
             )}
             {!loading && !loadError && angles.length === 0 && (
-              <div className="angle-picker-empty">No angles yet.</div>
+              <div className="angle-picker-empty">No threads yet.</div>
             )}
             {!loadError &&
               angles.map((a) => (

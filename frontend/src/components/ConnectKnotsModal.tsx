@@ -348,7 +348,7 @@ export default function ConnectKnotsModal({
           {/* Header */}
           <div className="dialog-header">
             <Dialog.Title className="dialog-title">
-              Connect two knots with a new angle
+              Connect two knots with a new thread
             </Dialog.Title>
             <button
               type="button"
@@ -424,7 +424,7 @@ export default function ConnectKnotsModal({
                 className="connect-knots-modal__name-label"
                 htmlFor="connect-angle-name"
               >
-                Angle name
+                Thread name
               </label>
               <div className="connect-knots-modal__name-input-wrap">
                 <input
