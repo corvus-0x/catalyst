@@ -252,4 +252,5 @@ class RunThreadAssistJobTests(TestCase):
         run_thread_assist(str(self.job.id))
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, JobStatus.FAILED)
-        self.assertIn("API down", self.job.error_message)
+        self.assertNotIn("API down", self.job.error_message)
+        self.assertIn("could not be completed", self.job.error_message)

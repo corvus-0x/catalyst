@@ -53,7 +53,11 @@ def _mark_success(job: SearchJob, result: dict) -> None:
 
 def _mark_failed(job: SearchJob, exc: BaseException) -> None:
     job.status = JobStatus.FAILED
-    job.error_message = f"{type(exc).__name__}: {exc}"
+    # Public copy only — the raw exception goes to server logs below, never to the API.
+    job.error_message = (
+        "This job could not be completed. The data source may be unavailable — "
+        "try again, and check the server logs if it persists."
+    )
     job.finished_at = timezone.now()
     job.save(update_fields=["status", "error_message", "finished_at"])
     logger.exception("SearchJob %s failed: %s", job.id, exc)
