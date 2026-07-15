@@ -61,7 +61,10 @@ class RunIrsNameSearchTests(TestCase):
 
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, JobStatus.FAILED)
-        self.assertIn("boom", self.job.error_message)
+        self.assertNotIn("boom", self.job.error_message)
+        self.assertNotIn("Exception", self.job.error_message)
+        self.assertNotIn(":", self.job.error_message.split()[0])  # no "TypeError:" prefix
+        self.assertIn("could not be completed", self.job.error_message)
         self.assertIsNone(self.job.result)
         self.assertIsNotNone(self.job.finished_at)
 
@@ -283,4 +286,5 @@ class RunCountyParcelSearchTests(TestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED)
-        self.assertIn("county", job.error_message.lower())
+        self.assertNotIn("county", job.error_message.lower())
+        self.assertIn("could not be completed", job.error_message)

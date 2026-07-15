@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import CaseDetailView from "./views/CaseDetailView";
+import RouteErrorBoundary from "./components/RouteErrorBoundary";
 
 const DashboardView = lazy(() => import("./views/DashboardView"));
 const CasesListView = lazy(() => import("./views/CasesListView"));
@@ -14,42 +15,44 @@ const TAB_FALLBACK = (
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Suspense fallback={TAB_FALLBACK}>
-              <DashboardView />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/cases"
-          element={
-            <Suspense fallback={TAB_FALLBACK}>
-              <CasesListView />
-            </Suspense>
-          }
-        />
-        <Route path="/cases/:id" element={<CaseDetailView />} />
-        <Route
-          path="/search"
-          element={
-            <Suspense fallback={TAB_FALLBACK}>
-              <SearchView />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <Suspense fallback={TAB_FALLBACK}>
-              <SettingsView />
-            </Suspense>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <RouteErrorBoundary>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Suspense fallback={TAB_FALLBACK}>
+                <DashboardView />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/cases"
+            element={
+              <Suspense fallback={TAB_FALLBACK}>
+                <CasesListView />
+              </Suspense>
+            }
+          />
+          <Route path="/cases/:id" element={<CaseDetailView />} />
+          <Route
+            path="/search"
+            element={
+              <Suspense fallback={TAB_FALLBACK}>
+                <SearchView />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <Suspense fallback={TAB_FALLBACK}>
+                <SettingsView />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </RouteErrorBoundary>
     </BrowserRouter>
   );
 }

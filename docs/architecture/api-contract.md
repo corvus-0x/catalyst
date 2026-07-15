@@ -854,7 +854,8 @@ Poll `GET /api/jobs/:id/`. On `SUCCESS`, `job.result` shape (`AiAskJobResult`):
 }
 ```
 
-On `FAILED`, `job.error_message` contains the reason (rate-limit, API error, etc.).
+On `FAILED`, `job.error_message` contains sanitized human-readable copy (never the raw
+exception message or class name); the raw exception is logged server-side only.
 
 ### POST /api/cases/:id/ai/analyze-patterns/
 
@@ -1321,6 +1322,8 @@ Query params:
   "finished_at": "ISO8601"
 }
 ```
+
+`error_message`: sanitized human-readable copy; raw exception in server logs only.
 
 **`result` shape for AI_PATTERN_ANALYSIS on SUCCESS:**
 ```json

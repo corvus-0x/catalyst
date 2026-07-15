@@ -22,7 +22,7 @@ beforeEach(() => {
 describe("AnglePickerModal", () => {
   it("renders the new-angle option first and lists existing angles", async () => {
     render(<AnglePickerModal caseId="c1" open onClose={() => {}} onPick={async () => true} />);
-    expect(await screen.findByText(/\+ New Angle from this/i)).toBeInTheDocument();
+    expect(await screen.findByText(/\+ New Thread from this/i)).toBeInTheDocument();
     expect(screen.getByText("Insider swap")).toBeInTheDocument();
     expect(screen.getByText("False disclosure")).toBeInTheDocument();
   });
@@ -30,7 +30,7 @@ describe("AnglePickerModal", () => {
   it("calls onPick(null) for new and onPick(id) for an existing angle", async () => {
     const onPick = vi.fn().mockResolvedValue(true);
     render(<AnglePickerModal caseId="c1" open onClose={() => {}} onPick={onPick} />);
-    await userEvent.click(await screen.findByText(/\+ New Angle from this/i));
+    await userEvent.click(await screen.findByText(/\+ New Thread from this/i));
     expect(onPick).toHaveBeenCalledWith(null);
     await userEvent.click(screen.getByText("Insider swap"));
     expect(onPick).toHaveBeenCalledWith("ang-1");
@@ -64,8 +64,8 @@ describe("AnglePickerModal", () => {
       .mockResolvedValue({ results: [{ id: "ang-1", title: "Insider swap" }], count: 1 });
     render(<AnglePickerModal caseId="c1" open onClose={() => {}} onPick={async () => true} />);
     // A failed load surfaces a distinct error, NOT the empty-case message.
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn.t load angles/i);
-    expect(screen.queryByText("No angles yet.")).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn.t load threads/i);
+    expect(screen.queryByText("No threads yet.")).not.toBeInTheDocument();
     // Retry refetches and shows the angles; the error clears.
     await userEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(await screen.findByText("Insider swap")).toBeInTheDocument();

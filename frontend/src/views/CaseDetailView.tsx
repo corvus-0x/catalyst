@@ -137,12 +137,12 @@ function CaseDetailViewInner() {
             </h1>
             <div className="case-shell-header__right">
               {activeAngleId && (
-                <span className="active-angle-chip" title="Citations target this angle">
-                  Active angle: {activeAngleTitle || "Untitled"}
+                <span className="active-angle-chip" title="Citations target this thread">
+                  Active thread: {activeAngleTitle || "Untitled"}
                   <button
                     type="button"
                     className="active-angle-chip__clear"
-                    aria-label="Clear active angle"
+                    aria-label="Clear active thread"
                     onClick={() => clearActiveAngle()}
                   >
                     ×

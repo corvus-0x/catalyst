@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from ..models import (
     Case,
@@ -93,7 +96,7 @@ class ReferralReadinessTests(TestCase):
         self.assertLessEqual(payload["quality"]["score"], 69)
         top_labels = [issue["label"] for issue in payload["quality"]["top_issues"]]
         self.assertIn("Referral target", top_labels)
-        self.assertIn("Confirmed angles", top_labels)
+        self.assertIn("Confirmed threads", top_labels)
         by_key = {item["key"]: item for item in payload["items"]}
         self.assertEqual(by_key["referral_target"]["status"], "FAIL")
         self.assertEqual(by_key["confirmed_angles"]["status"], "FAIL")
@@ -186,6 +189,74 @@ class ReferralReadinessTests(TestCase):
         self.assertEqual(by_key["pending_connections"]["status"], "WARN")
         self.assertEqual(by_key["pending_extraction"]["status"], "WARN")
         self.assertEqual(by_key["active_jobs"]["status"], "WARN")
+
+    def test_readiness_ignores_search_jobs_older_than_24h(self):
+        self._target()
+        finding = self._confirmed_finding(overreach_reviewed=True)
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
+
+        stale_job = SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.IRS_NAME_SEARCH,
+            status=JobStatus.QUEUED,
+            query_params={"name": "stale"},
+        )
+        SearchJob.objects.filter(pk=stale_job.pk).update(
+            created_at=timezone.now() - timedelta(hours=25)
+        )
+
+        payload = self._get_readiness()
+
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["active_jobs"]["status"], "PASS")
+        self.assertEqual(by_key["active_jobs"]["count"], 0)
+
+        fresh_job = SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.IRS_NAME_SEARCH,
+            status=JobStatus.QUEUED,
+            query_params={"name": "fresh"},
+        )
+        SearchJob.objects.filter(pk=fresh_job.pk).update(
+            created_at=timezone.now() - timedelta(hours=1)
+        )
+
+        payload = self._get_readiness()
+
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["active_jobs"]["status"], "WARN")
+        self.assertEqual(by_key["active_jobs"]["count"], 1)
+
+    def test_readiness_counts_search_job_exactly_24h_old_as_active(self):
+        """The active-jobs filter is __gte 24h-ago, so a job created (at least)
+        24h ago is inclusive (still counted), not excluded like the 25h-old job
+        in test_readiness_ignores_search_jobs_older_than_24h. Backdated by a hair
+        under 24h (rather than an exact tie) so the view's own `timezone.now()`
+        call — which necessarily runs a few milliseconds after this setUp — can't
+        push the cutoff past created_at and flake the assertion."""
+        self._target()
+        finding = self._confirmed_finding(overreach_reviewed=True)
+        doc = self._document()
+        FindingDocument.objects.create(finding=finding, document=doc)
+        _add_cited_handoff_assertion(finding, doc)  # ASSERTION_V1 Tier-2
+
+        boundary_job = SearchJob.objects.create(
+            case=self.case,
+            job_type=JobType.IRS_NAME_SEARCH,
+            status=JobStatus.QUEUED,
+            query_params={"name": "boundary"},
+        )
+        SearchJob.objects.filter(pk=boundary_job.pk).update(
+            created_at=timezone.now() - timedelta(hours=24) + timedelta(seconds=5)
+        )
+
+        payload = self._get_readiness()
+
+        by_key = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(by_key["active_jobs"]["status"], "WARN")
+        self.assertEqual(by_key["active_jobs"]["count"], 1)
 
     def test_readiness_blocks_for_failed_source_document_intake(self):
         self._target()

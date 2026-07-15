@@ -969,11 +969,18 @@ export interface UpdateFindingBody {
   remove_document_ids?: UUID[];
 }
 
-/** Summary counts from GET /api/signal-summary/ */
-export interface SignalSummary {
-  total: number;
+/** Per-case finding metrics from GET /api/signal-summary/. Only cases with at
+ * least one finding are included — there is no case-independent "total". */
+export interface SignalSummaryRow {
+  case_id: UUID;
+  highest_severity: FindingSeverity;
+  open_count: number;
+  total_count: number;
   by_severity: Partial<Record<FindingSeverity, number>>;
-  by_status: Partial<Record<FindingStatus, number>>;
+}
+
+export interface SignalSummary {
+  results: SignalSummaryRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1194,23 +1201,55 @@ export interface SearchResponse {
  * These are append-only forensic records — never updated or deleted.
  */
 export type AuditAction =
-  | "DOCUMENT_UPLOADED"
+  // Document lifecycle
+  | "DOCUMENT_INGESTED"
+  | "DOCUMENT_SCRUBBED"
+  | "DOCUMENT_HASHED"
+  | "DOCUMENT_HASH_VERIFIED"
+  | "DOCUMENT_HASH_MISMATCH"
   | "DOCUMENT_DELETED"
+  | "DOCUMENT_OCR_COMPLETED"
+  | "DOCUMENT_OCR_FAILED"
+  // Generic CRUD actions the audit log emits for tables without a
+  // dedicated action (confirmed against backend/investigations/models.py
+  // AuditAction, mirrored in AuditLog).
+  | "RECORD_CREATED"
+  | "RECORD_UPDATED"
+  | "RECORD_DELETED"
+  // Signal / detection lifecycle
+  | "SIGNAL_DETECTED"
+  | "SIGNAL_CONFIRMED"
+  | "SIGNAL_DISMISSED"
+  | "SIGNAL_ESCALATED"
+  // Finding (Thread) lifecycle
   | "FINDING_CREATED"
   | "FINDING_UPDATED"
-  | "SIGNAL_DISMISSED"
-  | "SIGNAL_CONFIRMED"
-  | "CASE_CREATED"
-  | "CASE_UPDATED"
-  | "ENTITY_CREATED"
-  | "NOTE_CREATED";
+  | "FINDING_INCLUDED"
+  // Referral lifecycle
+  | "REFERRAL_CREATED"
+  | "REFERRAL_SUBMITTED"
+  | "REFERRAL_STATUS_CHANGED"
+  // Intake validation
+  | "INTAKE_REJECTED_SIZE"
+  | "INTAKE_REJECTED_TYPE"
+  | "INTAKE_REJECTED_CORRUPT"
+  // System
+  | "HASH_VERIFICATION_BATCH"
+  // AI lifecycle (Lead / Intake in user-facing copy — never "AI" in strings)
+  | "AI_EXTRACTION_COMPLETED"
+  | "AI_EXTRACTION_FAILED"
+  | "AI_PATTERN_RUN_COMPLETED"
+  | "AI_FINDING_CREATED"
+  | "AI_FINDING_REVIEWED"
+  | "AI_THREAD_ASSIST_COMPLETED";
 
 /** One entry in the investigation audit log */
 export interface ActivityFeedItem {
   id: UUID;
-  case_id: UUID;
+  /** Null for case-independent audit rows (e.g. admin actions not tied to a case). */
+  case_id: UUID | null;
   table_name: string;
-  record_id: UUID;
+  record_id: UUID | null;
   action: AuditAction;
   performed_by: string;
   performed_at: ISO8601;
@@ -1570,9 +1609,17 @@ export interface CoverageResponse {
 // GET  /api/admin/sos-csv-status/
 // ---------------------------------------------------------------------------
 
+/** One tracked Ohio SOS bulk-data file's upload status. */
+export interface SosCsvFileStatus {
+  filename: string;
+  report_type: string;
+  exists: boolean;
+  uploaded_at: string | null;
+  days_old: number | null;
+  size_bytes: number | null;
+}
+
 /** Response from GET /api/admin/sos-csv-status/ */
 export interface SosCsvStatusResponse {
-  uploaded_files: string[];
-  expected_files: string[];
-  all_present: boolean;
+  files: SosCsvFileStatus[];
 }

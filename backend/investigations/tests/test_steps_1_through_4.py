@@ -433,6 +433,104 @@ class TokenAuthMiddlewareTests(SimpleTestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class DemoReadOnlyModeTests(SimpleTestCase):
+    """P0-6: read-only public demo mode gate on TokenAuthMiddleware.
+
+    Mirrors TokenAuthMiddlewareTests' direct-construction pattern (rather than
+    the Django test client + @override_settings) because the middleware reads
+    settings once in __init__, same as self.tokens/self.require_auth above —
+    override_settings does not rebuild the cached middleware chain.
+    """
+
+    def _make_middleware(
+        self,
+        demo_read_only=False,
+        demo_write_tokens=None,
+        tokens=None,
+        require_auth=False,
+    ):
+        from investigations.middleware import TokenAuthMiddleware
+
+        mock_get_response = MagicMock(return_value=MagicMock(status_code=200))
+
+        with self.settings(
+            CATALYST_API_TOKENS=set(tokens or []),
+            CATALYST_REQUIRE_AUTH=require_auth,
+            CATALYST_DEMO_READ_ONLY=demo_read_only,
+            CATALYST_DEMO_WRITE_TOKENS=set(demo_write_tokens or []),
+        ):
+            mw = TokenAuthMiddleware(mock_get_response)
+        return mw, mock_get_response
+
+    def _make_request(self, method="GET", path="/api/cases/", auth_header=None):
+        factory = RequestFactory()
+        request = getattr(factory, method.lower())(path)
+        if auth_header:
+            request.META["HTTP_AUTHORIZATION"] = auth_header
+        return request
+
+    def test_anonymous_get_allowed_in_demo_mode(self):
+        """Public reads stay public — the demo gate never touches GET/HEAD/OPTIONS."""
+        mw, get_response = self._make_middleware(demo_read_only=True)
+        request = self._make_request(method="GET")
+        _response = mw(request)
+        get_response.assert_called_once_with(request)
+
+    def test_anonymous_post_blocked_with_friendly_copy(self):
+        mw, get_response = self._make_middleware(demo_read_only=True)
+        request = self._make_request(method="POST")
+        response = mw(request)
+        self.assertEqual(response.status_code, 403)
+        body = json.loads(response.content)
+        self.assertIn("read-only public demo", body["error"])
+        get_response.assert_not_called()
+
+    def test_write_token_bypasses_demo_gate(self):
+        mw, get_response = self._make_middleware(
+            demo_read_only=True, demo_write_tokens=["demo-write-tok"]
+        )
+        request = self._make_request(method="POST", auth_header="Bearer demo-write-tok")
+        response = mw(request)
+        self.assertNotEqual(response.status_code, 403)
+        get_response.assert_called_once_with(request)
+
+    def test_demo_mode_off_does_not_block_anonymous_post(self):
+        """Demo mode defaults to False — anonymous POSTs behave exactly as before."""
+        mw, get_response = self._make_middleware(demo_read_only=False)
+        request = self._make_request(method="POST")
+        _response = mw(request)
+        get_response.assert_called_once_with(request)
+
+    def test_valid_api_token_not_in_demo_write_tokens_still_blocked(self):
+        """MIRROR trap: a request carrying a valid CATALYST_API_TOKENS bearer that is
+        NOT in CATALYST_DEMO_WRITE_TOKENS must still get 403. The demo gate checks
+        membership in demo_write_tokens only — it must not treat "a token that
+        authenticates under CATALYST_API_TOKENS" as equivalent to "a token allowed
+        to write on the demo"."""
+        mw, get_response = self._make_middleware(
+            demo_read_only=True,
+            tokens=["real-tok"],
+            demo_write_tokens=[],
+        )
+        request = self._make_request(method="POST", auth_header="Bearer real-tok")
+        response = mw(request)
+        self.assertEqual(response.status_code, 403)
+        body = json.loads(response.content)
+        self.assertIn("read-only public demo", body["error"])
+        get_response.assert_not_called()
+
+    def test_demo_mode_on_does_not_trip_auth_active_for_anonymous_get(self):
+        """Regression guard for the trap: turning on demo mode alone must NOT
+        make self._auth_active True (that would 401 anonymous GETs and break
+        public read access on the demo deployment)."""
+        mw, get_response = self._make_middleware(demo_read_only=True)
+        self.assertFalse(mw._auth_active)
+        request = self._make_request(method="GET")
+        response = mw(request)
+        self.assertNotEqual(response.status_code, 401)
+        get_response.assert_called_once_with(request)
+
+
 # ---------------------------------------------------------------------------
 # 7.  HTTP-level validation (requires Django test client but no real DB)
 # ---------------------------------------------------------------------------

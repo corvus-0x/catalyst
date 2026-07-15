@@ -290,11 +290,11 @@ export default function AngleSplitModal({
     setValidationError(null);
 
     if (!nameA.trim()) {
-      setValidationError("Angle A needs a name.");
+      setValidationError("Thread A needs a name.");
       return;
     }
     if (!nameB.trim()) {
-      setValidationError("Angle B needs a name.");
+      setValidationError("Thread B needs a name.");
       return;
     }
 
@@ -336,7 +336,7 @@ export default function AngleSplitModal({
         <Dialog.Content className="dialog-content" aria-describedby="split-modal-desc">
           {/* Header */}
           <div className="dialog-header">
-            <Dialog.Title className="dialog-title">Split angle</Dialog.Title>
+            <Dialog.Title className="dialog-title">Split thread</Dialog.Title>
             <button
               type="button"
               className="icon-btn"
@@ -398,7 +398,7 @@ export default function AngleSplitModal({
 
             {/* --- Angle A --- */}
             <section className="panel-section">
-              <h3 className="panel-section__title">Angle A</h3>
+              <h3 className="panel-section__title">Thread A</h3>
 
               <label className="angle-split-modal__field-label" htmlFor="angle-a-name">
                 Name
@@ -409,7 +409,7 @@ export default function AngleSplitModal({
                 className="query-input angle-split-modal__name-input"
                 value={nameA}
                 onChange={(e) => setNameA(e.target.value)}
-                placeholder="Angle A name…"
+                placeholder="Thread A name…"
                 disabled={creating}
               />
 
@@ -452,7 +452,7 @@ export default function AngleSplitModal({
 
             {/* --- Angle B --- */}
             <section className="panel-section">
-              <h3 className="panel-section__title">Angle B</h3>
+              <h3 className="panel-section__title">Thread B</h3>
 
               <label className="angle-split-modal__field-label" htmlFor="angle-b-name">
                 Name
@@ -463,7 +463,7 @@ export default function AngleSplitModal({
                 className="query-input angle-split-modal__name-input"
                 value={nameB}
                 onChange={(e) => setNameB(e.target.value)}
-                placeholder="Angle B name…"
+                placeholder="Thread B name…"
                 disabled={creating}
               />
 

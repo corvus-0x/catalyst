@@ -15,6 +15,13 @@ TokenAuthMiddleware
 
 4.  Non-API paths are not gated (admin, HTML views, media).
 
+5.  Read-only public demo mode (P0-6): when ``CATALYST_DEMO_READ_ONLY`` is
+    set, non-GET/HEAD/OPTIONS ``/api/`` requests are rejected with a 403
+    unless they carry a bearer token from the *separate*
+    ``CATALYST_DEMO_WRITE_TOKENS`` list. This check runs independently of
+    ``CATALYST_API_TOKENS``/``CATALYST_REQUIRE_AUTH`` so anonymous reads
+    stay public on a demo deployment.
+
 RateLimitMiddleware (SEC-025)
 -----------------------------
 Simple in-memory sliding-window rate limiter for ``/api/`` paths.
@@ -52,6 +59,13 @@ class TokenAuthMiddleware:
         self.tokens: set[str] = set(getattr(settings, "CATALYST_API_TOKENS", []))
         self.require_auth: bool = getattr(settings, "CATALYST_REQUIRE_AUTH", False)
 
+        # Read-only public demo mode (P0-6). Deliberately a separate token set
+        # from self.tokens — see settings.py comment. Reading these does NOT
+        # affect self._auth_active, so anonymous GETs stay public when only
+        # demo mode (and not CATALYST_API_TOKENS/REQUIRE_AUTH) is configured.
+        self.demo_read_only: bool = bool(getattr(settings, "CATALYST_DEMO_READ_ONLY", False))
+        self.demo_write_tokens: set[str] = set(getattr(settings, "CATALYST_DEMO_WRITE_TOKENS", []))
+
     # ------------------------------------------------------------------
     # Auth is "active" only when there are tokens configured, *or* when
     # the operator has explicitly turned on require_auth.
@@ -60,14 +74,45 @@ class TokenAuthMiddleware:
     def _auth_active(self) -> bool:
         return bool(self.tokens) or self.require_auth
 
+    @staticmethod
+    def _extract_bearer_token(request) -> str | None:
+        """Parse ``Authorization: Bearer <token>`` and return the token, or None."""
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if not auth_header:
+            return None
+        parts = auth_header.split(" ", 1)
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return None
+        return parts[1].strip()
+
     def __call__(self, request):
+        is_gated_api_path = request.path.startswith("/api/") and request.path != "/api/health/"
+
+        # ------------------------------------------------------------------
+        # Read-only public demo mode (P0-6). Runs INDEPENDENTLY of
+        # `_auth_active` so anonymous GETs stay public even when demo mode
+        # is on and CATALYST_API_TOKENS/REQUIRE_AUTH are not configured.
+        # ------------------------------------------------------------------
+        if (
+            self.demo_read_only
+            and is_gated_api_path
+            and request.method not in ("GET", "HEAD", "OPTIONS")
+        ):
+            demo_token = self._extract_bearer_token(request)
+            if demo_token not in self.demo_write_tokens:
+                return JsonResponse(
+                    {
+                        "error": (
+                            "This is a read-only public demo. Changes are disabled — "
+                            "clone the repo to run your own instance."
+                        )
+                    },
+                    status=403,
+                )
+
         # Only gate /api/ paths. Healthcheck stays public because external probes
         # (Railway) don't send an Authorization header.
-        if (
-            request.path.startswith("/api/")
-            and request.path != "/api/health/"
-            and self._auth_active
-        ):
+        if is_gated_api_path and self._auth_active:
             auth_header = request.META.get("HTTP_AUTHORIZATION", "")
 
             if not auth_header:

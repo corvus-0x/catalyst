@@ -362,7 +362,7 @@ export default function ProfilePanel({
         <div className="knot-stat-grid">
           <div className="knot-stat">
             <div className="knot-stat__num knot-stat__num--accent">{angles.length}</div>
-            <div className="knot-stat__lbl">Angles</div>
+            <div className="knot-stat__lbl">Threads</div>
           </div>
           <div className="knot-stat">
             <div className="knot-stat__num knot-stat__num--success">
@@ -419,10 +419,10 @@ export default function ProfilePanel({
         {/* Angles */}
         <div>
           <div className="knot-section-head">
-            <span className="knot-section-title">Angles</span>
+            <span className="knot-section-title">Threads</span>
           </div>
           {angles.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>No angles yet.</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>No threads yet.</div>
           ) : (
             angles.map((a) => (
               <div key={a.id} className="angle-card" onClick={() => onAngleClick(a.id, a.title)}>

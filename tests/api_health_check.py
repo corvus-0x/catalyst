@@ -11,6 +11,7 @@ Exit codes:
 """
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -27,6 +28,13 @@ from typing import Optional
 # note, document) — pass the production URL explicitly when you really mean it:
 #   python tests/api_health_check.py https://catalyst-production-9566.up.railway.app
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
+
+# When the target is running in read-only public demo mode
+# (CATALYST_DEMO_READ_ONLY=True), anonymous writes 403. Set
+# CATALYST_HEALTHCHECK_TOKEN to a value present in that deployment's
+# CATALYST_DEMO_WRITE_TOKENS so this script's writes are authenticated.
+# Empty (the default for local dev / demo mode off) leaves behavior unchanged.
+CATALYST_HEALTHCHECK_TOKEN = os.getenv("CATALYST_HEALTHCHECK_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +126,8 @@ def api_post(
         if _CSRF_TOKEN:
             req.add_header("X-CSRFToken", _CSRF_TOKEN)
             req.add_header("Cookie", f"csrftoken={_CSRF_TOKEN}")
+        if CATALYST_HEALTHCHECK_TOKEN:
+            req.add_header("Authorization", f"Bearer {CATALYST_HEALTHCHECK_TOKEN}")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
             duration = (time.time() - start) * 1000
@@ -149,6 +159,8 @@ def api_delete(path: str, timeout: int = 30) -> int:
         if _CSRF_TOKEN:
             req.add_header("X-CSRFToken", _CSRF_TOKEN)
             req.add_header("Cookie", f"csrftoken={_CSRF_TOKEN}")
+        if CATALYST_HEALTHCHECK_TOKEN:
+            req.add_header("Authorization", f"Bearer {CATALYST_HEALTHCHECK_TOKEN}")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status
     except urllib.error.HTTPError as e:
@@ -592,6 +604,8 @@ if CASE_ID:
             if _CSRF_TOKEN:
                 req.add_header("X-CSRFToken", _CSRF_TOKEN)
                 req.add_header("Cookie", f"csrftoken={_CSRF_TOKEN}")
+            if CATALYST_HEALTHCHECK_TOKEN:
+                req.add_header("Authorization", f"Bearer {CATALYST_HEALTHCHECK_TOKEN}")
             with urllib.request.urlopen(req, timeout=30):
                 cleaned.append("case (closed)")
         except Exception:

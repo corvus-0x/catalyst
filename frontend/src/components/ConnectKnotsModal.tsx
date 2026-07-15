@@ -309,7 +309,7 @@ export default function ConnectKnotsModal({
       return;
     }
     if (!angleName.trim()) {
-      setValidationError("Give this angle a name.");
+      setValidationError("Give this thread a name.");
       return;
     }
 
@@ -348,7 +348,7 @@ export default function ConnectKnotsModal({
           {/* Header */}
           <div className="dialog-header">
             <Dialog.Title className="dialog-title">
-              Connect two knots with a new angle
+              Connect two knots with a new thread
             </Dialog.Title>
             <button
               type="button"
@@ -424,7 +424,7 @@ export default function ConnectKnotsModal({
                 className="connect-knots-modal__name-label"
                 htmlFor="connect-angle-name"
               >
-                Angle name
+                Thread name
               </label>
               <div className="connect-knots-modal__name-input-wrap">
                 <input
@@ -488,7 +488,7 @@ export default function ConnectKnotsModal({
                   Creating…
                 </>
               ) : (
-                "Create angle"
+                "Create thread"
               )}
             </button>
           </div>

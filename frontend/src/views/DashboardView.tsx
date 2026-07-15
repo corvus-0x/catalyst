@@ -1,7 +1,7 @@
 /**
  * DashboardView.tsx — Top-level dashboard showing KPI cards, recent cases, and activity feed.
  *
- * Vocabulary: Angles = Findings, Knots = Person/Organization nodes.
+ * Vocabulary: Threads = Findings, Subjects = Person/Organization nodes.
  * Banned strings: "Haiku", "Sonnet", "Claude", "AI assistant", "LLM", "GPT".
  */
 
@@ -14,7 +14,7 @@ import {
   fetchSignalSummary,
   fetchActivityFeed,
 } from "../api";
-import type { CaseListItem, ActivityFeedItem, SignalSummary } from "../types";
+import type { ActivityFeedItem, CaseListItem, SignalSummary } from "../types";
 
 function formatDate(iso: string): string {
   try {
@@ -28,8 +28,134 @@ function formatDate(iso: string): string {
   }
 }
 
-function formatAction(action: string): string {
-  return action.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+/** Title-cases an unrecognized AuditAction enum value as a last-resort fallback. */
+function titleCaseAction(action: string): string {
+  return action
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * table_name -> the Subject/Thread vocabulary noun for that record type.
+ * Used only by the generic RECORD_* fallback below (which the audit log
+ * emits for tables without a dedicated action, e.g. plain field edits) —
+ * every action with its own entry in ACTION_COPY supplies its own copy.
+ */
+const TABLE_NOUNS: Record<string, string> = {
+  cases: "Case",
+  findings: "Thread",
+  documents: "Document",
+  investigator_notes: "Observation",
+  entities: "Subject",
+  people: "Subject",
+  organizations: "Subject",
+  search_jobs: "Research job",
+};
+
+/**
+ * Fully-formed human sentences for AuditAction values that carry their own
+ * meaning. Keyed to the actions the backend actually emits (see
+ * backend/investigations/models.py AuditAction) — NOT the older aspirational
+ * set. AI_* actions are reframed as Lead/Intake per the credibility-firewall
+ * rule: the words "AI"/"Claude"/model names must never reach this feed.
+ */
+const ACTION_COPY: Partial<Record<string, string>> = {
+  // Document lifecycle
+  DOCUMENT_INGESTED: "Document added",
+  DOCUMENT_SCRUBBED: "Document metadata scrubbed",
+  DOCUMENT_HASHED: "Document hash computed",
+  DOCUMENT_HASH_VERIFIED: "Document hash verified",
+  DOCUMENT_HASH_MISMATCH: "Document hash mismatch detected",
+  DOCUMENT_DELETED: "Document removed",
+  DOCUMENT_OCR_COMPLETED: "Document text extracted",
+  DOCUMENT_OCR_FAILED: "Document text extraction failed",
+
+  // Signal / detection lifecycle
+  SIGNAL_DETECTED: "Signal detected",
+  SIGNAL_CONFIRMED: "Thread substantiated",
+  SIGNAL_DISMISSED: "Thread set aside",
+  SIGNAL_ESCALATED: "Signal escalated to a thread",
+
+  // Finding (Thread) lifecycle
+  FINDING_CREATED: "Thread created",
+  FINDING_UPDATED: "Thread updated",
+  FINDING_INCLUDED: "Thread included in referral package",
+
+  // Referral lifecycle
+  REFERRAL_CREATED: "Referral package created",
+  REFERRAL_SUBMITTED: "Referral submitted",
+  REFERRAL_STATUS_CHANGED: "Referral status changed",
+
+  // Intake validation
+  INTAKE_REJECTED_SIZE: "File rejected — too large",
+  INTAKE_REJECTED_TYPE: "File rejected — invalid type",
+  INTAKE_REJECTED_CORRUPT: "File rejected — unreadable",
+
+  // System
+  HASH_VERIFICATION_BATCH: "Batch hash verification completed",
+
+  // AI lifecycle — reframed as Lead/Intake. "AI" never appears in
+  // user-visible copy.
+  AI_EXTRACTION_COMPLETED: "Intake completed on a document",
+  AI_EXTRACTION_FAILED: "Intake could not read a document",
+  AI_PATTERN_RUN_COMPLETED: "Lead analysis completed",
+  AI_FINDING_CREATED: "New lead recorded",
+  AI_FINDING_REVIEWED: "Investigator reviewed a lead",
+  AI_THREAD_ASSIST_COMPLETED: "Lead suggestions ready",
+};
+
+/** Generic CRUD verbs for the RECORD_* actions the audit log emits by table. */
+const RECORD_VERBS: Record<string, string> = {
+  RECORD_CREATED: "created",
+  RECORD_UPDATED: "updated",
+  RECORD_DELETED: "removed",
+};
+
+/**
+ * Internal/system note payloads that must never render verbatim — mapped to
+ * an investigator-facing sentence instead. Keys are exact `notes` values.
+ * Any `notes` value NOT in this map is dropped entirely (never rendered),
+ * since it's an internal code, not investigator-facing prose.
+ */
+const NOTE_COPY: Record<string, string> = {
+  reevaluate_signals: "Signal rules re-evaluated",
+};
+
+/**
+ * Turns one raw ActivityFeedItem into an investigator-facing sentence.
+ * Never renders a raw snake_case AuditAction (mapped to human copy or,
+ * failing that, title-cased) and never renders a raw internal `notes`
+ * code — only `notes` values whitelisted in NOTE_COPY are appended; any
+ * other `notes` value is silently omitted.
+ */
+function humanizeActivity(item: ActivityFeedItem): string {
+  const tableNoun = TABLE_NOUNS[item.table_name];
+  let headline = ACTION_COPY[item.action];
+
+  if (!headline) {
+    const verb = RECORD_VERBS[item.action];
+    if (verb) {
+      headline = `${tableNoun ?? "Record"} ${verb}`;
+    }
+  }
+
+  if (!headline) {
+    // Guard against the title-case fallback ever rendering "Ai ..." for an
+    // unmapped AI_* action — the credibility-firewall rule bans AI/model
+    // provenance from user-visible copy even for actions we haven't
+    // written specific copy for yet.
+    headline = item.action.startsWith("AI_") ? "Activity recorded" : titleCaseAction(item.action);
+  }
+
+  const notes = item.notes?.trim();
+  if (notes && notes in NOTE_COPY) {
+    return `${headline} — ${NOTE_COPY[notes]}`;
+  }
+  // Unmapped notes are internal codes, not investigator-facing prose — drop them.
+  return headline;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +325,10 @@ export default function DashboardView() {
   }
 
   const activeCases = cases.filter((c) => c.status === "ACTIVE").length;
-  const totalAngles = signalSummary?.total ?? 0;
+  // /api/signal-summary/ returns one row per case with findings — sum
+  // total_count across rows for the dashboard-wide thread count.
+  const totalThreads =
+    signalSummary?.results.reduce((sum, row) => sum + row.total_count, 0) ?? 0;
   const totalCases = loading ? "—" : cases.length;
 
   return (
@@ -231,7 +360,7 @@ export default function DashboardView() {
           <>
             <StatCard label="Total cases" value={totalCases} />
             <StatCard label="Active cases" value={activeCases} />
-            <StatCard label="Total angles" value={totalAngles} />
+            <StatCard label="Total threads" value={totalThreads} />
           </>
         )}
       </div>
@@ -327,19 +456,15 @@ export default function DashboardView() {
                 >
                   {formatDate(item.performed_at)}
                 </span>
-                <span>{formatAction(item.action)}</span>
-                {item.notes && (
-                  <span
-                    style={{
-                      color: "var(--text-muted, #9ca3af)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.notes}
-                  </span>
-                )}
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {humanizeActivity(item)}
+                </span>
               </div>
             ))}
           </div>

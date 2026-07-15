@@ -17,6 +17,15 @@ import { useEffect, useRef, useState } from "react";
 import { fetchJob } from "../api";
 import type { AsyncJobEnqueuedResponse, JobStatus, SearchJob } from "../types";
 
+// 90 polls x 2s = ~3 minutes. Past this, a job is presumed stuck (dead worker,
+// abandoned queue) rather than legitimately slow — stop polling and surface it.
+const MAX_POLLS = 90;
+const POLL_INTERVAL_MS = 2000;
+const STUCK_JOB_MESSAGE =
+  "Still queued after several minutes — the worker may be busy. Check back shortly.";
+const UNREACHABLE_MESSAGE =
+  "Couldn't reach the server — check your connection and try again.";
+
 export interface AsyncJobState<TResult> {
   status: JobStatus | "idle";
   result: TResult | null;
@@ -43,21 +52,37 @@ export function useAsyncJob<TResult = unknown>(): AsyncJobState<TResult> {
 
   function startPolling(id: string) {
     stopPolling();
+    let pollCount = 0;
+    // True once any poll has successfully reached the server. Distinguishes
+    // "job is legitimately slow" (server reachable, still QUEUED/RUNNING)
+    // from "we've never once reached the server" (network/server down) so
+    // the cap message can point at the right problem.
+    let everReached = false;
     intervalRef.current = setInterval(async () => {
+      pollCount += 1;
       try {
         const job = await fetchJob(id);
+        everReached = true;
         setStatus(job.status);
         if (job.status === "SUCCESS") {
           setResult(job.result as TResult);
           stopPolling();
+          return;
         } else if (job.status === "FAILED") {
           setError(job.error_message ?? "Job failed");
           stopPolling();
+          return;
         }
-      } catch {
+      } catch (err) {
         // Network blip — keep polling until status resolves
+        console.error("useAsyncJob poll failed", err);
       }
-    }, 2000);
+      if (pollCount >= MAX_POLLS) {
+        stopPolling();
+        setStatus("FAILED");
+        setError(everReached ? STUCK_JOB_MESSAGE : UNREACHABLE_MESSAGE);
+      }
+    }, POLL_INTERVAL_MS);
   }
 
   async function run(postFn: () => Promise<AsyncJobEnqueuedResponse>) {
