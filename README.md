@@ -21,7 +21,10 @@ human hasn't reviewed and cited.
 **▶ Live demo:** https://catalyst-production-9566.up.railway.app/ — a complete investigation
 case ("Bright Future Foundation") loads on the homepage. It's a public, read-only demo.
 
-![Catalyst Demo](docs/catalyst-demo.gif)
+![Catalyst Case Map](docs/screenshots/investigate-tab.png)
+
+*The Case Map: Subjects (people + organizations) and the Relationships between them, with a
+readiness panel that tells you which threads are referral-grade and which still need work.*
 
 > **What's real vs. demo-seeded.** The connectors, signal rules, entity resolution, async
 > pipeline, referral PDF exporter, and the full test suite are real, working code. The demo
@@ -70,8 +73,8 @@ exported package. It's the path the demo GIF follows:
 
 | | |
 |---|---|
-| ![Investigate tab](docs/screenshots/investigate-tab.png) | ![Research tab](docs/screenshots/research-tab.png) |
-| **Case Map** — a Cytoscape.js graph of Subjects (people + organizations) and their Relationships. Select a Thread to emphasize the relationships it relies on; drill from the map into a Subject, a Relationship, or the Thread Builder. | **Research** — pull IRS 990 filings, Ohio SOS records, county recorder deeds, Auditor of State findings, and statewide parcels directly into the case. Each search is an async job the UI polls and reattaches to on reload. |
+| ![Research tab](docs/screenshots/research-tab.png) | ![Timeline tab](docs/screenshots/timeline-tab.png) |
+| **Research** — pull IRS 990 filings, Ohio SOS records, county recorder deeds, Auditor of State findings, and statewide parcels directly into the case. Each search is an async job the UI polls and reattaches to on reload. | **Timeline** — every 990 filing and property transfer on one axis (a D3 brush over a Cytoscape workspace). The revenue climb and same-window deeds are the pattern the case is built on; each event cites straight into a thread. |
 | ![Financials tab](docs/screenshots/financials-tab.png) | ![Referrals tab](docs/screenshots/referrals-tab.png) |
 | **Financials** — multi-year 990 data in one view: revenue trend, officer compensation, governance flags. Parsed from IRS TEOS XML via HTTP range requests — no third-party API. | **Referrals** — the deterministic, citation-bearing export. A readiness checklist gates the PDF; every referral-grade thread carries cited assertions and a SHA-256 custody trail. |
 
