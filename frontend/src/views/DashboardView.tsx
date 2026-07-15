@@ -55,19 +55,55 @@ const TABLE_NOUNS: Record<string, string> = {
   search_jobs: "Research job",
 };
 
-/** Fully-formed human sentences for AuditAction values that carry their own meaning. */
+/**
+ * Fully-formed human sentences for AuditAction values that carry their own
+ * meaning. Keyed to the actions the backend actually emits (see
+ * backend/investigations/models.py AuditAction) — NOT the older aspirational
+ * set. AI_* actions are reframed as Lead/Intake per the credibility-firewall
+ * rule: the words "AI"/"Claude"/model names must never reach this feed.
+ */
 const ACTION_COPY: Partial<Record<string, string>> = {
-  DOCUMENT_UPLOADED: "Document uploaded",
+  // Document lifecycle
+  DOCUMENT_INGESTED: "Document added",
+  DOCUMENT_SCRUBBED: "Document metadata scrubbed",
+  DOCUMENT_HASHED: "Document hash computed",
+  DOCUMENT_HASH_VERIFIED: "Document hash verified",
+  DOCUMENT_HASH_MISMATCH: "Document hash mismatch detected",
   DOCUMENT_DELETED: "Document removed",
+  DOCUMENT_OCR_COMPLETED: "Document text extracted",
+  DOCUMENT_OCR_FAILED: "Document text extraction failed",
+
+  // Signal / detection lifecycle
+  SIGNAL_DETECTED: "Signal detected",
+  SIGNAL_CONFIRMED: "Thread substantiated",
+  SIGNAL_DISMISSED: "Thread set aside",
+  SIGNAL_ESCALATED: "Signal escalated to a thread",
+
+  // Finding (Thread) lifecycle
   FINDING_CREATED: "Thread created",
   FINDING_UPDATED: "Thread updated",
-  SIGNAL_DISMISSED: "Thread set aside",
-  SIGNAL_CONFIRMED: "Thread substantiated",
-  CASE_CREATED: "Case created",
-  CASE_UPDATED: "Case updated",
-  ENTITY_CREATED: "Subject added",
-  NOTE_CREATED: "Observation added",
-  // "AI" never appears in user-visible copy — this is Lead-suggestion output.
+  FINDING_INCLUDED: "Thread included in referral package",
+
+  // Referral lifecycle
+  REFERRAL_CREATED: "Referral package created",
+  REFERRAL_SUBMITTED: "Referral submitted",
+  REFERRAL_STATUS_CHANGED: "Referral status changed",
+
+  // Intake validation
+  INTAKE_REJECTED_SIZE: "File rejected — too large",
+  INTAKE_REJECTED_TYPE: "File rejected — invalid type",
+  INTAKE_REJECTED_CORRUPT: "File rejected — unreadable",
+
+  // System
+  HASH_VERIFICATION_BATCH: "Batch hash verification completed",
+
+  // AI lifecycle — reframed as Lead/Intake. "AI" never appears in
+  // user-visible copy.
+  AI_EXTRACTION_COMPLETED: "Intake completed on a document",
+  AI_EXTRACTION_FAILED: "Intake could not read a document",
+  AI_PATTERN_RUN_COMPLETED: "Lead analysis completed",
+  AI_FINDING_CREATED: "New lead recorded",
+  AI_FINDING_REVIEWED: "Investigator reviewed a lead",
   AI_THREAD_ASSIST_COMPLETED: "Lead suggestions ready",
 };
 
@@ -104,7 +140,11 @@ function humanizeActivity(item: ActivityFeedItem): string {
   }
 
   if (!headline) {
-    headline = titleCaseAction(item.action);
+    // Guard against the title-case fallback ever rendering "Ai ..." for an
+    // unmapped AI_* action — the credibility-firewall rule bans AI/model
+    // provenance from user-visible copy even for actions we haven't
+    // written specific copy for yet.
+    headline = item.action.startsWith("AI_") ? "Activity recorded" : titleCaseAction(item.action);
   }
 
   const notes = item.notes?.trim();

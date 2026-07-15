@@ -171,6 +171,112 @@ describe("DashboardView — Activity feed copy (P1-3)", () => {
     expect(screen.queryByText(/reevaluate_signals/)).not.toBeInTheDocument();
   });
 
+  it("humanizes AI_EXTRACTION_COMPLETED as Intake copy with no AI leak", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-4",
+          case_id: "case-1",
+          table_name: "documents",
+          record_id: "rec-4",
+          action: "AI_EXTRACTION_COMPLETED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Intake completed on a document")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Ai /i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bAI\b/)).not.toBeInTheDocument();
+  });
+
+  it("humanizes AI_FINDING_CREATED as 'New lead recorded' with no AI leak", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-5",
+          case_id: "case-1",
+          table_name: "findings",
+          record_id: "rec-5",
+          action: "AI_FINDING_CREATED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("New lead recorded")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Ai /i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bAI\b/)).not.toBeInTheDocument();
+  });
+
+  it("humanizes SIGNAL_CONFIRMED as 'Thread substantiated'", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-6",
+          case_id: "case-1",
+          table_name: "findings",
+          record_id: "rec-6",
+          action: "SIGNAL_CONFIRMED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread substantiated")).toBeInTheDocument();
+    });
+  });
+
+  it("never renders 'Ai ...' for an unmapped AI_* action — falls back to a neutral phrase", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-7",
+          case_id: "case-1",
+          table_name: "documents",
+          record_id: "rec-7",
+          action: "AI_SOME_FUTURE_ACTION" as ActivityFeedResponse["results"][number]["action"],
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Activity recorded")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Ai /i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bAI\b/)).not.toBeInTheDocument();
+  });
+
   it("falls back to a title-cased sentence for an unknown action, never the raw enum", async () => {
     const activity: ActivityFeedResponse = {
       count: 1,

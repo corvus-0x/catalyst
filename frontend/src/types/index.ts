@@ -1201,22 +1201,46 @@ export interface SearchResponse {
  * These are append-only forensic records — never updated or deleted.
  */
 export type AuditAction =
-  | "DOCUMENT_UPLOADED"
+  // Document lifecycle
+  | "DOCUMENT_INGESTED"
+  | "DOCUMENT_SCRUBBED"
+  | "DOCUMENT_HASHED"
+  | "DOCUMENT_HASH_VERIFIED"
+  | "DOCUMENT_HASH_MISMATCH"
   | "DOCUMENT_DELETED"
-  | "FINDING_CREATED"
-  | "FINDING_UPDATED"
-  | "SIGNAL_DISMISSED"
-  | "SIGNAL_CONFIRMED"
-  | "CASE_CREATED"
-  | "CASE_UPDATED"
-  | "ENTITY_CREATED"
-  | "NOTE_CREATED"
-  // Generic CRUD actions the audit log actually emits for tables without a
-  // dedicated action above (confirmed against prod GET /api/activity-feed/).
+  | "DOCUMENT_OCR_COMPLETED"
+  | "DOCUMENT_OCR_FAILED"
+  // Generic CRUD actions the audit log emits for tables without a
+  // dedicated action (confirmed against backend/investigations/models.py
+  // AuditAction, mirrored in AuditLog).
   | "RECORD_CREATED"
   | "RECORD_UPDATED"
   | "RECORD_DELETED"
-  // Emitted when a Lead-suggestion (AI pattern analysis) job finishes.
+  // Signal / detection lifecycle
+  | "SIGNAL_DETECTED"
+  | "SIGNAL_CONFIRMED"
+  | "SIGNAL_DISMISSED"
+  | "SIGNAL_ESCALATED"
+  // Finding (Thread) lifecycle
+  | "FINDING_CREATED"
+  | "FINDING_UPDATED"
+  | "FINDING_INCLUDED"
+  // Referral lifecycle
+  | "REFERRAL_CREATED"
+  | "REFERRAL_SUBMITTED"
+  | "REFERRAL_STATUS_CHANGED"
+  // Intake validation
+  | "INTAKE_REJECTED_SIZE"
+  | "INTAKE_REJECTED_TYPE"
+  | "INTAKE_REJECTED_CORRUPT"
+  // System
+  | "HASH_VERIFICATION_BATCH"
+  // AI lifecycle (Lead / Intake in user-facing copy — never "AI" in strings)
+  | "AI_EXTRACTION_COMPLETED"
+  | "AI_EXTRACTION_FAILED"
+  | "AI_PATTERN_RUN_COMPLETED"
+  | "AI_FINDING_CREATED"
+  | "AI_FINDING_REVIEWED"
   | "AI_THREAD_ASSIST_COMPLETED";
 
 /** One entry in the investigation audit log */
