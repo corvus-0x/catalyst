@@ -89,9 +89,8 @@ RATE_LIMIT_WRITE = os.getenv("RATE_LIMIT_WRITE", "30/minute")
 # client-controlled — a direct caller could spoof a new IP per request and
 # bypass the per-IP buckets entirely. RAILWAY_ENVIRONMENT is set on every
 # Railway deploy, so production picks this up with no config change.
-TRUST_PROXY_HEADERS = (
-    os.getenv("TRUST_PROXY_HEADERS", "").lower() == "true"
-    or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "").lower() == "true" or bool(
+    os.getenv("RAILWAY_ENVIRONMENT")
 )
 
 ROOT_URLCONF = "catalyst.urls"
@@ -255,6 +254,21 @@ CATALYST_API_TOKENS = [
     t.strip() for t in os.getenv("CATALYST_API_TOKENS", "").split(",") if t.strip()
 ]
 CATALYST_REQUIRE_AUTH = os.getenv("CATALYST_REQUIRE_AUTH", "True").lower() == "true"
+
+# ---------------------------------------------------------------------------
+# Read-only public demo mode (P0-6)
+# ---------------------------------------------------------------------------
+# When CATALYST_DEMO_READ_ONLY=True, anonymous writes to /api/ are rejected
+# with a friendly 403 — but reads stay public even though CATALYST_API_TOKENS
+# may be unset. This is intentionally a SEPARATE token list from
+# CATALYST_API_TOKENS: setting CATALYST_API_TOKENS flips on `_auth_active`,
+# which would 401 anonymous GETs too and break public read access. Tokens in
+# CATALYST_DEMO_WRITE_TOKENS only ever bypass the demo write gate.
+# ---------------------------------------------------------------------------
+CATALYST_DEMO_READ_ONLY = os.getenv("CATALYST_DEMO_READ_ONLY", "False").lower() == "true"
+CATALYST_DEMO_WRITE_TOKENS = [
+    t.strip() for t in os.getenv("CATALYST_DEMO_WRITE_TOKENS", "").split(",") if t.strip()
+]
 
 # ---------------------------------------------------------------------------
 # Django Cache — AI response cache + cross-process rate limiter
