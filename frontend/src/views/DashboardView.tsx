@@ -14,7 +14,7 @@ import {
   fetchSignalSummary,
   fetchActivityFeed,
 } from "../api";
-import type { CaseListItem, ActivityFeedItem, SignalSummary } from "../types";
+import type { ActivityFeedItem, CaseListItem, SignalSummary } from "../types";
 
 function formatDate(iso: string): string {
   try {
@@ -28,8 +28,93 @@ function formatDate(iso: string): string {
   }
 }
 
-function formatAction(action: string): string {
-  return action.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+/** Title-cases an unrecognized AuditAction enum value as a last-resort fallback. */
+function titleCaseAction(action: string): string {
+  return action
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * table_name -> the Subject/Thread vocabulary noun for that record type.
+ * Used both for specific AuditAction copy and for the generic RECORD_*
+ * actions (which the audit log emits for tables without a dedicated
+ * action, e.g. plain field edits).
+ */
+const TABLE_NOUNS: Record<string, string> = {
+  cases: "Case",
+  findings: "Thread",
+  documents: "Document",
+  investigator_notes: "Observation",
+  entities: "Subject",
+  people: "Subject",
+  organizations: "Subject",
+  search_jobs: "Research job",
+};
+
+/** Fully-formed human sentences for AuditAction values that carry their own meaning. */
+const ACTION_COPY: Partial<Record<string, string>> = {
+  DOCUMENT_UPLOADED: "Document uploaded",
+  DOCUMENT_DELETED: "Document removed",
+  FINDING_CREATED: "Thread created",
+  FINDING_UPDATED: "Thread updated",
+  SIGNAL_DISMISSED: "Thread set aside",
+  SIGNAL_CONFIRMED: "Thread substantiated",
+  CASE_CREATED: "Case created",
+  CASE_UPDATED: "Case updated",
+  ENTITY_CREATED: "Subject added",
+  NOTE_CREATED: "Observation added",
+  // "AI" never appears in user-visible copy — this is Lead-suggestion output.
+  AI_THREAD_ASSIST_COMPLETED: "Lead suggestions ready",
+};
+
+/** Generic CRUD verbs for the RECORD_* actions the audit log emits by table. */
+const RECORD_VERBS: Record<string, string> = {
+  RECORD_CREATED: "created",
+  RECORD_UPDATED: "updated",
+  RECORD_DELETED: "removed",
+};
+
+/**
+ * Internal/system note payloads that must never render verbatim — mapped to
+ * an investigator-facing sentence instead. Keys are exact `notes` values.
+ */
+const NOTE_COPY: Record<string, string> = {
+  reevaluate_signals: "Signal rules re-evaluated",
+};
+
+/**
+ * Turns one raw ActivityFeedItem into an investigator-facing sentence.
+ * Never renders a raw snake_case AuditAction or a raw internal `notes`
+ * code (e.g. "reevaluate_signals") — those are mapped to human copy or,
+ * failing that, title-cased.
+ */
+function humanizeActivity(item: ActivityFeedItem): string {
+  const tableNoun = TABLE_NOUNS[item.table_name];
+  let headline = ACTION_COPY[item.action];
+
+  if (!headline) {
+    const verb = RECORD_VERBS[item.action];
+    if (verb) {
+      headline = `${tableNoun ?? "Record"} ${verb}`;
+    }
+  }
+
+  if (!headline) {
+    headline = titleCaseAction(item.action);
+  }
+
+  const notes = item.notes?.trim();
+  if (notes && notes in NOTE_COPY) {
+    return `${headline} — ${NOTE_COPY[notes]}`;
+  }
+  if (notes) {
+    return `${headline} — ${notes}`;
+  }
+  return headline;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,19 +415,15 @@ export default function DashboardView() {
                 >
                   {formatDate(item.performed_at)}
                 </span>
-                <span>{formatAction(item.action)}</span>
-                {item.notes && (
-                  <span
-                    style={{
-                      color: "var(--text-muted, #9ca3af)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.notes}
-                  </span>
-                )}
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {humanizeActivity(item)}
+                </span>
               </div>
             ))}
           </div>

@@ -1210,14 +1210,21 @@ export type AuditAction =
   | "CASE_CREATED"
   | "CASE_UPDATED"
   | "ENTITY_CREATED"
-  | "NOTE_CREATED";
+  | "NOTE_CREATED"
+  // Generic CRUD actions the audit log actually emits for tables without a
+  // dedicated action above (confirmed against prod GET /api/activity-feed/).
+  | "RECORD_CREATED"
+  | "RECORD_UPDATED"
+  | "RECORD_DELETED"
+  // Emitted when a Lead-suggestion (AI pattern analysis) job finishes.
+  | "AI_THREAD_ASSIST_COMPLETED";
 
 /** One entry in the investigation audit log */
 export interface ActivityFeedItem {
   id: UUID;
   case_id: UUID;
   table_name: string;
-  record_id: UUID;
+  record_id: UUID | null;
   action: AuditAction;
   performed_by: string;
   performed_at: ISO8601;

@@ -111,3 +111,89 @@ describe("DashboardView — Total threads stat", () => {
     expect(label!.previousElementSibling?.textContent).toBe("0");
   });
 });
+
+describe("DashboardView — Activity feed copy (P1-3)", () => {
+  beforeEach(() => {
+    vi.mocked(api.fetchCases).mockResolvedValue(emptyCases);
+    vi.mocked(api.fetchSignalSummary).mockResolvedValue({ results: [] });
+  });
+
+  it("humanizes RECORD_UPDATED on the findings table as Thread updated", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-1",
+          case_id: "case-1",
+          table_name: "findings",
+          record_id: "rec-1",
+          action: "RECORD_UPDATED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread updated")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("RECORD_UPDATED")).not.toBeInTheDocument();
+    expect(screen.queryByText("Record updated")).not.toBeInTheDocument();
+  });
+
+  it("maps the internal 'reevaluate_signals' note to human copy, never the raw note", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-2",
+          case_id: "case-1",
+          table_name: "findings",
+          record_id: null,
+          action: "RECORD_UPDATED",
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "reevaluate_signals",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Signal rules re-evaluated/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/reevaluate_signals/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to a title-cased sentence for an unknown action, never the raw enum", async () => {
+    const activity: ActivityFeedResponse = {
+      count: 1,
+      results: [
+        {
+          id: "act-3",
+          case_id: "case-1",
+          table_name: "widgets",
+          record_id: "rec-3",
+          action: "SOME_NEW_ACTION" as ActivityFeedResponse["results"][number]["action"],
+          performed_by: "",
+          performed_at: "2026-07-08T13:46:22.533208+00:00",
+          notes: "",
+        },
+      ],
+    };
+    vi.mocked(api.fetchActivityFeed).mockResolvedValue(activity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Some New Action")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("SOME_NEW_ACTION")).not.toBeInTheDocument();
+  });
+});
