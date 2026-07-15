@@ -212,7 +212,7 @@ function AnomalyCell({
                   onOpenAngle(existingAngle.id, existingAngle.title);
                 }}
               >
-                Open existing angle
+                Open existing thread
               </button>
             )}
             {onStartAngle && (
@@ -222,7 +222,7 @@ function AnomalyCell({
                 style={{ fontSize: 11, width: "100%" }}
                 onClick={() => { setOpen(false); onStartAngle(prefilledName); }}
               >
-                Start new angle
+                Start new thread
               </button>
             )}
             <Popover.Close asChild>

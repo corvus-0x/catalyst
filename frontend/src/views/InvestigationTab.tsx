@@ -145,7 +145,7 @@ function TriggerFindingChip({
       type="button"
       className={`inv-finding-chip ${SEVERITY_CLASS[finding.severity] ?? ""}`}
       onClick={() => onOpenAngle(finding.id, finding.title)}
-      title="Open this angle in the Investigate tab"
+      title="Open this thread in the Investigate tab"
     >
       <ExternalLink size={11} />
       {finding.title.length > 60 ? finding.title.slice(0, 60) + "…" : finding.title}

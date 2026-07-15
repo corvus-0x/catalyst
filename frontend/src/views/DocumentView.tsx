@@ -92,9 +92,9 @@ function DocFindingsView({ caseId, documentId }: { caseId: string; documentId: s
     return (
       <div className="doc-findings-view">
         <div className="empty-state">
-          <p className="empty-state__title">No angles cite this document yet</p>
+          <p className="empty-state__title">No threads cite this document yet</p>
           <p className="empty-state__body">
-            Navigate to an angle and use "+ Cite document" to link this document as evidence.
+            Navigate to a thread and use "+ Cite document" to link this document as evidence.
           </p>
         </div>
       </div>
@@ -333,7 +333,7 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
         {/* Captured banner */}
         {capturedBanner && (
           <div role="status" className="doc-capture-banner">
-            {activeAngleId ? "Added to angle." : "Captured!"}
+            {activeAngleId ? "Added to thread." : "Captured!"}
           </div>
         )}
 
@@ -395,7 +395,7 @@ export default function DocumentView({ caseId, documentId, activeAngleId, onBack
               </ContextMenu.Item>
               {activeAngleId && (
                 <ContextMenu.Item onSelect={handleCiteInAngle} className="doc-ctx-item">
-                  Cite in angle
+                  Cite in thread
                 </ContextMenu.Item>
               )}
               <ContextMenu.Item onSelect={handleQuickCapture} className="doc-ctx-item">

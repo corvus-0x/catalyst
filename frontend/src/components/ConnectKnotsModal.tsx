@@ -309,7 +309,7 @@ export default function ConnectKnotsModal({
       return;
     }
     if (!angleName.trim()) {
-      setValidationError("Give this angle a name.");
+      setValidationError("Give this thread a name.");
       return;
     }
 
@@ -488,7 +488,7 @@ export default function ConnectKnotsModal({
                   Creating…
                 </>
               ) : (
-                "Create angle"
+                "Create thread"
               )}
             </button>
           </div>
